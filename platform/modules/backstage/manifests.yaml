@@ -287,7 +287,7 @@ spec:
       
       containers:
         - name: backstage-backend
-          image: localhost:5001/sre-platform/backstage:1.52.0-local-820c72393c55
+          image: localhost:5001/sre-platform/backstage:1.52.0-local-0822f1de1a8c
           imagePullPolicy: "IfNotPresent"
           command:
             - node
@@ -351,4 +351,4 @@ metadata:
 # modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, fake-service=disabled, konveyor=disabled, kyverno=enabled, openbao=disabled, opencost=disabled
 data:
   selection.json: |
-    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"1.15.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":false}}}
+    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"0.6.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":false}}}
