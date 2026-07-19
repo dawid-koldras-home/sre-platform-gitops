@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: SRE Platform components
+  sourceRepos:
+    - "https://github.com/dawid-koldras-home/sre-platform-gitops.git"
+  destinations:
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  orphanedResources:
+    warn: true

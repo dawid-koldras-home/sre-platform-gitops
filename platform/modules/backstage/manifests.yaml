@@ -1,0 +1,354 @@
+---
+# Source: backstage/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backstage-read-only
+  namespace: backstage
+  labels:
+    app.kubernetes.io/component: backstage
+automountServiceAccountToken: true
+---
+# Source: backstage/templates/app-config-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backstage-app-config
+  namespace: "backstage"
+data:
+  app-config.yaml: |
+    app:
+      baseUrl: http://localhost:7007
+      extensions:
+      - page:catalog:
+          config:
+            path: /
+      packages: all
+      title: SRE Platform Developer Portal
+    argocd:
+      appLocatorMethods:
+      - instances:
+        - name: local
+          url: http://localhost:8080
+        type: config
+      fullDeploymentHistory: false
+      refreshInterval: 10000
+    auth:
+      environment: development
+      providers:
+        guest:
+          dangerouslyAllowOutsideDevelopment: true
+          ownershipEntityRefs:
+          - user:default/guest
+          - group:default/platform-team
+          - group:default/tenant-dawid-local
+          userEntityRef: user:default/guest
+    backend:
+      actions:
+        pluginSources:
+        - auth
+        - catalog
+        - scaffolder
+      baseUrl: http://localhost:7007
+      cors:
+        credentials: true
+        methods:
+        - GET
+        - HEAD
+        - PATCH
+        - POST
+        - PUT
+        - DELETE
+        origin: http://localhost:7007
+      csp:
+        connect-src:
+        - '''self'''
+        - 'http:'
+        - 'https:'
+      database:
+        client: better-sqlite3
+        connection: ':memory:'
+      listen:
+        port: 7007
+    catalog:
+      import:
+        entityFilename: catalog-info.yaml
+        pullRequestBranchName: backstage-integration
+      locations:
+      - target: /app/local-catalog.yaml
+        type: file
+      rules:
+      - allow:
+        - Component
+        - System
+        - API
+        - Resource
+        - Location
+        - Template
+        - User
+        - Group
+    kubernetes:
+      clusterLocatorMethods:
+      - clusters:
+        - authProvider: serviceAccount
+          name: local
+          skipMetricsLookup: true
+          skipTLSVerify: false
+          url: https://kubernetes.default.svc
+        type: config
+      customResources:
+      - apiVersion: v1alpha1
+        group: argoproj.io
+        plural: applications
+      frontend:
+        podDelete:
+          enabled: false
+      objectTypes: []
+      serviceLocatorMethod:
+        type: multiTenant
+    mcpActions:
+      description: Local developer portal for the SRE Platform
+      name: SRE Platform Backstage
+    organization:
+      name: SRE Platform
+    permission:
+      enabled: true
+    srePlatform:
+      authProvider: guest
+      selectionArtifactPath: /etc/sre-platform/selection.json
+      tenant: dawid-local
+    techdocs:
+      builder: local
+      generator:
+        runIn: local
+      publisher:
+        type: local
+---
+# Source: backstage/templates/extra-list.yaml
+apiVersion: v1
+data:
+  local-catalog.yaml: |
+    apiVersion: backstage.io/v1alpha1
+    kind: Group
+    metadata:
+      name: platform-team
+      description: Local SRE Platform operators
+    spec:
+      type: team
+      children: []
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Group
+    metadata:
+      name: tenant-dawid-local
+      description: Local identity group for tenant dawid-local
+    spec:
+      type: tenant
+      children: []
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: User
+    metadata:
+      name: guest
+    spec:
+      memberOf:
+        - platform-team
+        - tenant-dawid-local
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: System
+    metadata:
+      name: sre-platform
+      description: Customer SRE platform installed by srectl
+    spec:
+      owner: platform-team
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: sre-platform-control-plane
+      description: Local SRE Platform control-plane services
+      annotations:
+        argocd/app-selector: sre.platform.io/tenant=dawid-local
+        backstage.io/kubernetes-label-selector: app.kubernetes.io/part-of=sre-platform
+        backstage.io/kubernetes-namespace: argocd
+      tags:
+        - sre
+        - gitops
+    spec:
+      type: service
+      lifecycle: experimental
+      owner: platform-team
+      system: sre-platform
+kind: ConfigMap
+metadata:
+  name: backstage-local-catalog
+---
+# Source: backstage/templates/extra-list.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backstage-argocd-read-only
+  namespace: argocd
+rules:
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  verbs:
+  - get
+  - list
+  - watch
+---
+# Source: backstage/templates/extra-list.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backstage-argocd-read-only
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backstage-argocd-read-only
+subjects:
+- kind: ServiceAccount
+  name: backstage-read-only
+  namespace: backstage
+---
+# Source: backstage/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: backstage
+  namespace: "backstage" 
+  labels:
+    app.kubernetes.io/name: backstage
+    helm.sh/chart: backstage-2.8.2
+    app.kubernetes.io/instance: backstage
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: backstage
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  ports:
+    - name: http-backend
+      port: 7007
+      targetPort: backend
+      protocol: TCP
+      nodePort: null  
+  selector:
+    app.kubernetes.io/name: backstage
+    app.kubernetes.io/instance: backstage
+    app.kubernetes.io/component: backstage
+---
+# Source: backstage/templates/backstage-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backstage
+  namespace: "backstage"
+  labels: 
+    app.kubernetes.io/name: backstage
+    helm.sh/chart: backstage-2.8.2
+    app.kubernetes.io/instance: backstage
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: backstage
+  annotations:
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backstage
+      app.kubernetes.io/instance: backstage
+      app.kubernetes.io/component: backstage
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backstage
+        helm.sh/chart: backstage-2.8.2
+        app.kubernetes.io/instance: backstage
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: backstage
+      annotations:
+        checksum/app-config: 3b97cf7daaf45ea4b1b5b8e8633c9e038b94198397436f6f07c8a1459ba679dd
+    spec:
+      serviceAccountName: backstage-read-only
+      volumes:
+        - configMap:
+            name: backstage-local-catalog
+          name: local-catalog
+        - configMap:
+            name: sre-platform-module-selection
+          name: module-selection
+        - name: backstage-app-config
+          configMap:
+            name: backstage-app-config
+      
+      containers:
+        - name: backstage-backend
+          image: localhost:5001/sre-platform/backstage:1.52.0-argocd.10
+          imagePullPolicy: "IfNotPresent"
+          command:
+            - node
+            - packages/backend
+          args:
+            - "--config"
+            - "/app/app-config-from-configmap.yaml"
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /.backstage/health/v1/readiness
+              port: 7007
+              scheme: HTTP
+          livenessProbe:
+            httpGet:
+              path: /.backstage/health/v1/liveness
+              port: 7007
+              scheme: HTTP
+          startupProbe:
+            httpGet:
+              path: /.backstage/health/v1/liveness
+              port: 7007
+              scheme: HTTP
+          env:
+            - name: APP_CONFIG_backend_listen_port
+              value: "7007"
+          ports:
+            - name: backend
+              containerPort: 7007
+              protocol: TCP
+          volumeMounts:
+            - name: backstage-app-config
+              mountPath: "/app/app-config-from-configmap.yaml"
+              subPath: app-config.yaml
+            - mountPath: /app/local-catalog.yaml
+              name: local-catalog
+              readOnly: true
+              subPath: local-catalog.yaml
+            - mountPath: /etc/sre-platform/selection.json
+              name: module-selection
+              readOnly: true
+              subPath: selection.json
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sre-platform-module-selection
+  namespace: backstage
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: srectl
+  annotations:
+    sre-platform.io/api-version: v1
+# modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, fake-service=disabled, konveyor=disabled, kyverno=enabled, openbao=disabled, opencost=disabled
+data:
+  selection.json: |
+{"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"1.0.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":false}}}
