@@ -77,6 +77,8 @@ data:
       locations:
       - target: /app/local-catalog.yaml
         type: file
+      - target: /etc/sre-platform/catalog/catalog-info.yaml
+        type: file
       rules:
       - allow:
         - Component
@@ -115,6 +117,7 @@ data:
       enabled: true
     srePlatform:
       authProvider: guest
+      modulesDir: /etc/sre-platform/modules
       selectionArtifactPath: /etc/sre-platform/selection.json
       tenant: dawid-local
     techdocs:
@@ -271,7 +274,7 @@ spec:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/component: backstage
       annotations:
-        checksum/app-config: 3b97cf7daaf45ea4b1b5b8e8633c9e038b94198397436f6f07c8a1459ba679dd
+        checksum/app-config: 765bb5303b9fc3f861613dd982e5c6208d4847e30593089a95c85214e36aed36
     spec:
       serviceAccountName: backstage-read-only
       volumes:
@@ -281,6 +284,12 @@ spec:
         - configMap:
             name: sre-platform-module-selection
           name: module-selection
+        - configMap:
+            name: sre-platform-module-catalog
+          name: module-catalog
+        - configMap:
+            name: sre-platform-backstage-entities
+          name: backstage-entities
         - name: backstage-app-config
           configMap:
             name: backstage-app-config
@@ -336,6 +345,12 @@ spec:
               name: module-selection
               readOnly: true
               subPath: selection.json
+            - mountPath: /etc/sre-platform/modules
+              name: module-catalog
+              readOnly: true
+            - mountPath: /etc/sre-platform/catalog
+              name: backstage-entities
+              readOnly: true
 
 ---
 apiVersion: v1
@@ -352,3 +367,1455 @@ metadata:
 data:
   selection.json: |
     {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"1.15.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":false}}}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sre-platform-module-catalog
+  namespace: backstage
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: srectl
+  annotations:
+    sre-platform.io/api-version: v1
+data:
+  argocd.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: core
+      description: GitOps reconciliation and deployment status
+      displayName: Argo CD
+      maturity: stable
+      name: argocd
+      version: 2.11.7
+    spec:
+      capabilities:
+      - gitops-reconciliation
+      - application-sync
+      - drift-detection
+      catalog:
+        kubernetesSelector: app.kubernetes.io/instance=argocd
+      conflicts: []
+      controlCenter:
+        actions:
+        - description: Trigger synchronization of the Argo CD application
+          displayName: Sync Application
+          name: sync
+          requiredRole: operator
+        - description: Retry failed sync operations
+          displayName: Retry Failed
+          name: retry
+          requiredRole: operator
+        category: GitOps
+        deepLinks:
+        - description: Open Argo CD web interface
+          name: Argo CD UI
+          url: https://argocd.{{ .metadata.customerId }}.platform.local
+        displayName: Argo CD
+        documentationUrl: https://argo-cd.readthedocs.io/
+        icon: gitops
+        operatorDescription: GitOps reconciliation engine that syncs desired state from
+          Git to Kubernetes clusters
+        portalCategory: Platform Core
+        statusAdapter: argocd
+      defaultState: enabled
+      dependencies:
+      - module: cert-manager
+      health:
+        initialDelay: 10s
+        path: /healthz
+        period: 30s
+        port: 8080
+        type: http
+      profiles:
+      - core
+      - modernization
+      - full
+      - external-services
+      - air-gapped
+      readiness:
+        name: argocd-server
+        namespace: argocd
+        timeout: 300s
+        type: deployment
+      removal:
+        confirmation: required
+        dataResources:
+        - kind: PersistentVolumeClaim
+          namespace: argocd
+        impactDescription: Argo CD removal stops GitOps reconciliation. Customer workloads
+          continue running.
+        preservesData: true
+      render:
+        base: ./charts
+        chart: argo-cd
+        chartVersion: 7.3.11
+        repository: https://argoproj.github.io/argo-helm
+        type: helm
+        values:
+          applicationSet:
+            enabled: true
+          controller:
+            replicas: 1
+            resources:
+              limits:
+                cpu: 1000m
+                memory: 1Gi
+              requests:
+                cpu: 250m
+                memory: 512Mi
+          global:
+            image:
+              tag: v2.11.7
+          notifications:
+            enabled: true
+          repoServer:
+            replicas: 2
+          server:
+            autoscaling:
+              enabled: false
+            replicas: 2
+      resources:
+        minimum:
+          cpu: 500m
+          memory: 512Mi
+          storage: 10Gi
+        recommended:
+          cpu: 1000m
+          memory: 1Gi
+          storage: 20Gi
+      secrets:
+      - name: adminPassword
+        redacted: true
+        ref: env://ARGOCD_ADMIN_PASSWORD
+        required: false
+      supportedVersions:
+      - 2.11.x
+      - 2.10.x
+      upgrade:
+        from:
+        - 2.10.x
+        migrations: []
+        rollback:
+          strategy: helm
+          timeout: 600s
+    
+  backstage.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: portal
+      description: Developer portal with catalog, templates, TechDocs and Argo CD view
+      displayName: Backstage
+      maturity: stable
+      name: backstage
+      version: 1.52.1
+    spec:
+      capabilities:
+      - developer-portal
+      - service-catalog
+      - techdocs
+      - software-templates
+      catalog:
+        kubernetesSelector: app.kubernetes.io/instance=backstage
+      conflicts: []
+      controlCenter:
+        actions:
+        - description: Restart the Backstage pods
+          displayName: Restart
+          name: restart
+          requiredRole: operator
+        category: Portal
+        deepLinks:
+        - description: Open Backstage developer portal
+          name: Backstage Portal
+          url: https://portal.{{ .metadata.customerId }}.platform.local
+        displayName: Backstage
+        documentationUrl: https://backstage.io/docs/
+        icon: portal
+        operatorDescription: Developer portal with service catalog, software templates,
+          TechDocs and Argo CD view
+        portalCategory: Portal
+        statusAdapter: backstage
+      defaultState: enabled
+      dependencies:
+      - module: argocd
+      health:
+        initialDelay: 10s
+        path: /healthz
+        period: 30s
+        port: 7007
+        type: http
+      profiles:
+      - modernization
+      - full
+      readiness:
+        name: backstage
+        namespace: backstage
+        timeout: 300s
+        type: deployment
+      removal:
+        confirmation: optional
+        dataResources:
+        - kind: PersistentVolumeClaim
+          namespace: backstage
+        impactDescription: Backstage removal stops the developer portal. Catalog, templates
+          and TechDocs become unavailable.
+        preservesData: true
+      render:
+        base: ./charts
+        chart: backstage
+        chartVersion: 2.8.2
+        repository: https://backstage.github.io/charts
+        type: helm
+        values:
+          backstage:
+            appConfig:
+              app:
+                baseUrl: http://localhost:7007
+                extensions:
+                - page:catalog:
+                    config:
+                      path: /
+                packages: all
+                title: SRE Platform Developer Portal
+              argocd:
+                appLocatorMethods:
+                - instances:
+                  - name: local
+                    url: http://localhost:8080
+                  type: config
+                fullDeploymentHistory: false
+                refreshInterval: 10000
+              auth:
+                environment: development
+                providers:
+                  guest:
+                    dangerouslyAllowOutsideDevelopment: true
+                    ownershipEntityRefs:
+                    - user:default/guest
+                    - group:default/platform-team
+                    - group:default/tenant-dawid-local
+                    userEntityRef: user:default/guest
+              backend:
+                actions:
+                  pluginSources:
+                  - auth
+                  - catalog
+                  - scaffolder
+                baseUrl: http://localhost:7007
+                cors:
+                  credentials: true
+                  methods:
+                  - GET
+                  - HEAD
+                  - PATCH
+                  - POST
+                  - PUT
+                  - DELETE
+                  origin: http://localhost:7007
+                csp:
+                  connect-src:
+                  - '''self'''
+                  - 'http:'
+                  - 'https:'
+                database:
+                  client: better-sqlite3
+                  connection: ':memory:'
+                listen:
+                  port: 7007
+              catalog:
+                import:
+                  entityFilename: catalog-info.yaml
+                  pullRequestBranchName: backstage-integration
+                locations:
+                - target: /app/local-catalog.yaml
+                  type: file
+                - target: /etc/sre-platform/catalog/catalog-info.yaml
+                  type: file
+                rules:
+                - allow:
+                  - Component
+                  - System
+                  - API
+                  - Resource
+                  - Location
+                  - Template
+                  - User
+                  - Group
+              kubernetes:
+                clusterLocatorMethods:
+                - clusters:
+                  - authProvider: serviceAccount
+                    name: local
+                    skipMetricsLookup: true
+                    skipTLSVerify: false
+                    url: https://kubernetes.default.svc
+                  type: config
+                customResources:
+                - apiVersion: v1alpha1
+                  group: argoproj.io
+                  plural: applications
+                frontend:
+                  podDelete:
+                    enabled: false
+                objectTypes: []
+                serviceLocatorMethod:
+                  type: multiTenant
+              mcpActions:
+                description: Local developer portal for the SRE Platform
+                name: SRE Platform Backstage
+              organization:
+                name: SRE Platform
+              permission:
+                enabled: true
+              srePlatform:
+                authProvider: guest
+                modulesDir: /etc/sre-platform/modules
+                selectionArtifactPath: /etc/sre-platform/selection.json
+                tenant: dawid-local
+              techdocs:
+                builder: local
+                generator:
+                  runIn: local
+                publisher:
+                  type: local
+            extraVolumeMounts:
+            - mountPath: /app/local-catalog.yaml
+              name: local-catalog
+              readOnly: true
+              subPath: local-catalog.yaml
+            - mountPath: /etc/sre-platform/selection.json
+              name: module-selection
+              readOnly: true
+              subPath: selection.json
+            - mountPath: /etc/sre-platform/modules
+              name: module-catalog
+              readOnly: true
+            - mountPath: /etc/sre-platform/catalog
+              name: backstage-entities
+              readOnly: true
+            extraVolumes:
+            - configMap:
+                name: backstage-local-catalog
+              name: local-catalog
+            - configMap:
+                name: sre-platform-module-selection
+              name: module-selection
+            - configMap:
+                name: sre-platform-module-catalog
+              name: module-catalog
+            - configMap:
+                name: sre-platform-backstage-entities
+              name: backstage-entities
+            image:
+              pullPolicy: IfNotPresent
+              registry: localhost:5001
+              repository: sre-platform/backstage
+              tag: 1.52.0-local-69e9a90ba48b
+            replicas: 1
+            resources:
+              limits:
+                cpu: 1000m
+                memory: 1Gi
+              requests:
+                cpu: 250m
+                memory: 512Mi
+          extraDeploy:
+          - apiVersion: v1
+            data:
+              local-catalog.yaml: |
+                apiVersion: backstage.io/v1alpha1
+                kind: Group
+                metadata:
+                  name: platform-team
+                  description: Local SRE Platform operators
+                spec:
+                  type: team
+                  children: []
+                ---
+                apiVersion: backstage.io/v1alpha1
+                kind: Group
+                metadata:
+                  name: tenant-dawid-local
+                  description: Local identity group for tenant dawid-local
+                spec:
+                  type: tenant
+                  children: []
+                ---
+                apiVersion: backstage.io/v1alpha1
+                kind: User
+                metadata:
+                  name: guest
+                spec:
+                  memberOf:
+                    - platform-team
+                    - tenant-dawid-local
+                ---
+                apiVersion: backstage.io/v1alpha1
+                kind: System
+                metadata:
+                  name: sre-platform
+                  description: Customer SRE platform installed by srectl
+                spec:
+                  owner: platform-team
+                ---
+                apiVersion: backstage.io/v1alpha1
+                kind: Component
+                metadata:
+                  name: sre-platform-control-plane
+                  description: Local SRE Platform control-plane services
+                  annotations:
+                    argocd/app-selector: sre.platform.io/tenant=dawid-local
+                    backstage.io/kubernetes-label-selector: app.kubernetes.io/part-of=sre-platform
+                    backstage.io/kubernetes-namespace: argocd
+                  tags:
+                    - sre
+                    - gitops
+                spec:
+                  type: service
+                  lifecycle: experimental
+                  owner: platform-team
+                  system: sre-platform
+            kind: ConfigMap
+            metadata:
+              name: backstage-local-catalog
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: Role
+            metadata:
+              name: backstage-argocd-read-only
+              namespace: argocd
+            rules:
+            - apiGroups:
+              - argoproj.io
+              resources:
+              - applications
+              verbs:
+              - get
+              - list
+              - watch
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: RoleBinding
+            metadata:
+              name: backstage-argocd-read-only
+              namespace: argocd
+            roleRef:
+              apiGroup: rbac.authorization.k8s.io
+              kind: Role
+              name: backstage-argocd-read-only
+            subjects:
+            - kind: ServiceAccount
+              name: backstage-read-only
+              namespace: backstage
+          serviceAccount:
+            automountServiceAccountToken: true
+            create: true
+            name: backstage-read-only
+      resources:
+        minimum:
+          cpu: 250m
+          memory: 512Mi
+          storage: "0"
+        recommended:
+          cpu: 500m
+          memory: 1Gi
+          storage: 10Gi
+      secrets:
+      - name: oidcClientSecret
+        redacted: true
+        ref: env://BACKSTAGE_OIDC_CLIENT_SECRET
+        required: false
+      - name: databasePassword
+        redacted: true
+        ref: env://BACKSTAGE_DATABASE_PASSWORD
+        required: false
+      supportedVersions:
+      - 1.52.x
+      upgrade:
+        from:
+        - 1.51.x
+        migrations: []
+        rollback:
+          strategy: helm
+          timeout: 600s
+    
+  cert-manager.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: core
+      description: Certificate management for Kubernetes — issues and renews TLS certificates
+      displayName: cert-manager
+      maturity: stable
+      name: cert-manager
+      version: 1.15.0
+    spec:
+      capabilities:
+      - certificate-management
+      - tls-issuance
+      catalog:
+        kubernetesSelector: app.kubernetes.io/instance=cert-manager
+      conflicts: []
+      controlCenter:
+        actions: []
+        category: Security
+        deepLinks:
+        - description: cert-manager documentation
+          name: cert-manager docs
+          url: https://cert-manager.io/docs/
+        displayName: cert-manager
+        documentationUrl: https://cert-manager.io/docs/
+        icon: certificate
+        operatorDescription: Kubernetes-native certificate lifecycle management — issues
+          and renews TLS certificates
+        portalCategory: Security
+        statusAdapter: cert-manager
+      defaultState: enabled
+      dependencies: []
+      health:
+        initialDelay: 5s
+        path: /healthz
+        period: 10s
+        port: 10250
+        type: http
+      profiles:
+      - core
+      - modernization
+      - full
+      - air-gapped
+      readiness:
+        name: cert-manager-webhook
+        namespace: cert-manager
+        timeout: 120s
+        type: deployment
+      removal:
+        confirmation: required
+        dataResources:
+        - kind: Certificate
+        impactDescription: cert-manager removal stops certificate issuance and renewal.
+          Existing certificates remain valid until expiry.
+        preservesData: true
+      render:
+        base: ./charts
+        chart: cert-manager
+        chartVersion: v1.15.0
+        repository: https://charts.jetstack.io
+        type: helm
+        values:
+          cainjector:
+            replicaCount: 2
+          installCRDs: true
+          prometheus:
+            enabled: false
+          webhook:
+            replicaCount: 2
+      resources:
+        minimum:
+          cpu: 100m
+          memory: 128Mi
+          storage: "0"
+        recommended:
+          cpu: 200m
+          memory: 256Mi
+          storage: "0"
+      secrets: []
+      supportedVersions:
+      - 1.15.x
+      - 1.14.x
+      upgrade:
+        from:
+        - 1.14.x
+        migrations: []
+        rollback:
+          strategy: helm
+          timeout: 300s
+    
+  clickstack.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: observability
+      description: Unified logs, traces, metrics and session data on ClickHouse
+      displayName: ClickStack / OpenTelemetry
+      maturity: beta
+      name: clickstack
+      version: 0.98.0
+    spec:
+      capabilities:
+      - log-ingestion
+      - trace-ingestion
+      - metric-ingestion
+      - observability-storage
+      catalog:
+        kubernetesSelector: app.kubernetes.io/part-of=sre-platform,app.kubernetes.io/name=clickstack
+      conflicts: []
+      controlCenter:
+        actions: []
+        category: Observability
+        deepLinks: []
+        displayName: ClickStack
+        documentationUrl: https://clickhouse.com/docs
+        icon: observability
+        observabilitySelectors:
+          clickhouse:
+            kind: StatefulSet
+            name: clickhouse
+            namespace: clickstack
+          collectorAgent:
+            kind: DaemonSet
+            name: opentelemetry-collector-agent
+            namespace: opentelemetry
+          collectorGateway:
+            kind: Deployment
+            name: opentelemetry-collector-gateway
+            namespace: opentelemetry
+        operatorDescription: Unified observability stack — logs, traces, metrics and session
+          data on ClickHouse via OpenTelemetry
+        portalCategory: Observability
+        statusAdapter: clickstack
+      defaultState: enabled
+      dependencies: []
+      health:
+        initialDelay: 10s
+        path: /ping
+        period: 30s
+        port: 8123
+        type: http
+      profiles:
+      - modernization
+      - full
+      readiness:
+        name: clickhouse
+        namespace: clickstack
+        timeout: 300s
+        type: statefulset
+      removal:
+        confirmation: required
+        dataResources:
+        - kind: PersistentVolumeClaim
+          namespace: clickstack
+        impactDescription: ClickStack removal stops observability data collection and
+          query. Historical data is preserved until retention expiry.
+        preservesData: true
+      render:
+        base: ./bases
+        type: kustomize
+      resources:
+        minimum:
+          cpu: 500m
+          memory: 1Gi
+          storage: 50Gi
+        recommended:
+          cpu: 1000m
+          memory: 2Gi
+          storage: 100Gi
+      secrets: []
+      supportedVersions:
+      - 0.98.x
+      upgrade:
+        from: []
+        migrations: []
+        rollback:
+          strategy: git-revert
+          timeout: 600s
+    
+  crossplane.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: core
+      description: Cloud and infrastructure APIs behind curated composite resources
+      displayName: Crossplane
+      maturity: stable
+      name: crossplane
+      version: 2.3.0
+    spec:
+      capabilities:
+      - infrastructure-api
+      - cloud-resource-management
+      - composition-engine
+      catalog:
+        kubernetesSelector: app.kubernetes.io/instance=crossplane
+      conflicts: []
+      controlCenter:
+        actions: []
+        category: Infrastructure
+        deepLinks: []
+        displayName: Crossplane
+        documentationUrl: https://docs.crossplane.io/
+        icon: infrastructure
+        operatorDescription: Kubernetes-native infrastructure API — curated composite
+          resources for cloud provisioning
+        portalCategory: Infrastructure
+        statusAdapter: crossplane
+      defaultState: enabled
+      dependencies:
+      - module: cert-manager
+      health:
+        initialDelay: 10s
+        path: /healthz
+        period: 30s
+        port: 8080
+        type: http
+      profiles:
+      - modernization
+      - full
+      readiness:
+        name: crossplane
+        namespace: crossplane
+        timeout: 300s
+        type: deployment
+      removal:
+        confirmation: required
+        dataResources:
+        - kind: PersistentVolumeClaim
+          namespace: crossplane-system
+        impactDescription: Crossplane removal stops infrastructure provisioning. Existing
+          managed resources continue running but are not reconciled.
+        preservesData: true
+      render:
+        base: ./charts
+        chart: crossplane
+        chartVersion: 2.3.0
+        repository: https://charts.crossplane.io/stable
+        type: helm
+        values:
+          provider:
+            install:
+              enabled: true
+              packages:
+              - xpkg.upbound.io/crossplane-contrib-function-patch-and-transform:v0.6.0
+              - xpkg.upbound.io/crossplane-contrib-function-auto-ready:v0.5.0
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+      resources:
+        minimum:
+          cpu: 250m
+          memory: 512Mi
+          storage: "0"
+        recommended:
+          cpu: 500m
+          memory: 1Gi
+          storage: 10Gi
+      secrets: []
+      supportedVersions:
+      - 2.3.x
+      - 2.2.x
+      upgrade:
+        from:
+        - 2.2.x
+        migrations: []
+        rollback:
+          strategy: helm
+          timeout: 600s
+    
+  fake-service.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: core
+      description: Test module for conformance validation — does not deploy real infrastructure
+      displayName: Fake Service
+      maturity: alpha
+      name: fake-service
+      version: 1.0.0
+    spec:
+      capabilities:
+      - conformance-test
+      catalog:
+        kubernetesSelector: app.kubernetes.io/part-of=sre-platform,app.kubernetes.io/name=fake-service
+      conflicts: []
+      controlCenter:
+        actions:
+        - description: Restart the fake service pods
+          displayName: Restart
+          name: restart
+          requiredRole: operator
+        category: Testing
+        deepLinks: []
+        displayName: Fake Service
+        documentationUrl: ""
+        icon: test
+        operatorDescription: ""
+        portalCategory: ""
+        statusAdapter: fake
+      defaultState: disabled
+      dependencies: []
+      health:
+        initialDelay: 5s
+        path: /healthz
+        period: 10s
+        port: 8080
+        type: http
+      profiles:
+      - core
+      - modernization
+      - full
+      readiness:
+        name: fake-service
+        namespace: platform
+        timeout: 60s
+        type: deployment
+      removal:
+        confirmation: optional
+        dataResources: []
+        impactDescription: Fake service removal has no impact on other components.
+        preservesData: false
+      render:
+        base: ./bases
+        type: kustomize
+      resources:
+        minimum:
+          cpu: 100m
+          memory: 128Mi
+          storage: 1Gi
+        recommended:
+          cpu: 200m
+          memory: 256Mi
+          storage: 5Gi
+      secrets:
+      - name: apiKey
+        redacted: true
+        ref: env://FAKE_SERVICE_API_KEY
+        required: false
+      supportedVersions:
+      - 1.0.x
+      upgrade:
+        from:
+        - 0.9.x
+        migrations: []
+        rollback:
+          strategy: git-revert
+          timeout: 120s
+    
+  konveyor.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: modernization
+      description: Application modernization assessment and migration workflow
+      displayName: Konveyor
+      maturity: beta
+      name: konveyor
+      version: 0.6.0
+    spec:
+      capabilities:
+      - application-assessment
+      - migration-planning
+      - dependency-analysis
+      catalog:
+        kubernetesSelector: app.kubernetes.io/instance=konveyor
+      conflicts: []
+      controlCenter:
+        actions:
+        - description: Start a new application assessment
+          displayName: Run Assessment
+          name: run-assessment
+          requiredRole: operator
+        category: Modernization
+        deepLinks: []
+        displayName: Konveyor
+        documentationUrl: https://konveyor.io/
+        icon: migration
+        operatorDescription: Application modernization assessment — inventory, analysis
+          and migration-wave planning
+        portalCategory: Modernization
+        statusAdapter: konveyor
+      defaultState: enabled
+      dependencies: []
+      health:
+        initialDelay: 10s
+        path: /healthz
+        period: 30s
+        port: 8080
+        type: http
+      profiles:
+      - modernization
+      - full
+      readiness:
+        name: tackle
+        namespace: konveyor
+        timeout: 300s
+        type: deployment
+      removal:
+        confirmation: optional
+        dataResources:
+        - kind: PersistentVolumeClaim
+          namespace: konveyor
+        impactDescription: Konveyor removal stops application assessment and migration
+          planning. Existing assessments are preserved.
+        preservesData: true
+      render:
+        base: ./charts
+        chart: tackle
+        chartVersion: 2.0.0
+        repository: https://konveyor.github.io/charts
+        type: helm
+        values:
+          database:
+            deployment:
+              postgresImage: registry.redhat.io/rhel9/postgresql-15:latest
+          image:
+            tag: latest
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+      resources:
+        minimum:
+          cpu: 250m
+          memory: 512Mi
+          storage: 10Gi
+        recommended:
+          cpu: 500m
+          memory: 1Gi
+          storage: 20Gi
+      secrets: []
+      supportedVersions:
+      - 0.6.x
+      upgrade:
+        from:
+        - 0.5.x
+        migrations: []
+        rollback:
+          strategy: helm
+          timeout: 600s
+    
+  kyverno.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: security
+      description: Kubernetes-native policy engine — validates and mutates resources
+      displayName: Kyverno
+      maturity: stable
+      name: kyverno
+      version: 1.12.0
+    spec:
+      capabilities:
+      - policy-enforcement
+      - resource-validation
+      - resource-mutation
+      catalog:
+        kubernetesSelector: app.kubernetes.io/instance=kyverno
+      conflicts: []
+      controlCenter:
+        actions:
+        - description: Switch between audit and enforce mode
+          displayName: Switch Policy Mode
+          name: switch-mode
+          requiredRole: platform-admin
+        category: Security
+        deepLinks:
+        - description: Kyverno policy management
+          name: Kyverno UI
+          url: https://kyverno.io/policy-management/
+        displayName: Kyverno
+        documentationUrl: https://kyverno.io/docs/
+        icon: shield
+        operatorDescription: Kubernetes-native policy engine — validates, mutates and
+          generates resources
+        portalCategory: Security
+        statusAdapter: kyverno
+      defaultState: enabled
+      dependencies:
+      - module: cert-manager
+      health:
+        initialDelay: 5s
+        path: /healthz
+        period: 10s
+        port: 8080
+        type: http
+      profiles:
+      - core
+      - modernization
+      - full
+      - air-gapped
+      readiness:
+        name: kyverno-admission-controller
+        namespace: kyverno
+        timeout: 120s
+        type: deployment
+      removal:
+        confirmation: required
+        dataResources: []
+        impactDescription: Kyverno removal stops policy enforcement. Resources previously
+          validated/mutated are not affected.
+        preservesData: true
+      render:
+        base: ./charts
+        chart: kyverno
+        chartVersion: 3.2.0
+        repository: https://kyverno.github.io/kyverno/
+        type: helm
+        values:
+          admissionController:
+            replicaCount: 2
+          backgroundController:
+            replicaCount: 1
+          cleanupController:
+            replicaCount: 1
+          cleanupJobs:
+            admissionReports:
+              image:
+                registry: docker.io
+                repository: alpine/k8s
+                tag: 1.30.0@sha256:bd01dae02676ce4cab62fc744e43443eee5bf660054e94d3496d23bfc35d384e
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                  - ALL
+                privileged: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1000
+                seccompProfile:
+                  type: RuntimeDefault
+            clusterAdmissionReports:
+              image:
+                registry: docker.io
+                repository: alpine/k8s
+                tag: 1.30.0@sha256:bd01dae02676ce4cab62fc744e43443eee5bf660054e94d3496d23bfc35d384e
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                  - ALL
+                privileged: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1000
+                seccompProfile:
+                  type: RuntimeDefault
+          policyReportsCleanup:
+            image:
+              registry: docker.io
+              repository: alpine/k8s
+              tag: 1.30.0@sha256:bd01dae02676ce4cab62fc744e43443eee5bf660054e94d3496d23bfc35d384e
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              privileged: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+          reportsController:
+            replicaCount: 1
+          webhooksCleanup:
+            image:
+              registry: docker.io
+              repository: alpine/k8s
+              tag: 1.30.0@sha256:bd01dae02676ce4cab62fc744e43443eee5bf660054e94d3496d23bfc35d384e
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              privileged: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+      resources:
+        minimum:
+          cpu: 250m
+          memory: 256Mi
+          storage: "0"
+        recommended:
+          cpu: 500m
+          memory: 512Mi
+          storage: "0"
+      secrets: []
+      supportedVersions:
+      - 1.12.x
+      - 1.11.x
+      upgrade:
+        from:
+        - 1.11.x
+        migrations: []
+        rollback:
+          strategy: helm
+          timeout: 300s
+    
+  openbao.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: core
+      description: Secrets authority, dynamic credentials, PKI and transit capabilities
+      displayName: OpenBao
+      maturity: beta
+      name: openbao
+      version: 2.5.5
+    spec:
+      capabilities:
+      - secrets-management
+      - dynamic-credentials
+      - pki
+      - transit-encryption
+      catalog:
+        kubernetesSelector: app.kubernetes.io/instance=openbao
+      conflicts: []
+      controlCenter:
+        actions:
+        - description: Seal the OpenBao instance
+          displayName: Seal OpenBao
+          name: seal
+          requiredRole: platform-admin
+        - description: Unseal the OpenBao instance
+          displayName: Unseal OpenBao
+          name: unseal
+          requiredRole: platform-admin
+        category: Security
+        deepLinks:
+        - description: OpenBao web interface
+          name: OpenBao UI
+          url: https://openbao.{{ .metadata.customerId }}.platform.local
+        displayName: OpenBao
+        documentationUrl: https://openbao.org/docs/
+        icon: vault
+        operatorDescription: Secrets authority — dynamic credentials, PKI, transit encryption
+          and audit logging
+        portalCategory: Security
+        statusAdapter: openbao
+      defaultState: enabled
+      dependencies:
+      - module: cert-manager
+      health:
+        initialDelay: 10s
+        path: /v1/sys/health
+        period: 30s
+        port: 8200
+        type: http
+      profiles:
+      - modernization
+      - full
+      readiness:
+        name: openbao
+        namespace: openbao
+        timeout: 300s
+        type: statefulset
+      removal:
+        confirmation: required
+        dataResources:
+        - kind: PersistentVolumeClaim
+          namespace: openbao
+        impactDescription: OpenBao removal stops secrets management. Existing secrets
+          remain accessible through cached references until expiry.
+        preservesData: true
+      render:
+        base: ./charts
+        chart: openbao
+        chartVersion: 0.28.4
+        repository: https://openbao.github.io/openbao-helm
+        type: helm
+        values:
+          global:
+            enabled: true
+          server:
+            auditStorage:
+              enabled: true
+              size: 10Gi
+            dataStorage:
+              enabled: true
+              size: 10Gi
+            dev:
+              enabled: false
+            extraEnvironmentVars:
+              OPENBAO_ADDR: https://127.0.0.1:8200
+            ha:
+              enabled: false
+              replicas: 3
+            image:
+              tag: 2.5.5
+            resources:
+              limits:
+                cpu: 1000m
+                memory: 1Gi
+              requests:
+                cpu: 250m
+                memory: 512Mi
+      resources:
+        minimum:
+          cpu: 250m
+          memory: 512Mi
+          storage: 10Gi
+        recommended:
+          cpu: 500m
+          memory: 1Gi
+          storage: 20Gi
+      secrets:
+      - name: unsealKey
+        redacted: true
+        ref: env://OPENBAO_UNSEAL_KEY
+        required: true
+      - name: rootToken
+        redacted: true
+        ref: env://OPENBAO_ROOT_TOKEN
+        required: true
+      supportedVersions:
+      - 2.5.x
+      upgrade:
+        from:
+        - 2.4.x
+        migrations: []
+        rollback:
+          strategy: helm
+          timeout: 600s
+    
+  opencost.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: finops
+      description: Self-hosted Kubernetes allocation and cost evidence
+      displayName: OpenCost FinOps
+      maturity: alpha
+      name: opencost
+      version: 1.116.1
+    spec:
+      capabilities:
+      - kubernetes-cost-allocation
+      - finops-evidence
+      catalog:
+        kubernetesSelector: app.kubernetes.io/instance=opencost
+      conflicts: []
+      controlCenter:
+        actions: []
+        category: FinOps
+        deepLinks: []
+        displayName: OpenCost FinOps
+        documentationUrl: https://docs.opencost.io
+        icon: finops
+        operatorDescription: Self-hosted Kubernetes CPU, memory and storage cost allocation
+          with estimates labeled by source and freshness
+        portalCategory: FinOps
+        statusAdapter: opencost
+      defaultState: disabled
+      dependencies: []
+      health:
+        initialDelay: 10s
+        path: /healthz
+        period: 30s
+        port: 9090
+        type: http
+      profiles: []
+      readiness:
+        name: opencost
+        namespace: opencost
+        timeout: 120s
+        type: deployment
+      removal:
+        confirmation: required
+        dataResources: []
+        impactDescription: OpenCost removal stops Kubernetes cost allocation and historical
+          cost evidence. No persistent data is stored by default.
+        preservesData: true
+      render:
+        base: ""
+        chart: opencost
+        chartVersion: 1.116.1
+        repository: https://opencost.github.io/opencost
+        type: helm
+        values:
+          opencost:
+            cloudProvider:
+            - none
+            clusterName: ""
+            export:
+              enabled: false
+            productConfig:
+              currencyCode: USD
+            prometheus:
+              internal:
+                enabled: false
+      resources:
+        minimum:
+          cpu: 100m
+          memory: 256Mi
+          storage: "0"
+        recommended:
+          cpu: 250m
+          memory: 512Mi
+          storage: "0"
+      secrets: []
+      supportedVersions:
+      - 1.116.x
+      upgrade:
+        from: []
+        migrations: []
+        rollback:
+          strategy: git-revert
+          timeout: 300s
+    
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sre-platform-backstage-entities
+  namespace: backstage
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: srectl
+  annotations:
+    sre-platform.io/api-version: v1
+data:
+  catalog-info.yaml: |
+    apiVersion: backstage.io/v1alpha1
+    kind: System
+    metadata:
+      name: sre-platform
+      description: SRE Platform installed by srectl
+      annotations:
+        sre-platform.io/customer-id: "dawid-local"
+    spec:
+      owner: platform-team
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: "argocd"
+      description: "GitOps reconciliation and deployment status"
+      annotations:
+        argocd/app-name: "argocd"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/instance=argocd"
+        backstage.io/kubernetes-namespace: "argocd"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "gitops-reconciliation"
+          - "application-sync"
+          - "drift-detection"
+      links:
+          - title: "Argo CD UI"
+            url: "https://argocd.{{ .metadata.customerId }}.platform.local"
+            icon: external
+    spec:
+      type: service
+      lifecycle: "stable"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
+          - component:"cert-manager"
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: "backstage"
+      description: "Developer portal with catalog, templates, TechDocs and Argo CD view"
+      annotations:
+        argocd/app-name: "backstage"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/instance=backstage"
+        backstage.io/kubernetes-namespace: "backstage"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "developer-portal"
+          - "service-catalog"
+          - "techdocs"
+          - "software-templates"
+      links:
+          - title: "Backstage Portal"
+            url: "https://portal.{{ .metadata.customerId }}.platform.local"
+            icon: external
+    spec:
+      type: website
+      lifecycle: "stable"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
+          - component:"argocd"
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: "cert-manager"
+      description: "Certificate management for Kubernetes — issues and renews TLS certificates"
+      annotations:
+        argocd/app-name: "cert-manager"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/instance=cert-manager"
+        backstage.io/kubernetes-namespace: "cert-manager"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "certificate-management"
+          - "tls-issuance"
+      links:
+          - title: "cert-manager docs"
+            url: "https://cert-manager.io/docs/"
+            icon: external
+    spec:
+      type: service
+      lifecycle: "stable"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: "clickstack"
+      description: "Unified logs, traces, metrics and session data on ClickHouse"
+      annotations:
+        argocd/app-name: "clickstack"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/part-of=sre-platform,app.kubernetes.io/name=clickstack"
+        backstage.io/kubernetes-namespace: "clickstack"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "log-ingestion"
+          - "trace-ingestion"
+          - "metric-ingestion"
+          - "observability-storage"
+      links:
+    spec:
+      type: service
+      lifecycle: "beta"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: "kyverno"
+      description: "Kubernetes-native policy engine — validates and mutates resources"
+      annotations:
+        argocd/app-name: "kyverno"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/instance=kyverno"
+        backstage.io/kubernetes-namespace: "kyverno"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "policy-enforcement"
+          - "resource-validation"
+          - "resource-mutation"
+      links:
+          - title: "Kyverno UI"
+            url: "https://kyverno.io/policy-management/"
+            icon: external
+    spec:
+      type: service
+      lifecycle: "stable"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
+          - component:"cert-manager"
+    
