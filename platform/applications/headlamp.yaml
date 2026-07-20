@@ -20,7 +20,12 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: "headlamp"
-  syncPolicy:
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: headlamp
+      jsonPointers:
+        - /spec/template/spec/hostUsers  syncPolicy:
     automated:
       prune: true
       selfHeal: true

@@ -366,7 +366,7 @@ metadata:
 # modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, fake-service=disabled, headlamp=enabled, konveyor=disabled, kyverno=enabled, openbao=disabled, opencost=enabled, prometheus=enabled
 data:
   selection.json: |
-    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"1.0.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"prometheus":{"enabled":true}}}
+    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"1.15.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"prometheus":{"enabled":true}}}
 
 ---
 apiVersion: v1
