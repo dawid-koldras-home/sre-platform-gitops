@@ -366,7 +366,7 @@ metadata:
 # modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, fake-service=disabled, headlamp=enabled, konveyor=disabled, kyverno=enabled, openbao=disabled, opencost=enabled, prometheus=enabled
 data:
   selection.json: |
-    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"2.3.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"prometheus":{"enabled":true}}}
+    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"29.18.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"prometheus":{"enabled":true}}}
 
 ---
 apiVersion: v1
@@ -1350,9 +1350,22 @@ data:
           config:
             enableHelm: false
             inCluster: true
+            oidc:
+              callbackURL: ""
+              clientID: ""
+              clientSecret: ""
+              externalSecret:
+                enabled: false
+              issuerURL: ""
+              scopes: ""
+              secret:
+                create: false
             staticPlugins:
               enabled: false
             unsafeUseServiceAccountToken: false
+          env:
+          - name: HEADLAMP_MODE
+            value: local
           extraManifests:
           - |
             apiVersion: rbac.authorization.k8s.io/v1

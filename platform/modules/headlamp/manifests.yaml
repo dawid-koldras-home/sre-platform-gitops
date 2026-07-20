@@ -30,15 +30,6 @@ metadata:
     app.kubernetes.io/version: "0.43.0"
     app.kubernetes.io/managed-by: Helm
 ---
-# Source: headlamp/templates/secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: oidc
-  namespace: headlamp
-type: Opaque
-data:
----
 # Source: headlamp/templates/extra-manifests.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -182,6 +173,8 @@ spec:
           imagePullPolicy: IfNotPresent
           
           env:
+            - name: HEADLAMP_MODE
+              value: local
           args:
             - "-in-cluster"
             - "-in-cluster-context-name=main"
