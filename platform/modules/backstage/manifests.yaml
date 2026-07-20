@@ -296,7 +296,7 @@ spec:
       
       containers:
         - name: backstage-backend
-          image: localhost:5001/sre-platform/backstage:1.52.0-local-69e9a90ba48b
+          image: localhost:5001/sre-platform/backstage:1.52.0-local-f132d3d0f6dc
           imagePullPolicy: "IfNotPresent"
           command:
             - node
@@ -363,10 +363,10 @@ metadata:
     app.kubernetes.io/managed-by: srectl
   annotations:
     sre-platform.io/api-version: v1
-# modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, fake-service=disabled, konveyor=disabled, kyverno=enabled, openbao=disabled, opencost=disabled
+# modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, fake-service=disabled, konveyor=disabled, kyverno=enabled, openbao=disabled, opencost=enabled
 data:
   selection.json: |
-    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"1.15.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":false}}}
+    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"1.12.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":true,"config":{"prometheusEndpoint":"http://\u003cprometheus-service\u003e.\u003cnamespace\u003e.svc.cluster.local:9090"}}}}
 
 ---
 apiVersion: v1
@@ -714,7 +714,7 @@ data:
               pullPolicy: IfNotPresent
               registry: localhost:5001
               repository: sre-platform/backstage
-              tag: 1.52.0-local-69e9a90ba48b
+              tag: 1.52.0-local-f132d3d0f6dc
             replicas: 1
             resources:
               limits:
@@ -1588,7 +1588,7 @@ data:
       displayName: OpenCost FinOps
       maturity: alpha
       name: opencost
-      version: 1.116.1
+      version: 1.116.0
     spec:
       capabilities:
       - kubernetes-cost-allocation
@@ -1630,8 +1630,8 @@ data:
       render:
         base: ""
         chart: opencost
-        chartVersion: 1.116.1
-        repository: https://opencost.github.io/opencost
+        chartVersion: 2.2.1
+        repository: https://opencost.github.io/opencost-helm-chart
         type: helm
         values:
           opencost:
@@ -1643,6 +1643,8 @@ data:
             productConfig:
               currencyCode: USD
             prometheus:
+              external:
+                url: http://<prometheus-service>.<namespace>.svc.cluster.local:9090
               internal:
                 enabled: false
       resources:
@@ -1818,4 +1820,26 @@ data:
       system: sre-platform
       dependsOn:
           - component:"cert-manager"
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: "opencost"
+      description: "Self-hosted Kubernetes allocation and cost evidence"
+      annotations:
+        argocd/app-name: "opencost"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/instance=opencost"
+        backstage.io/kubernetes-namespace: "opencost"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "kubernetes-cost-allocation"
+          - "finops-evidence"
+      links:
+    spec:
+      type: service
+      lifecycle: "alpha"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
     
