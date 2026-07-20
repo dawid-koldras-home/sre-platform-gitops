@@ -363,10 +363,10 @@ metadata:
     app.kubernetes.io/managed-by: srectl
   annotations:
     sre-platform.io/api-version: v1
-# modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, fake-service=disabled, konveyor=disabled, kyverno=enabled, openbao=disabled, opencost=enabled
+# modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, fake-service=disabled, headlamp=enabled, konveyor=disabled, kyverno=enabled, openbao=disabled, opencost=enabled, prometheus=enabled
 data:
   selection.json: |
-    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"1.12.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":true,"config":{"prometheusEndpoint":"http://\u003cprometheus-service\u003e.\u003cnamespace\u003e.svc.cluster.local:9090"}}}}
+    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"1.116.1"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"prometheus":{"enabled":true}}}
 
 ---
 apiVersion: v1
@@ -429,6 +429,13 @@ data:
         period: 30s
         port: 8080
         type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: true
+            type: boolean
+        required: []
+        type: object
       profiles:
       - core
       - modernization
@@ -548,6 +555,17 @@ data:
         period: 30s
         port: 7007
         type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: true
+            type: boolean
+          publicUrl:
+            default: https://portal.localhost
+            format: uri
+            type: string
+        required: []
+        type: object
       profiles:
       - modernization
       - full
@@ -880,6 +898,13 @@ data:
         period: 10s
         port: 10250
         type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: true
+            type: boolean
+        required: []
+        type: object
       profiles:
       - core
       - modernization
@@ -983,6 +1008,18 @@ data:
         period: 30s
         port: 8123
         type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: true
+            type: boolean
+          retentionDays:
+            default: 14
+            maximum: 365
+            minimum: 1
+            type: integer
+        required: []
+        type: object
       profiles:
       - modernization
       - full
@@ -1059,6 +1096,21 @@ data:
         period: 30s
         port: 8080
         type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: true
+            type: boolean
+          provider:
+            default: kubernetes
+            enum:
+            - aws
+            - azure
+            - gcp
+            - kubernetes
+            type: string
+        required: []
+        type: object
       profiles:
       - modernization
       - full
@@ -1154,6 +1206,22 @@ data:
         period: 10s
         port: 8080
         type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: false
+            type: boolean
+          replicas:
+            default: 2
+            maximum: 10
+            minimum: 1
+            type: integer
+          storageSize:
+            default: 5Gi
+            pattern: ^[0-9]+(Gi|Mi)$
+            type: string
+        required: []
+        type: object
       profiles:
       - core
       - modernization
@@ -1194,6 +1262,211 @@ data:
         rollback:
           strategy: git-revert
           timeout: 120s
+    
+  headlamp.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: operations
+      description: 'Kubernetes operations UI with read-only resource visibility: workloads,
+        pods, events and logs'
+      displayName: Headlamp Operator Console
+      maturity: stable
+      name: headlamp
+      version: 0.43.0
+    spec:
+      capabilities:
+      - kubernetes-read-only-ui
+      - resource-visibility
+      catalog:
+        kubernetesSelector: app.kubernetes.io/instance=headlamp
+      conflicts: []
+      controlCenter:
+        actions: []
+        category: Operations
+        deepLinks:
+        - description: Official Headlamp documentation
+          name: Headlamp Documentation
+          url: https://headlamp.dev/docs/latest/
+        - description: Headlamp source repository
+          name: Headlamp GitHub
+          url: https://github.com/kubernetes-sigs/headlamp
+        displayName: Headlamp Operator Console
+        documentationUrl: https://headlamp.dev/docs/latest/
+        icon: dashboard
+        observabilitySelectors:
+          deployment:
+            kind: Deployment
+            name: headlamp
+            namespace: headlamp
+        operatorDescription: Read-only Kubernetes operations UI. Provides workload, pod,
+          event and log visibility with least-privilege RBAC. Independent of Backstage
+          and Argo CD.
+        portalCategory: Operations
+        statusAdapter: headlamp
+      defaultState: disabled
+      dependencies: []
+      health:
+        initialDelay: 10s
+        path: /
+        period: 30s
+        port: 80
+        type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: false
+            type: boolean
+          publicURL:
+            description: Public HTTPS URL for production OIDC deployment. Required when
+              integrations.oidc is configured. Must not contain credentials, query parameters,
+              or fragments. Loopback and localhost addresses are rejected.
+            type: string
+        required: []
+        type: object
+      profiles: []
+      readiness:
+        name: headlamp
+        namespace: headlamp
+        timeout: 120s
+        type: deployment
+      removal:
+        confirmation: required
+        dataResources: []
+        impactDescription: Headlamp removal stops the Kubernetes operations UI. No persistent
+          data is stored by default.
+        preservesData: true
+      render:
+        base: ""
+        chart: headlamp
+        chartVersion: 0.43.0
+        repository: https://kubernetes-sigs.github.io/headlamp/
+        type: helm
+        values:
+          automountServiceAccountToken: true
+          clusterRoleBinding:
+            clusterRoleName: headlamp-read-only
+            create: true
+          config:
+            enableHelm: false
+            inCluster: true
+            staticPlugins:
+              enabled: false
+            unsafeUseServiceAccountToken: false
+          extraManifests:
+          - |
+            apiVersion: rbac.authorization.k8s.io/v1
+            kind: ClusterRole
+            metadata:
+              name: headlamp-read-only
+              labels:
+                app.kubernetes.io/instance: headlamp
+                app.kubernetes.io/name: headlamp
+                app.kubernetes.io/part-of: sre-platform
+            rules:
+            # Core resources: read-only visibility
+            - apiGroups: [""]
+              resources:
+                - namespaces
+                - nodes
+                - pods
+                - pods/log
+                - events
+                - services
+                - endpoints
+                - persistentvolumes
+                - persistentvolumeclaims
+              verbs: [get, list, watch]
+            # Apps resources: workload visibility
+            - apiGroups: ["apps"]
+              resources:
+                - deployments
+                - statefulsets
+                - daemonsets
+                - replicasets
+              verbs: [get, list, watch]
+            # Batch resources: job visibility
+            - apiGroups: ["batch"]
+              resources:
+                - jobs
+                - cronjobs
+              verbs: [get, list, watch]
+            # Networking resources
+            - apiGroups: ["networking.k8s.io"]
+              resources:
+                - ingresses
+                - networkpolicies
+              verbs: [get, list, watch]
+            # Secrets, ConfigMaps, serviceaccounts/token, pods/exec, pods/attach,
+            # pods/portforward, pods/proxy and all mutating verbs are explicitly
+            # not granted.
+          fullnameOverride: headlamp
+          image:
+            pullPolicy: IfNotPresent
+            registry: ghcr.io
+            repository: headlamp-k8s/headlamp
+            tag: v0.43.0
+          podDisruptionBudget:
+            enabled: true
+            minAvailable: 0
+          podSecurityContext:
+            runAsGroup: 101
+            runAsNonRoot: true
+            runAsUser: 100
+            seccompProfile:
+              type: RuntimeDefault
+          probes:
+            livenessProbe:
+              failureThreshold: 3
+              initialDelaySeconds: 10
+              periodSeconds: 10
+              timeoutSeconds: 3
+            readinessProbe:
+              failureThreshold: 3
+              initialDelaySeconds: 5
+              periodSeconds: 10
+              timeoutSeconds: 3
+            scheme: HTTP
+          replicaCount: 1
+          resources:
+            limits:
+              cpu: 250m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsGroup: 101
+            runAsNonRoot: true
+            runAsUser: 100
+          service:
+            port: 80
+            type: ClusterIP
+          serviceAccount:
+            create: true
+      resources:
+        minimum:
+          cpu: 100m
+          memory: 128Mi
+          storage: "0"
+        recommended:
+          cpu: 250m
+          memory: 256Mi
+          storage: "0"
+      secrets: []
+      supportedVersions:
+      - 0.43.x
+      upgrade:
+        from: []
+        migrations: []
+        rollback:
+          strategy: git-revert
+          timeout: 300s
     
   konveyor.yaml: |
     apiVersion: sre.platform.io/v1alpha1
@@ -1236,6 +1509,13 @@ data:
         period: 30s
         port: 8080
         type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: true
+            type: boolean
+        required: []
+        type: object
       profiles:
       - modernization
       - full
@@ -1336,6 +1616,19 @@ data:
         period: 10s
         port: 8080
         type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: true
+            type: boolean
+          mode:
+            default: audit
+            enum:
+            - audit
+            - enforce
+            type: string
+        required: []
+        type: object
       profiles:
       - core
       - modernization
@@ -1503,6 +1796,19 @@ data:
         period: 30s
         port: 8200
         type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: true
+            type: boolean
+          ha:
+            default: false
+            type: boolean
+          storageSize:
+            default: 10Gi
+            type: string
+        required: []
+        type: object
       profiles:
       - modernization
       - full
@@ -1588,7 +1894,7 @@ data:
       displayName: OpenCost FinOps
       maturity: alpha
       name: opencost
-      version: 1.116.0
+      version: 1.116.1
     spec:
       capabilities:
       - kubernetes-cost-allocation
@@ -1615,6 +1921,41 @@ data:
         period: 30s
         port: 9090
         type: http
+      inputSchema:
+        properties:
+          allocationWindow:
+            default: daily
+            enum:
+            - daily
+            - weekly
+            - monthly
+            type: string
+          dashboardDeepLink:
+            description: Optional HTTPS URL of an external OpenCost dashboard. Must not
+              contain credentials, query parameters, or fragments. Localhost and loopback
+              addresses are rejected.
+            type: string
+          enabled:
+            default: false
+            type: boolean
+          metricsSource:
+            description: 'Prometheus metrics source mode. ''managed'' uses the in-cluster
+              prometheus module (must be explicitly enabled via spec.modules.prometheus.enabled:
+              true). ''external'' requires a reachable prometheusEndpoint URL.'
+            enum:
+            - managed
+            - external
+            type: string
+          prometheusEndpoint:
+            description: 'HTTP(S) URL of the Prometheus endpoint used for cost allocation.
+              Required when metricsSource is ''external''. Must be reachable from the
+              opencost namespace and expose a Prometheus-compatible API with kube-state-metrics
+              and node-exporter metrics. Must not contain credentials, query parameters,
+              or fragments. Localhost, loopback, and file: URLs are rejected.'
+            type: string
+        required:
+        - metricsSource
+        type: object
       profiles: []
       readiness:
         name: opencost
@@ -1644,7 +1985,8 @@ data:
               currencyCode: USD
             prometheus:
               external:
-                url: http://<prometheus-service>.<namespace>.svc.cluster.local:9090
+                enabled: true
+                url: http://prometheus-server.prometheus.svc.cluster.local:80
               internal:
                 enabled: false
       resources:
@@ -1659,6 +2001,155 @@ data:
       secrets: []
       supportedVersions:
       - 1.116.x
+      upgrade:
+        from: []
+        migrations: []
+        rollback:
+          strategy: git-revert
+          timeout: 300s
+    
+  prometheus.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: metrics
+      description: Prometheus server, kube-state-metrics and node-exporter for Kubernetes
+        metrics
+      displayName: Prometheus Metrics Source
+      maturity: stable
+      name: prometheus
+      version: 29.18.0
+    spec:
+      capabilities:
+      - kubernetes-metrics
+      - prometheus-metrics-source
+      catalog:
+        kubernetesSelector: app.kubernetes.io/instance=prometheus
+      conflicts: []
+      controlCenter:
+        actions:
+        - description: Trigger a Prometheus configuration reload without restarting the
+            server
+          displayName: Reload Configuration
+          name: reload
+          requiredRole: operator
+        category: Metrics
+        deepLinks:
+        - description: Open Prometheus expression browser
+          name: Prometheus UI
+          url: https://prometheus.{{ .metadata.customerId }}.platform.local
+        - description: Official Prometheus documentation
+          name: Prometheus Documentation
+          url: https://prometheus.io/docs/introduction/overview/
+        displayName: Prometheus Metrics Source
+        documentationUrl: https://prometheus.io/docs/introduction/overview/
+        icon: monitoring
+        observabilitySelectors:
+          server:
+            kind: StatefulSet
+            name: prometheus-server
+            namespace: prometheus
+        operatorDescription: Prometheus server with kube-state-metrics and node-exporter
+          for Kubernetes cluster metrics. Provides the in-cluster metrics source for OpenCost
+          cost allocation.
+        portalCategory: Observability
+        statusAdapter: prometheus
+      defaultState: disabled
+      dependencies: []
+      health:
+        initialDelay: 10s
+        path: /-/ready
+        period: 30s
+        port: 9090
+        type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: false
+            type: boolean
+          retention:
+            default: 7d
+            description: Prometheus data retention duration. Default 7 days suitable for
+              local/demo. Production deployments should use a longer retention with backed-up
+              persistent storage.
+            type: string
+          storageSize:
+            default: 10Gi
+            description: Persistent volume claim size for Prometheus server. Default 10Gi
+              suitable for local/demo. Production sizing depends on metrics cardinality
+              and retention.
+            type: string
+        required: []
+        type: object
+      profiles: []
+      readiness:
+        name: prometheus-server
+        namespace: prometheus
+        timeout: 300s
+        type: deployment
+      removal:
+        confirmation: required
+        dataResources:
+        - kind: PersistentVolumeClaim
+          namespace: prometheus
+        impactDescription: Prometheus removal deletes all stored time-series metrics data.
+          OpenCost and any other consumers relying on this Prometheus instance will lose
+          their metrics source.
+        preservesData: false
+      render:
+        base: ./charts
+        chart: prometheus
+        chartVersion: 29.18.0
+        repository: https://prometheus-community.github.io/helm-charts
+        type: helm
+        values:
+          alertmanager:
+            enabled: false
+          fullnameOverride: prometheus
+          kube-state-metrics:
+            enabled: true
+            resources:
+              limits:
+                cpu: 100m
+                memory: 256Mi
+              requests:
+                cpu: 50m
+                memory: 128Mi
+          prometheus-node-exporter:
+            enabled: true
+            resources:
+              limits:
+                cpu: 100m
+                memory: 128Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+          prometheus-pushgateway:
+            enabled: false
+          server:
+            persistentVolume:
+              enabled: true
+              size: 10Gi
+            resources:
+              limits:
+                cpu: 500m
+                memory: 1Gi
+              requests:
+                cpu: 250m
+                memory: 512Mi
+            retention: 7d
+      resources:
+        minimum:
+          cpu: 500m
+          memory: 1Gi
+          storage: 10Gi
+        recommended:
+          cpu: 1000m
+          memory: 2Gi
+          storage: 50Gi
+      secrets: []
+      supportedVersions:
+      - 29.x
       upgrade:
         from: []
         migrations: []
@@ -1797,6 +2288,34 @@ data:
     apiVersion: backstage.io/v1alpha1
     kind: Component
     metadata:
+      name: "headlamp"
+      description: "Kubernetes operations UI with read-only resource visibility: workloads, pods, events and logs"
+      annotations:
+        argocd/app-name: "headlamp"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/instance=headlamp"
+        backstage.io/kubernetes-namespace: "headlamp"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "kubernetes-read-only-ui"
+          - "resource-visibility"
+      links:
+          - title: "Headlamp Documentation"
+            url: "https://headlamp.dev/docs/latest/"
+            icon: external
+          - title: "Headlamp GitHub"
+            url: "https://github.com/kubernetes-sigs/headlamp"
+            icon: external
+    spec:
+      type: service
+      lifecycle: "stable"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
       name: "kyverno"
       description: "Kubernetes-native policy engine — validates and mutates resources"
       annotations:
@@ -1839,6 +2358,34 @@ data:
     spec:
       type: service
       lifecycle: "alpha"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: "prometheus"
+      description: "Prometheus server, kube-state-metrics and node-exporter for Kubernetes metrics"
+      annotations:
+        argocd/app-name: "prometheus"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/instance=prometheus"
+        backstage.io/kubernetes-namespace: "prometheus"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "kubernetes-metrics"
+          - "prometheus-metrics-source"
+      links:
+          - title: "Prometheus UI"
+            url: "https://prometheus.{{ .metadata.customerId }}.platform.local"
+            icon: external
+          - title: "Prometheus Documentation"
+            url: "https://prometheus.io/docs/introduction/overview/"
+            icon: external
+    spec:
+      type: service
+      lifecycle: "stable"
       owner: platform-team
       system: sre-platform
       dependsOn:

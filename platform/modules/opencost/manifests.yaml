@@ -316,7 +316,7 @@ spec:
             - name: API_PORT
               value: "9003"
             - name: PROMETHEUS_SERVER_ENDPOINT
-              value: "http://prometheus-server.prometheus-system.svc.cluster.local:80"
+              value: "http://prometheus-server.prometheus.svc.cluster.local:80"
             - name: INSECURE_SKIP_VERIFY
               value: "false"
             - name: CLUSTER_ID
