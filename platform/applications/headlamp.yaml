@@ -25,7 +25,8 @@ spec:
       kind: Deployment
       name: headlamp
       jsonPointers:
-        - /spec/template/spec/hostUsers  syncPolicy:
+        - /spec/template/spec/hostUsers
+  syncPolicy:
     automated:
       prune: true
       selfHeal: true
