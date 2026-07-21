@@ -363,10 +363,10 @@ metadata:
     app.kubernetes.io/managed-by: srectl
   annotations:
     sre-platform.io/api-version: v1
-# modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, fake-service=disabled, headlamp=enabled, konveyor=disabled, kyverno=enabled, openbao=disabled, opencost=enabled, prometheus=enabled
+# modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, external-secrets=enabled, fake-service=disabled, headlamp=enabled, konveyor=disabled, kyverno=enabled, openbao=enabled, opencost=enabled, prometheus=enabled
 data:
   selection.json: |
-    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"2.11.7"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":false},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"prometheus":{"enabled":true}}}
+    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"2.3.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"external-secrets":{"enabled":true,"config":{"openbaoAuthMethod":"kubernetes","provider":"openbao","refreshInterval":"30s"}},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":true,"config":{"mode":"local"}},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"prometheus":{"enabled":true}}}
 
 ---
 apiVersion: v1
@@ -1168,6 +1168,259 @@ data:
           strategy: helm
           timeout: 600s
     
+  external-secrets.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: security
+      description: Tenant-safe delivery of secret references from OpenBao or approved
+        customer stores to Kubernetes Secrets
+      displayName: External Secrets Operator
+      maturity: alpha
+      name: external-secrets
+      version: 2.7.0
+    spec:
+      capabilities:
+      - secrets-delivery
+      - secret-rotation
+      - external-secret-sync
+      catalog:
+        kubernetesSelector: app.kubernetes.io/name=external-secrets
+      conflicts: []
+      controlCenter:
+        actions: []
+        category: Security
+        deepLinks:
+        - description: External Secrets Operator documentation
+          name: External Secrets Documentation
+          url: https://external-secrets.io/latest/
+        displayName: External Secrets Operator
+        documentationUrl: https://external-secrets.io/latest/
+        icon: secrets
+        operatorDescription: Synchronizes secret references from OpenBao or approved external
+          stores into tenant-scoped Kubernetes Secrets
+        portalCategory: Security
+        statusAdapter: ""
+      defaultState: disabled
+      dependencies: []
+      health:
+        initialDelay: 10s
+        path: /healthz
+        period: 30s
+        port: 8080
+        type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: false
+            type: boolean
+          installCRDs:
+            default: true
+            description: Whether the Helm chart installs External Secrets CRDs. Set to
+              false when CRDs are managed separately (e.g. by Argo CD in a dedicated wave).
+            type: boolean
+          openbaoAddress:
+            description: OpenBao server address for provider=openbao. Defaults to the
+              in-cluster OpenBao service URL when the openbao module is enabled.
+            type: string
+          openbaoAuthMethod:
+            default: kubernetes
+            description: 'Authentication method for the OpenBao provider. Only ''kubernetes''
+              is implemented: the ESO controller ServiceAccount authenticates to OpenBao
+              via Kubernetes auth. Customer must pre-create the Kubernetes auth mount,
+              role, and policy in OpenBao.'
+            enum:
+            - kubernetes
+            type: string
+          provider:
+            description: External secret store provider. 'openbao' connects to the platform
+              OpenBao instance. Cloud provider options require customer-supplied credentials
+              and are never stored in platform configuration.
+            enum:
+            - openbao
+            - aws-secrets-manager
+            - aws-parameter-store
+            - azure-key-vault
+            - gcp-secret-manager
+            type: string
+          refreshInterval:
+            default: 1h
+            description: How often ESO synchronizes external secrets to Kubernetes Secrets.
+              Shorter intervals increase API load on the secret store.
+            type: string
+          storeName:
+            default: platform-secret-store
+            description: Name of the SecretStore resource created per tenant. Must be
+              unique within each tenant namespace.
+            type: string
+          tenants:
+            description: Tenant-scoped secret delivery configuration. Each entry defines
+              a namespace and the secret references to synchronize from the external store.
+              Secret values are never stored in this configuration; only references (paths,
+              keys, property names) are permitted.
+            items:
+              properties:
+                namespace:
+                  description: Kubernetes namespace where the SecretStore and ExternalSecret
+                    resources are created. Must not cross tenant boundaries.
+                  type: string
+                refreshInterval:
+                  description: Per-tenant override for the global refreshInterval. Inherits
+                    the global value when omitted.
+                  type: string
+                secretRefs:
+                  description: Explicit secret references to synchronize. Each entry maps
+                    an external secret path to a Kubernetes Secret.
+                  items:
+                    properties:
+                      property:
+                        description: Property within the external secret to extract.
+                        type: string
+                      secretKey:
+                        description: Key in the target Kubernetes Secret data map.
+                        type: string
+                      secretName:
+                        description: Name of the target Kubernetes Secret resource.
+                        type: string
+                      storeKey:
+                        description: Key path in the external secret store (e.g. OpenBao
+                          path).
+                        type: string
+                    type: object
+                  type: array
+              required:
+              - namespace
+              - secretRefs
+              type: object
+            type: array
+        required: []
+        type: object
+      profiles: []
+      readiness:
+        name: external-secrets
+        namespace: external-secrets
+        timeout: 180s
+        type: deployment
+      removal:
+        confirmation: required
+        dataResources:
+        - kind: Secret
+          namespace: external-secrets
+        impactDescription: External Secrets removal stops secret synchronization from
+          external stores. Existing Kubernetes Secrets remain accessible until they are
+          manually deleted or expire. OpenBao secret authority is unaffected.
+        preservesData: true
+      render:
+        base: ""
+        chart: external-secrets
+        chartVersion: 2.7.0
+        repository: https://charts.external-secrets.io
+        type: helm
+        values:
+          certController:
+            resources:
+              limits:
+                cpu: 100m
+                memory: 128Mi
+              requests:
+                cpu: 25m
+                memory: 32Mi
+          extraObjects:
+          - |-
+            apiVersion: v1
+            kind: ServiceAccount
+            metadata:
+              name: external-secrets
+              namespace: eso-smoke
+              labels:
+                app.kubernetes.io/part-of: sre-platform
+                app.kubernetes.io/managed-by: srectl
+                sre.platform.io/component: external-secrets
+            ---
+            apiVersion: external-secrets.io/v1beta1
+            kind: SecretStore
+            metadata:
+              name: platform-secret-store
+              namespace: eso-smoke
+              labels:
+                app.kubernetes.io/part-of: sre-platform
+                app.kubernetes.io/managed-by: srectl
+                sre.platform.io/component: external-secrets
+            spec:
+              provider:
+                vault:
+                  server: "http://openbao.openbao.svc.cluster.local:8200"
+                  path: "secret"
+                  version: "v2"
+                  auth:
+                    kubernetes:
+                      mountPath: "kubernetes"
+                      role: "external-secrets-eso-smoke"
+                      serviceAccountRef:
+                        name: "external-secrets"
+            ---
+            apiVersion: external-secrets.io/v1beta1
+            kind: ExternalSecret
+            metadata:
+              name: app-config
+              namespace: eso-smoke
+              labels:
+                app.kubernetes.io/part-of: sre-platform
+                app.kubernetes.io/managed-by: srectl
+                sre.platform.io/component: external-secrets
+            spec:
+              refreshInterval: 30s
+              secretStoreRef:
+                name: platform-secret-store
+                kind: SecretStore
+              target:
+                name: app-config
+                creationPolicy: Owner
+                deletionPolicy: Retain
+              data:
+                - secretKey: value
+                  remoteRef:
+                    key: secret/data/eso-smoke/app
+                    property: value
+          installCRDs: true
+          rbac:
+            serviceAccountTokenCreate: true
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          webhook:
+            resources:
+              limits:
+                cpu: 100m
+                memory: 128Mi
+              requests:
+                cpu: 25m
+                memory: 32Mi
+      resources:
+        minimum:
+          cpu: 100m
+          memory: 128Mi
+          storage: "0"
+        recommended:
+          cpu: 250m
+          memory: 256Mi
+          storage: "0"
+      secrets: []
+      supportedVersions:
+      - 2.7.x
+      upgrade:
+        from:
+        - 2.6.x
+        - 2.5.x
+        migrations: []
+        rollback:
+          strategy: helm
+          timeout: 300s
+    
   fake-service.yaml: |
     apiVersion: sre.platform.io/v1alpha1
     kind: Module
@@ -1269,7 +1522,8 @@ data:
     metadata:
       category: operations
       description: 'Kubernetes operations UI with read-only resource visibility: workloads,
-        pods, events and logs'
+        pods, events, logs, configmaps, autoscaling, resilience, RBAC topology, optional
+        Gateway API, metrics and volume snapshots'
       displayName: Headlamp Operator Console
       maturity: stable
       name: headlamp
@@ -1300,8 +1554,8 @@ data:
             name: headlamp
             namespace: headlamp
         operatorDescription: Read-only Kubernetes operations UI. Provides workload, pod,
-          event and log visibility with least-privilege RBAC. Independent of Backstage
-          and Argo CD.
+          event, log and operational configuration visibility with explicit least-privilege
+          RBAC. Independent of Backstage and Argo CD.
         portalCategory: Operations
         statusAdapter: headlamp
       defaultState: disabled
@@ -1389,6 +1643,11 @@ data:
                 - endpoints
                 - persistentvolumes
                 - persistentvolumeclaims
+                - configmaps
+                - resourcequotas
+                - limitranges
+                - serviceaccounts
+                - replicationcontrollers
               verbs: [get, list, watch]
             # Apps resources: workload visibility
             - apiGroups: ["apps"]
@@ -1404,14 +1663,81 @@ data:
                 - jobs
                 - cronjobs
               verbs: [get, list, watch]
+            # Autoscaling: HPA visibility
+            - apiGroups: ["autoscaling"]
+              resources:
+                - horizontalpodautoscalers
+              verbs: [get, list, watch]
+            # Policy: PDB visibility
+            - apiGroups: ["policy"]
+              resources:
+                - poddisruptionbudgets
+              verbs: [get, list, watch]
+            # Discovery: endpoint slice topology
+            - apiGroups: ["discovery.k8s.io"]
+              resources:
+                - endpointslices
+              verbs: [get, list, watch]
             # Networking resources
             - apiGroups: ["networking.k8s.io"]
               resources:
                 - ingresses
+                - ingressclasses
                 - networkpolicies
               verbs: [get, list, watch]
-            # Secrets, ConfigMaps, serviceaccounts/token, pods/exec, pods/attach,
-            # pods/portforward, pods/proxy and all mutating verbs are explicitly
+            # Scheduling: priority class visibility
+            - apiGroups: ["scheduling.k8s.io"]
+              resources:
+                - priorityclasses
+              verbs: [get, list, watch]
+            # Coordination: lease visibility (leader election)
+            - apiGroups: ["coordination.k8s.io"]
+              resources:
+                - leases
+              verbs: [get, list, watch]
+            # Storage topology
+            - apiGroups: ["storage.k8s.io"]
+              resources:
+                - storageclasses
+                - csidrivers
+                - csinodes
+                - volumeattachments
+              verbs: [get, list, watch]
+            # RBAC topology visibility (metadata only; no write or impersonation)
+            - apiGroups: ["rbac.authorization.k8s.io"]
+              resources:
+                - roles
+                - rolebindings
+                - clusterroles
+                - clusterrolebindings
+              verbs: [get, list, watch]
+            # Gateway API (optional, harmless when absent)
+            - apiGroups: ["gateway.networking.k8s.io"]
+              resources:
+                - gatewayclasses
+                - gateways
+                - httproutes
+                - grpcroutes
+                - tcproutes
+                - tlsroutes
+                - referencegrants
+              verbs: [get, list, watch]
+            # Metrics API (optional, harmless when absent)
+            - apiGroups: ["metrics.k8s.io"]
+              resources:
+                - nodes
+                - pods
+              verbs: [get, list, watch]
+            # Volume snapshot API (optional, harmless when absent)
+            - apiGroups: ["snapshot.storage.k8s.io"]
+              resources:
+                - volumesnapshots
+                - volumesnapshotcontents
+                - volumesnapshotclasses
+              verbs: [get, list, watch]
+            # Secrets, serviceaccounts/token, pods/exec, pods/attach,
+            # pods/portforward, pods/proxy, tokenreviews, subjectaccessreviews,
+            # impersonation, bind, escalate and all mutating verbs are explicitly
             # not granted.
           fullnameOverride: headlamp
           image:
@@ -1799,8 +2125,8 @@ data:
         operatorDescription: Secrets authority — dynamic credentials, PKI, transit encryption
           and audit logging
         portalCategory: Security
-        statusAdapter: openbao
-      defaultState: enabled
+        statusAdapter: ""
+      defaultState: disabled
       dependencies:
       - module: cert-manager
       health:
@@ -1812,19 +2138,26 @@ data:
       inputSchema:
         properties:
           enabled:
-            default: true
+            default: false
             type: boolean
           ha:
             default: false
             type: boolean
+          mode:
+            default: local
+            description: 'Deployment mode. local: dev auto-unseal, single replica, no
+              TLS required. production: requires customer-provided unseal configuration,
+              HA, TLS, audit.'
+            enum:
+            - local
+            - production
+            type: string
           storageSize:
             default: 10Gi
             type: string
         required: []
         type: object
-      profiles:
-      - modernization
-      - full
+      profiles: []
       readiness:
         name: openbao
         namespace: openbao
@@ -1847,20 +2180,22 @@ data:
         values:
           global:
             enabled: true
+          injector:
+            enabled: true
           server:
             auditStorage:
-              enabled: true
+              enabled: false
               size: 10Gi
             dataStorage:
               enabled: true
               size: 10Gi
             dev:
-              enabled: false
+              enabled: true
             extraEnvironmentVars:
               OPENBAO_ADDR: https://127.0.0.1:8200
             ha:
               enabled: false
-              replicas: 3
+              replicas: 1
             image:
               tag: 2.5.5
             resources:
@@ -1870,6 +2205,8 @@ data:
               requests:
                 cpu: 250m
                 memory: 512Mi
+            service:
+              type: ClusterIP
       resources:
         minimum:
           cpu: 250m
@@ -1879,15 +2216,7 @@ data:
           cpu: 500m
           memory: 1Gi
           storage: 20Gi
-      secrets:
-      - name: unsealKey
-        redacted: true
-        ref: env://OPENBAO_UNSEAL_KEY
-        required: true
-      - name: rootToken
-        redacted: true
-        ref: env://OPENBAO_ROOT_TOKEN
-        required: true
+      secrets: []
       supportedVersions:
       - 2.5.x
       upgrade:
@@ -2301,8 +2630,34 @@ data:
     apiVersion: backstage.io/v1alpha1
     kind: Component
     metadata:
+      name: "external-secrets"
+      description: "Tenant-safe delivery of secret references from OpenBao or approved customer stores to Kubernetes Secrets"
+      annotations:
+        argocd/app-name: "external-secrets"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/name=external-secrets"
+        backstage.io/kubernetes-namespace: "external-secrets"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "secrets-delivery"
+          - "secret-rotation"
+          - "external-secret-sync"
+      links:
+          - title: "External Secrets Documentation"
+            url: "https://external-secrets.io/latest/"
+            icon: external
+    spec:
+      type: service
+      lifecycle: "alpha"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
       name: "headlamp"
-      description: "Kubernetes operations UI with read-only resource visibility: workloads, pods, events and logs"
+      description: "Kubernetes operations UI with read-only resource visibility: workloads, pods, events, logs, configmaps, autoscaling, resilience, RBAC topology, optional Gateway API, metrics and volume snapshots"
       annotations:
         argocd/app-name: "headlamp"
         argocd/instance-name: local
@@ -2348,6 +2703,34 @@ data:
     spec:
       type: service
       lifecycle: "stable"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
+          - component:"cert-manager"
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: "openbao"
+      description: "Secrets authority, dynamic credentials, PKI and transit capabilities"
+      annotations:
+        argocd/app-name: "openbao"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/instance=openbao"
+        backstage.io/kubernetes-namespace: "openbao"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "secrets-management"
+          - "dynamic-credentials"
+          - "pki"
+          - "transit-encryption"
+      links:
+          - title: "OpenBao UI"
+            url: "https://openbao.{{ .metadata.customerId }}.platform.local"
+            icon: external
+    spec:
+      type: service
+      lifecycle: "beta"
       owner: platform-team
       system: sre-platform
       dependsOn:

@@ -52,6 +52,11 @@ rules:
     - endpoints
     - persistentvolumes
     - persistentvolumeclaims
+    - configmaps
+    - resourcequotas
+    - limitranges
+    - serviceaccounts
+    - replicationcontrollers
   verbs: [get, list, watch]
 # Apps resources: workload visibility
 - apiGroups: ["apps"]
@@ -67,14 +72,81 @@ rules:
     - jobs
     - cronjobs
   verbs: [get, list, watch]
+# Autoscaling: HPA visibility
+- apiGroups: ["autoscaling"]
+  resources:
+    - horizontalpodautoscalers
+  verbs: [get, list, watch]
+# Policy: PDB visibility
+- apiGroups: ["policy"]
+  resources:
+    - poddisruptionbudgets
+  verbs: [get, list, watch]
+# Discovery: endpoint slice topology
+- apiGroups: ["discovery.k8s.io"]
+  resources:
+    - endpointslices
+  verbs: [get, list, watch]
 # Networking resources
 - apiGroups: ["networking.k8s.io"]
   resources:
     - ingresses
+    - ingressclasses
     - networkpolicies
   verbs: [get, list, watch]
-# Secrets, ConfigMaps, serviceaccounts/token, pods/exec, pods/attach,
-# pods/portforward, pods/proxy and all mutating verbs are explicitly
+# Scheduling: priority class visibility
+- apiGroups: ["scheduling.k8s.io"]
+  resources:
+    - priorityclasses
+  verbs: [get, list, watch]
+# Coordination: lease visibility (leader election)
+- apiGroups: ["coordination.k8s.io"]
+  resources:
+    - leases
+  verbs: [get, list, watch]
+# Storage topology
+- apiGroups: ["storage.k8s.io"]
+  resources:
+    - storageclasses
+    - csidrivers
+    - csinodes
+    - volumeattachments
+  verbs: [get, list, watch]
+# RBAC topology visibility (metadata only; no write or impersonation)
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources:
+    - roles
+    - rolebindings
+    - clusterroles
+    - clusterrolebindings
+  verbs: [get, list, watch]
+# Gateway API (optional, harmless when absent)
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources:
+    - gatewayclasses
+    - gateways
+    - httproutes
+    - grpcroutes
+    - tcproutes
+    - tlsroutes
+    - referencegrants
+  verbs: [get, list, watch]
+# Metrics API (optional, harmless when absent)
+- apiGroups: ["metrics.k8s.io"]
+  resources:
+    - nodes
+    - pods
+  verbs: [get, list, watch]
+# Volume snapshot API (optional, harmless when absent)
+- apiGroups: ["snapshot.storage.k8s.io"]
+  resources:
+    - volumesnapshots
+    - volumesnapshotcontents
+    - volumesnapshotclasses
+  verbs: [get, list, watch]
+# Secrets, serviceaccounts/token, pods/exec, pods/attach,
+# pods/portforward, pods/proxy, tokenreviews, subjectaccessreviews,
+# impersonation, bind, escalate and all mutating verbs are explicitly
 # not granted.
 ---
 # Source: headlamp/templates/clusterrolebinding.yaml
