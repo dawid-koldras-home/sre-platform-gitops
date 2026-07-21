@@ -366,7 +366,7 @@ metadata:
 # modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, external-secrets=enabled, fake-service=disabled, headlamp=enabled, konveyor=disabled, kyverno=enabled, openbao=enabled, opencost=enabled, prometheus=enabled
 data:
   selection.json: |
-    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"2.3.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"external-secrets":{"enabled":true,"config":{"openbaoAuthMethod":"kubernetes","provider":"openbao","refreshInterval":"30s"}},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":true,"config":{"mode":"local"}},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"prometheus":{"enabled":true}}}
+    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"0.6.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"external-secrets":{"enabled":true,"config":{"openbaoAuthMethod":"kubernetes","provider":"openbao","refreshInterval":"30s"}},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":true,"config":{"mode":"local"}},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"prometheus":{"enabled":true}}}
 
 ---
 apiVersion: v1
@@ -1336,8 +1336,10 @@ data:
                 app.kubernetes.io/part-of: sre-platform
                 app.kubernetes.io/managed-by: srectl
                 sre.platform.io/component: external-secrets
+              annotations:
+                argocd.argoproj.io/sync-wave: "-10"
             ---
-            apiVersion: external-secrets.io/v1beta1
+            apiVersion: external-secrets.io/v1
             kind: SecretStore
             metadata:
               name: platform-secret-store
@@ -1346,6 +1348,8 @@ data:
                 app.kubernetes.io/part-of: sre-platform
                 app.kubernetes.io/managed-by: srectl
                 sre.platform.io/component: external-secrets
+              annotations:
+                argocd.argoproj.io/sync-wave: "-5"
             spec:
               provider:
                 vault:
@@ -1359,7 +1363,7 @@ data:
                       serviceAccountRef:
                         name: "external-secrets"
             ---
-            apiVersion: external-secrets.io/v1beta1
+            apiVersion: external-secrets.io/v1
             kind: ExternalSecret
             metadata:
               name: app-config
@@ -1368,6 +1372,8 @@ data:
                 app.kubernetes.io/part-of: sre-platform
                 app.kubernetes.io/managed-by: srectl
                 sre.platform.io/component: external-secrets
+              annotations:
+                argocd.argoproj.io/sync-wave: "-5"
             spec:
               refreshInterval: 30s
               secretStoreRef:

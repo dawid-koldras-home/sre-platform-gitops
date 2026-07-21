@@ -23,6 +23,8 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: srectl
     sre.platform.io/component: external-secrets
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
 ---
 # Source: external-secrets/templates/serviceaccount.yaml
 apiVersion: v1
@@ -32266,7 +32268,7 @@ spec:
             secretName: external-secrets-webhook
 ---
 # Source: external-secrets/templates/extra-manifests.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-config
@@ -32275,6 +32277,8 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: srectl
     sre.platform.io/component: external-secrets
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
 spec:
   refreshInterval: 30s
   secretStoreRef:
@@ -32291,7 +32295,7 @@ spec:
         property: value
 ---
 # Source: external-secrets/templates/extra-manifests.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: platform-secret-store
@@ -32300,6 +32304,8 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: srectl
     sre.platform.io/component: external-secrets
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
 spec:
   provider:
     vault:
