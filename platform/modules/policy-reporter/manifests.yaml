@@ -724,3 +724,29 @@ spec:
           optional: true
       - name: tmp
         emptyDir: {}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: policy-reporter-ui
+  namespace: policy-reporter
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: srectl
+    sre.platform.io/component: policy-reporter
+  annotations:
+    sre-platform.io/ingress-type: policy-reporter-ui
+spec:
+
+  ingressClassName: nginx  rules:
+    - host: policy-reporter.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: policy-reporter-ui
+                port:
+                  number: 8080

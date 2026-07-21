@@ -366,7 +366,7 @@ metadata:
 # modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, external-secrets=enabled, fake-service=disabled, headlamp=enabled, konveyor=disabled, kyverno=enabled, openbao=enabled, opencost=enabled, policy-reporter=enabled, prometheus=enabled
 data:
   selection.json: |
-    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"2.11.7"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"external-secrets":{"enabled":true,"config":{"openbaoAuthMethod":"kubernetes","provider":"openbao","refreshInterval":"30s"}},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":true,"config":{"mode":"local"}},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"policy-reporter":{"enabled":true},"prometheus":{"enabled":true}}}
+    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"0.6.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"external-secrets":{"enabled":true,"config":{"openbaoAuthMethod":"kubernetes","provider":"openbao","refreshInterval":"30s"}},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":true,"config":{"mode":"local"}},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"policy-reporter":{"enabled":true},"prometheus":{"enabled":true}}}
 
 ---
 apiVersion: v1
@@ -2446,32 +2446,6 @@ data:
         repository: https://kyverno.github.io/policy-reporter
         type: helm
         values:
-          extraObjects:
-          - |-
-            apiVersion: networking.k8s.io/v1
-            kind: Ingress
-            metadata:
-              name: policy-reporter-ui
-              namespace: policy-reporter
-              labels:
-                app.kubernetes.io/part-of: sre-platform
-                app.kubernetes.io/managed-by: srectl
-                sre.platform.io/component: policy-reporter
-              annotations:
-                sre-platform.io/ingress-type: policy-reporter-ui
-            spec:
-    
-              ingressClassName: nginx  rules:
-                - host: policy-reporter.example.com
-                  http:
-                    paths:
-                      - path: /
-                        pathType: Prefix
-                        backend:
-                          service:
-                            name: policy-reporter-ui
-                            port:
-                              number: 8080
           image:
             repository: ghcr.io/kyverno/policy-reporter
             tag: 3.8.1
