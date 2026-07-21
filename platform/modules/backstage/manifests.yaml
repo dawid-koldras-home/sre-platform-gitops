@@ -363,10 +363,10 @@ metadata:
     app.kubernetes.io/managed-by: srectl
   annotations:
     sre-platform.io/api-version: v1
-# modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, external-secrets=enabled, fake-service=disabled, headlamp=enabled, konveyor=disabled, kyverno=enabled, openbao=enabled, opencost=enabled, prometheus=enabled
+# modules: argocd=enabled, backstage=enabled, cert-manager=enabled, clickstack=enabled, crossplane=disabled, external-secrets=enabled, fake-service=disabled, headlamp=enabled, konveyor=disabled, kyverno=enabled, openbao=enabled, opencost=enabled, policy-reporter=enabled, prometheus=enabled
 data:
   selection.json: |
-    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"1.0.0"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"external-secrets":{"enabled":true,"config":{"openbaoAuthMethod":"kubernetes","provider":"openbao","refreshInterval":"30s"}},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":true,"config":{"mode":"local"}},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"prometheus":{"enabled":true}}}
+    {"apiVersion":"sre-platform.io/v1alpha1","kind":"ModuleSelection","metadata":{"generatedBy":"srectl","platformVersion":"2.11.7"},"modules":{"argocd":{"enabled":true},"backstage":{"enabled":true},"cert-manager":{"enabled":true},"clickstack":{"enabled":true},"crossplane":{"enabled":false},"external-secrets":{"enabled":true,"config":{"openbaoAuthMethod":"kubernetes","provider":"openbao","refreshInterval":"30s"}},"fake-service":{"enabled":false},"headlamp":{"enabled":true},"konveyor":{"enabled":false},"kyverno":{"enabled":true},"openbao":{"enabled":true,"config":{"mode":"local"}},"opencost":{"enabled":true,"config":{"allocationWindow":"daily","metricsSource":"managed"}},"policy-reporter":{"enabled":true},"prometheus":{"enabled":true}}}
 
 ---
 apiVersion: v1
@@ -2359,6 +2359,162 @@ data:
           strategy: git-revert
           timeout: 300s
     
+  policy-reporter.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: Module
+    metadata:
+      category: security
+      description: Kyverno Policy Reporter UI — visualizes policy reports, violations
+        and compliance status
+      displayName: Policy Reporter
+      maturity: stable
+      name: policy-reporter
+      version: 3.8.1
+    spec:
+      capabilities:
+      - policy-reporting
+      - policy-dashboard
+      - compliance-visibility
+      catalog:
+        kubernetesSelector: app.kubernetes.io/name=policy-reporter
+      conflicts: []
+      controlCenter:
+        actions: []
+        category: Security
+        deepLinks: []
+        displayName: Policy Reporter
+        documentationUrl: https://kyverno.github.io/policy-reporter/
+        icon: clipboard-check
+        operatorDescription: Kyverno Policy Reporter UI — visualizes policy reports, violations
+          and compliance status
+        portalCategory: Security
+        statusAdapter: ""
+      defaultState: disabled
+      dependencies:
+      - module: kyverno
+      health:
+        initialDelay: 5s
+        path: /healthz
+        period: 10s
+        port: 8080
+        type: http
+      inputSchema:
+        properties:
+          enabled:
+            default: false
+            type: boolean
+          ingress:
+            description: Customer-managed Ingress configuration for the Policy Reporter
+              UI. The dashboard must be protected by the customer's ingress/OIDC policy;
+              this module does not introduce authentication.
+            properties:
+              className:
+                description: IngressClassName for the Ingress resource. Use the class
+                  installed in the cluster (e.g. nginx).
+                type: string
+              host:
+                description: Hostname for the Policy Reporter UI (FQDN, no scheme, path,
+                  query, fragment, credentials, whitespace, wildcard, IP, localhost, or
+                  loopback).
+                type: string
+              tlsSecretName:
+                description: Optional Kubernetes Secret name for TLS. Must be a safe Kubernetes
+                  resource name.
+                type: string
+            required:
+            - host
+            type: object
+        required: []
+        type: object
+      profiles: []
+      readiness:
+        name: policy-reporter
+        namespace: policy-reporter
+        timeout: 120s
+        type: deployment
+      removal:
+        confirmation: required
+        dataResources: []
+        impactDescription: Policy Reporter removal stops the compliance dashboard. Kyverno
+          policy enforcement is unaffected. Policy reports continue to exist in the cluster
+          but are no longer surfaced through the UI.
+        preservesData: true
+      render:
+        base: ""
+        chart: policy-reporter
+        chartVersion: 3.8.1
+        repository: https://kyverno.github.io/policy-reporter
+        type: helm
+        values:
+          extraObjects:
+          - |-
+            apiVersion: networking.k8s.io/v1
+            kind: Ingress
+            metadata:
+              name: policy-reporter-ui
+              namespace: policy-reporter
+              labels:
+                app.kubernetes.io/part-of: sre-platform
+                app.kubernetes.io/managed-by: srectl
+                sre.platform.io/component: policy-reporter
+              annotations:
+                sre-platform.io/ingress-type: policy-reporter-ui
+            spec:
+    
+              ingressClassName: nginx  rules:
+                - host: policy-reporter.example.com
+                  http:
+                    paths:
+                      - path: /
+                        pathType: Prefix
+                        backend:
+                          service:
+                            name: policy-reporter-ui
+                            port:
+                              number: 8080
+          image:
+            repository: ghcr.io/kyverno/policy-reporter
+            tag: 3.8.1
+          kyvernoPluginImage:
+            repository: ghcr.io/kyverno/policy-reporter/kyverno-plugin
+            tag: 0.6.2
+          notification:
+            enabled: false
+          plugin:
+            kyverno:
+              enabled: true
+          service:
+            core:
+              type: ClusterIP
+            ui:
+              type: ClusterIP
+          ui:
+            enabled: true
+          uiImage:
+            repository: ghcr.io/kyverno/policy-reporter-ui
+            tag: 2.6.1
+          webhook:
+            enabled: false
+      resources:
+        minimum:
+          cpu: 100m
+          memory: 128Mi
+          storage: "0"
+        recommended:
+          cpu: 250m
+          memory: 256Mi
+          storage: "0"
+      secrets: []
+      supportedVersions:
+      - 3.8.x
+      upgrade:
+        from:
+        - 3.7.x
+        migrations: []
+        rollback:
+          strategy: helm
+          timeout: 300s
+    
   prometheus.yaml: |
     apiVersion: sre.platform.io/v1alpha1
     kind: Module
@@ -2766,6 +2922,30 @@ data:
       owner: platform-team
       system: sre-platform
       dependsOn:
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: "policy-reporter"
+      description: "Kyverno Policy Reporter UI — visualizes policy reports, violations and compliance status"
+      annotations:
+        argocd/app-name: "policy-reporter"
+        argocd/instance-name: local
+        backstage.io/kubernetes-label-selector: "app.kubernetes.io/name=policy-reporter"
+        backstage.io/kubernetes-namespace: "policy-reporter"
+        backstage.io/catalog-entity-link: /catalog/default/system/sre-platform
+      tags:
+          - "policy-reporting"
+          - "policy-dashboard"
+          - "compliance-visibility"
+      links:
+    spec:
+      type: service
+      lifecycle: "stable"
+      owner: platform-team
+      system: sre-platform
+      dependsOn:
+          - component:"kyverno"
     ---
     apiVersion: backstage.io/v1alpha1
     kind: Component
