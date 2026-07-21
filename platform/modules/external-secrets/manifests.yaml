@@ -32293,6 +32293,9 @@ spec:
       remoteRef:
         key: secret/data/eso-smoke/app
         property: value
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
 ---
 # Source: external-secrets/templates/extra-manifests.yaml
 apiVersion: external-secrets.io/v1
