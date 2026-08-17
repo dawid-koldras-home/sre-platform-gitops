@@ -5,7 +5,7 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/refresh: hard
-    argocd.argoproj.io/compare-options: serverSideDiff=true
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
   labels:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: srectl
