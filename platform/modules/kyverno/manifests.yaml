@@ -54045,14 +54045,16 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
-      deny:
-        conditions:
-          - key: "{{ request.object.spec.volumes[?has(hostPath)] | length(@) }}"
-            operator: GreaterThanOrEquals
-            value: 1
         message: >-
           HostPath volumes are not allowed. Use emptyDir, configMap, secret,
           or PersistentVolumeClaim instead.
+      validate:
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.volumes[?has(hostPath)] | length(@) }}"
+                operator: GreaterThanOrEquals
+                value: 1
     - name: validate-host-network
       match:
         any:
