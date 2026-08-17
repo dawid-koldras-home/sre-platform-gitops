@@ -5,10 +5,11 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/refresh: hard
+    argocd.argoproj.io/compare-options: serverSideDiff=true
   labels:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: srectl
-    sre.platform.io/tenant: "dawid-local"
+    sre.platform.io/tenant: "sre-tools-stage"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

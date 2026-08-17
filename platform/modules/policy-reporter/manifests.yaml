@@ -739,8 +739,9 @@ metadata:
     sre-platform.io/ingress-type: policy-reporter-ui
 spec:
 
-  ingressClassName: nginx  rules:
-    - host: policy-reporter.example.com
+  ingressClassName: nginx
+  rules:
+    - host: policy-reporter.139.162.145.158.nip.io
       http:
         paths:
           - path: /

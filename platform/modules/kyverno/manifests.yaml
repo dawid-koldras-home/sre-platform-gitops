@@ -53930,3 +53930,269 @@ spec:
             runAsUser: 1000
             seccompProfile:
               type: RuntimeDefault
+
+---
+# Kyverno baseline policy pack v1
+# Versioned, audit-first starter pack for new platform installs.
+# Provides immediate Policy Reporter visibility without disruptive enforcement.
+#
+# Policy selection rationale:
+#   - disallow-privileged: Prevents container breakout via privileged mode.
+#   - require-non-root: Reduces blast radius of container compromise.
+#   - disallow-host-access: Blocks hostPath, hostNetwork, hostPID/IPC mounts.
+#   - require-resource-limits: Prevents noisy-neighbor resource exhaustion.
+#   - require-probes: Ensures workloads can be health-checked and rescheduled.
+#   - require-drop-capabilities: Enforces principle of least privilege for Linux caps.
+#
+# Excluded from baseline (rationale):
+#   - restrict-image-registries: Too environment-specific; add per-customer.
+#   - require-metadata-labels: Too prescriptive for a generic baseline.
+#
+# Validation: All policies match Kubernetes Pod Security Standards "Restricted"
+# profile where applicable. The mode variable (default: Audit) controls
+# validationFailureAction and is injected by the Kyverno module renderer.
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: baseline-disallow-privileged
+  annotations:
+    policies.kyverno.io/title: Disallow Privileged Containers
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Privileged containers have full host access and are equivalent to running
+      as root on the host. This policy blocks privileged mode to reduce the
+      attack surface of container breakout.
+    policies.kyverno.io/policy-pack: baseline-v1
+    policies.kyverno.io/policy-pack-version: "1"
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: validate-privileged
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      validate:
+        message: >-
+          Privileged containers are not allowed. Set
+          securityContext.privileged to false or remove it.
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: "false"
+            =(initContainers):
+              - securityContext:
+                  privileged: "false"
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: baseline-require-non-root
+  annotations:
+    policies.kyverno.io/title: Require Run As Non-Root
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Containers running as root have unrestricted access to the container
+      filesystem and can escalate privileges. This policy enforces runAsNonRoot
+      at the pod level.
+    policies.kyverno.io/policy-pack: baseline-v1
+    policies.kyverno.io/policy-pack-version: "1"
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: validate-nonroot
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      validate:
+        message: >-
+          Pods must set securityContext.runAsNonRoot to true.
+        pattern:
+          spec:
+            securityContext:
+              runAsNonRoot: true
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: baseline-disallow-host-access
+  annotations:
+    policies.kyverno.io/title: Disallow Host Access
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Host access (hostPath volumes, hostNetwork, hostPID, hostIPC) breaks
+      container isolation and exposes the host kernel surface. This policy
+      blocks these mounts to maintain workload isolation.
+    policies.kyverno.io/policy-pack: baseline-v1
+    policies.kyverno.io/policy-pack-version: "1"
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: validate-host-path
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      deny:
+        conditions:
+          - key: "{{ request.object.spec.volumes[?has(hostPath)] | length(@) }}"
+            operator: GreaterThanOrEquals
+            value: 1
+        message: >-
+          HostPath volumes are not allowed. Use emptyDir, configMap, secret,
+          or PersistentVolumeClaim instead.
+    - name: validate-host-network
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      validate:
+        message: "Host networking is not allowed."
+        pattern:
+          spec:
+            =(hostNetwork): "false"
+    - name: validate-host-pid
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      validate:
+        message: "Host PID namespace is not allowed."
+        pattern:
+          spec:
+            =(hostPID): "false"
+    - name: validate-host-ipc
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      validate:
+        message: "Host IPC namespace is not allowed."
+        pattern:
+          spec:
+            =(hostIPC): "false"
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: baseline-require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Containers without resource limits can consume unbounded CPU and memory,
+      causing noisy-neighbor problems and node instability. This policy
+      requires CPU and memory limits on all containers.
+    policies.kyverno.io/policy-pack: baseline-v1
+    policies.kyverno.io/policy-pack-version: "1"
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-container-limits
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      validate:
+        message: >-
+          All containers must have CPU and memory limits defined.
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"
+            =(initContainers):
+              - resources:
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: baseline-require-probes
+  annotations:
+    policies.kyverno.io/title: Require Liveness and Readiness Probes
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Workloads without health probes cannot be automatically rescheduled when
+      they become unresponsive. This policy requires liveness and readiness
+      probes on all containers.
+    policies.kyverno.io/policy-pack: baseline-v1
+    policies.kyverno.io/policy-pack-version: "1"
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-probes
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      validate:
+        message: >-
+          All containers must have liveness and readiness probes.
+        pattern:
+          spec:
+            containers:
+              - livenessProbe: "?*"
+                readinessProbe: "?*"
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: baseline-require-drop-capabilities
+  annotations:
+    policies.kyverno.io/title: Require Drop All Capabilities
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Linux capabilities give containers fine-grained kernel access. Dropping
+      ALL capabilities and adding back only what is needed follows the principle
+      of least privilege. This policy requires containers to explicitly drop
+      all capabilities.
+    policies.kyverno.io/policy-pack: baseline-v1
+    policies.kyverno.io/policy-pack-version: "1"
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: validate-capabilities
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+      validate:
+        message: >-
+          Containers must drop all Linux capabilities. Add capabilities
+          individually via add if specific capabilities are required.
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  capabilities:
+                    drop: ["ALL"]
+            =(initContainers):
+              - securityContext:
+                  capabilities:
+                    drop: ["ALL"]
