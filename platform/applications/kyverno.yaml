@@ -37,6 +37,7 @@ spec:
       - CreateNamespace=true
       - ServerSideApply=true
       - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true
       - PrunePropagationPolicy=foreground
       - PruneLast=true
     retry:
