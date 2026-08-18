@@ -54045,10 +54045,10 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+      validate:
         message: >-
           HostPath volumes are not allowed. Use emptyDir, configMap, secret,
           or PersistentVolumeClaim instead.
-      validate:
         deny:
           conditions:
             any:
