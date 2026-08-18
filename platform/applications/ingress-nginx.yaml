@@ -21,6 +21,32 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: "ingress-nginx"
+  ignoreDifferences:
+    - group: ""
+      kind: Service
+      name: ingress-nginx-controller
+      jsonPointers:
+        - /spec/clusterIP
+        - /spec/clusterIPs
+        - /spec/healthCheckNodePort
+        - /spec/ipFamilies
+        - /spec/ipFamilyPolicy
+        - /spec/ports/0/nodePort
+        - /spec/ports/1/nodePort
+        - /status/loadBalancer
+    - group: ""
+      kind: Service
+      name: ingress-nginx-controller-admission
+      jsonPointers:
+        - /spec/clusterIP
+        - /spec/clusterIPs
+        - /spec/ipFamilies
+        - /spec/ipFamilyPolicy
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: ingress-nginx-admission
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
   syncPolicy:
     automated:
       prune: true

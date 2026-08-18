@@ -54049,12 +54049,10 @@ spec:
         message: >-
           HostPath volumes are not allowed. Use emptyDir, configMap, secret,
           or PersistentVolumeClaim instead.
-        deny:
-          conditions:
-            any:
-              - key: "{{ request.object.spec.volumes[?has(hostPath)] | length(@) }}"
-                operator: GreaterThanOrEquals
-                value: 1
+        pattern:
+          spec:
+            volumes:
+              - (hostPath): null
     - name: validate-host-network
       match:
         any:
