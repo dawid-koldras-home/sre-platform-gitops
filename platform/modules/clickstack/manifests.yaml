@@ -368,7 +368,7 @@ data:
         spike_limit_mib: 128
     exporters:
       clickhouse:
-        endpoint: tcp://clickhouse.clickstack.svc.cluster.local:9000
+        endpoint: tcp://clickstack-clickhouse.clickstack.svc.cluster.local:9000
         database: otel
         create_schema: true
         ttl: 0
@@ -411,7 +411,7 @@ data:
         spike_limit_mib: 256
     exporters:
       clickhouse:
-        endpoint: tcp://clickhouse.clickstack.svc.cluster.local:9000
+        endpoint: tcp://clickstack-clickhouse.clickstack.svc.cluster.local:9000
         database: otel
         create_schema: true
         ttl: 0
