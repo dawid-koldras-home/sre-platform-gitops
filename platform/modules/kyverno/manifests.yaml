@@ -54025,7 +54025,7 @@ spec:
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: baseline-disallow-host-access
+  name: baseline-disallow-host-access-v2
   annotations:
     policies.kyverno.io/title: Disallow Host Access
     policies.kyverno.io/category: Pod Security
