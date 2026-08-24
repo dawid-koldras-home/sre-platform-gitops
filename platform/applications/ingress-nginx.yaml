@@ -43,6 +43,8 @@ spec:
         - /spec/publishNotReadyAddresses
         - /spec/sessionAffinity
         - /status/loadBalancer
+      jqPathExpressions:
+        - .spec.ports[].appProtocol
     - group: ""
       kind: Service
       name: ingress-nginx-controller-admission
