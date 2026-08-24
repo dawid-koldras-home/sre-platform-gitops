@@ -26,8 +26,7 @@ spec:
       kind: Service
       name: ingress-nginx-controller
       jsonPointers:
-        - /metadata/annotations/meta.helm.sh~1release-name
-        - /metadata/annotations/meta.helm.sh~1release-namespace
+        - /metadata/annotations
         - /metadata/finalizers
         - /metadata/labels/argocd.argoproj.io~1instance
         - /spec/allocateLoadBalancerNodePorts
