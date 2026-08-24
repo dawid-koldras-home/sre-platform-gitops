@@ -54046,13 +54046,14 @@ spec:
           - resources:
               kinds: ["Pod"]
       validate:
-        message: >-
-          HostPath volumes are not allowed. Use emptyDir, configMap, secret,
-          or PersistentVolumeClaim instead.
-        pattern:
-          spec:
-            volumes:
-              - (hostPath): null
+        cel:
+          expressions:
+            - expression: >-
+                !has(object.spec.volumes) ||
+                object.spec.volumes.all(volume, !has(volume.hostPath))
+              message: >-
+                HostPath volumes are not allowed. Use emptyDir, configMap,
+                secret, or PersistentVolumeClaim instead.
     - name: validate-host-network
       match:
         any:
