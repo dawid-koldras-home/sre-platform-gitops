@@ -26,8 +26,10 @@ spec:
       kind: ClusterPolicy
       jsonPointers:
         - /status
+        - /metadata/labels/argocd.argoproj.io~1instance
       jqPathExpressions:
         - .spec.admission
+        - .spec.failurePolicy
         - .spec.rules[].skipBackgroundRequests
   syncPolicy:
     automated:
