@@ -150,7 +150,7 @@ data:
   statusbadge.enabled: "false"
   timeout.hard.reconciliation: 0s
   timeout.reconciliation: 180s
-  url: https://argocd.example.com
+  url: https://argocd.139.162.145.158.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-cmd-params-cm.yaml
 apiVersion: v1
@@ -229,7 +229,7 @@ metadata:
     app.kubernetes.io/version: "v2.11.7"
 data:
   context: |
-    argocdUrl: https://argocd.example.com
+    argocdUrl: https://argocd.139.162.145.158.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-rbac-cm.yaml
 apiVersion: v1
@@ -22164,7 +22164,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: c877bb3f0f27a7ea9446c699b404596e655b38a2fbedfe77746490137ce26886
-        checksum/cm: a754c769b1445e5cef351eee36c7595d7f1c5b10b767aeb99b9cbfc3377df009
+        checksum/cm: be17bc38a5f1ddcd1a764d38c6b38203313ca09f7917a12f85ba2d14e35c0710
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-repo-server
@@ -22535,7 +22535,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: c877bb3f0f27a7ea9446c699b404596e655b38a2fbedfe77746490137ce26886
-        checksum/cm: a754c769b1445e5cef351eee36c7595d7f1c5b10b767aeb99b9cbfc3377df009
+        checksum/cm: be17bc38a5f1ddcd1a764d38c6b38203313ca09f7917a12f85ba2d14e35c0710
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-server
@@ -23160,7 +23160,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: c877bb3f0f27a7ea9446c699b404596e655b38a2fbedfe77746490137ce26886
-        checksum/cm: a754c769b1445e5cef351eee36c7595d7f1c5b10b767aeb99b9cbfc3377df009
+        checksum/cm: be17bc38a5f1ddcd1a764d38c6b38203313ca09f7917a12f85ba2d14e35c0710
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-application-controller
@@ -23466,7 +23466,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: argocd.example.com
+    - host: argocd.139.162.145.158.nip.io
       http:
         paths:
           - path: /
