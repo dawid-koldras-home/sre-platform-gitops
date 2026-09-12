@@ -319,9 +319,6 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "namespaces"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["apps"]
-    resources: ["replicasets"]
-    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -349,129 +346,180 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
 data:
   collector.yaml: |
+    exporters:
+      clickhouse:
+        create_schema: true
+        database: otel
+        endpoint: tcp://clickstack-clickhouse.clickstack.svc.cluster.local:9000
+        logs_table_name: otel_logs
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_elapsed_time: 120s
+          max_interval: 30s
+        traces_table_name: otel_traces
+        ttl: 0
+    processors:
+      batch:
+        send_batch_size: 8192
+        timeout: 1s
+      filter/logs:
+        error_mode: ignore
+        logs:
+          log_record:
+          - resource.attributes["k8s.namespace.name"] == "clickstack"
+          - resource.attributes["k8s.namespace.name"] == "kube-system"
+          - resource.attributes["k8s.namespace.name"] == "kube-public"
+          - resource.attributes["k8s.namespace.name"] == "kube-node-lease"
+      k8sattributes/logs:
+        auth_type: serviceAccount
+        extract:
+          labels:
+          - from: pod
+            key: app.kubernetes.io/name
+            tag_name: app
+          - from: pod
+            key: app.kubernetes.io/component
+            tag_name: component
+          - from: pod
+            key: app.kubernetes.io/part-of
+            tag_name: workload
+          metadata:
+          - k8s.pod.name
+          - k8s.namespace.name
+          - k8s.node.name
+          - k8s.pod.uid
+        filter:
+          node_from_env_var: KUBE_NODE_NAME
+        pod_association:
+        - sources:
+          - from: resource_attribute
+            name: k8s.pod.uid
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+        spike_limit_mib: 128
+      redaction:
+        allowed_keys:
+        - k8s.namespace.name
+        - k8s.pod.name
+        - k8s.pod.uid
+        - k8s.container.name
+        - k8s.node.name
+        - app
+        - component
+        - workload
+        ignored_keys: []
+      resource/log-path:
+        attributes:
+        - action: upsert
+          from_attribute: namespace
+          key: k8s.namespace.name
+        - action: upsert
+          from_attribute: pod_name
+          key: k8s.pod.name
+        - action: upsert
+          from_attribute: uid
+          key: k8s.pod.uid
+        - action: upsert
+          from_attribute: container_name
+          key: k8s.container.name
+      transform/redact-log:
+        error_mode: ignore
+        log_statements:
+        - context: log
+          statements:
+          - replace_pattern(body, "(?i)(password|passwd|secret|token|api[_-]?key|authorization)[=:][^
+            \\t\\r\\n]+", "***REDACTED***")
+          - replace_pattern(body, "(?i)bearer [A-Za-z0-9\\-._~+/]+=*", "***REDACTED***")
     receivers:
+      filelog:
+        exclude:
+        - /var/log/pods/clickstack_*
+        - /var/log/pods/kube-system_*
+        - /var/log/pods/kube-public_*
+        - /var/log/pods/kube-node-lease_*
+        include:
+        - /var/log/pods/*/*/*.log
+        include_file_path: true
+        operators:
+        - parse_from: attributes["log.file.path"]
+          regex: ^/var/log/pods/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[^/]+)/(?P<container_name>[^/]+)/.*$
+          type: regex_parser
+        - regex: ^(?P<timestamp>\S+) (?P<stream>stdout|stderr) (?P<flags>[PF]) (?P<body>.*)$
+          severity:
+            mapping:
+              error: stderr
+              info: stdout
+            parse_from: attributes.stream
+          timestamp:
+            layout: 2006-01-02T15:04:05.000000000Z07:00
+            layout_type: gotime
+            parse_from: attributes.timestamp
+          type: regex_parser
+        - combine_field: attributes.body
+          combine_with: ""
+          is_last_entry: attributes.flags == 'F'
+          source_identifier: attributes["log.file.path"]
+          type: recombine
+        - from: attributes.body
+          to: body
+          type: move
+        - field: attributes.timestamp
+          type: remove
+        - field: attributes.stream
+          type: remove
+        - field: attributes.flags
+          type: remove
+      hostmetrics:
+        collection_interval: 30s
+        scrapers:
+          cpu: {}
+          disk: {}
+          filesystem: {}
+          memory: {}
+          network: {}
       otlp:
         protocols:
           grpc:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
-      filelog:
-        include:
-          - /var/log/pods/*/*/*.log
-      - /var/log/pods/clickstack_*
-      - /var/log/pods/kube-system_*
-      - /var/log/pods/kube-public_*
-      - /var/log/pods/kube-node-lease_*
-        include_file_path: true
-        operators:
-          - type: regex_parser
-            regex: '^(?P<timestamp>\S+) (?P<stream>stdout|stderr) (?P<flags>[PF]) (?P<body>.*)$'
-            timestamp:
-              parse_from: attributes.timestamp
-              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-            severity:
-              parse_from: attributes.stream
-              mapping:
-                error: stderr
-                info: stdout
-          - type: regex_parser
-            regex: '^/var/log/pods/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_[^/]+/(?P<container_name>[^/]+)/.*$'
-            parse_from: attributes["log.file.path"]
-      hostmetrics:
-        collection_interval: 30s
-        scrapers:
-          cpu: {}
-          memory: {}
-          disk: {}
-          network: {}
-          filesystem: {}
-    processors:
-      batch:
-        timeout: 1s
-        send_batch_size: 8192
-      memory_limiter:
-        check_interval: 1s
-        limit_mib: 512
-        spike_limit_mib: 128
-      filter/logs:
-        error_mode: ignore
-        logs:
-          log_record:
-- 'attributes["k8s.namespace.name"] == "clickstack"'
-          - 'attributes["k8s.namespace.name"] == "kube-system"'
-          - 'attributes["k8s.namespace.name"] == "kube-public"'
-          - 'attributes["k8s.namespace.name"] == "kube-node-lease"'
-      k8sattributes/logs:
-        auth_type: serviceAccount
-        extract:
-          metadata:
-            - k8s.pod.name
-            - k8s.namespace.name
-            - k8s.node.name
-            - k8s.pod.uid
-          labels:
-            - tag_name: app
-              key: app.kubernetes.io/name
-              from: pod
-            - tag_name: component
-              key: app.kubernetes.io/component
-              from: pod
-            - tag_name: workload
-              key: app.kubernetes.io/part-of
-              from: pod
-        pod_association:
-          - sources:
-              - from: resource_attribute
-                name: k8s.pod.uid
-      transform/redact-log:
-        error_mode: ignore
-        log_statements:
-          - context: log
-            statements:
-              - replace_pattern(body, "(?i)(password|passwd|secret|token|api[_-]?key|authorization)[=:][^ \\t\\r\\n]+", "***REDACTED***")
-              - replace_pattern(body, "(?i)bearer [A-Za-z0-9\\-._~+/]+=*", "***REDACTED***")
-      redaction:
-        allowlist_keys:
-          - log
-          - body
-          - severity
-          - k8s.namespace.name
-          - k8s.pod.name
-          - k8s.pod.uid
-          - k8s.container.name
-          - k8s.node.name
-          - app
-          - component
-          - workload
-        ignored_keys: []
-    exporters:
-      clickhouse:
-        endpoint: tcp://clickstack-clickhouse.clickstack.svc.cluster.local:9000
-        database: otel
-        create_schema: true
-        ttl: 0
-        logs_table_name: otel_logs
-        traces_table_name: otel_traces
-        retry_on_failure:
-          enabled: true
-          initial_interval: 5s
-          max_interval: 30s
-          max_elapsed_time: 120s
     service:
       pipelines:
         logs:
-          receivers: [otlp, filelog]
-          processors: [memory_limiter, batch]
-          exporters: [clickhouse]
-        traces:
-          receivers: [otlp]
-          processors: [memory_limiter, batch]
-          exporters: [clickhouse]
+          exporters:
+          - clickhouse
+          processors:
+          - memory_limiter
+          - resource/log-path
+          - filter/logs
+          - k8sattributes/logs
+          - transform/redact-log
+          - redaction
+          - batch
+          receivers:
+          - otlp
+          - filelog
         metrics:
-          receivers: [otlp, hostmetrics]
-          processors: [memory_limiter, batch]
-          exporters: [clickhouse]
+          exporters:
+          - clickhouse
+          processors:
+          - memory_limiter
+          - batch
+          receivers:
+          - otlp
+          - hostmetrics
+        traces:
+          exporters:
+          - clickhouse
+          processors:
+          - memory_limiter
+          - batch
+          receivers:
+          - otlp
+
+  gateway-collector.yaml: |
     receivers:
       otlp:
         protocols:
@@ -514,6 +562,7 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, batch]
           exporters: [clickhouse]
+
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -568,6 +617,10 @@ spec:
           env:
             - name: HOST_FS
               value: /host
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
       volumes:
         - name: config
           configMap:
