@@ -223,8 +223,8 @@ spec:
           - ReadWriteOnce
         resources:
           requests:
-            storage: 50Gi
-        storageClassName: "standard"
+            storage: 15Gi
+        storageClassName: "linode-block-storage"
 ---
 # Source: clickhouse/templates/tests/test-connection.yaml
 apiVersion: v1
