@@ -1048,7 +1048,7 @@ data:
       },
       outputDir: path.join(outputDir, '.playwright'),
     });
-  runner/actions.ts: |-
+  runner.actions.ts: |-
     import path from 'node:path';
     import type { Page } from '@playwright/test';
     import { ensureDir, evidenceDirFor, maskSelectorsFor, noArtifactsEnabled } from './artifacts';
@@ -1171,7 +1171,7 @@ data:
         }
       }
     }
-  runner/artifacts.ts: |-
+  runner.artifacts.ts: |-
     import fs from 'node:fs';
     import path from 'node:path';
     import { isCredentialed, type Target } from './schema';
@@ -1212,7 +1212,7 @@ data:
     export function evidenceDirFor(outputDir: string, targetId: string): string {
       return path.join(outputDir, targetId);
     }
-  runner/index.ts: |-
+  runner.index.ts: |-
     #!/usr/bin/env node
     import { spawnSync } from 'node:child_process';
     import fs from 'node:fs';
@@ -1391,7 +1391,7 @@ data:
       console.error(`synthetic: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     });
-  runner/journey.ts: |-
+  runner.journey.ts: |-
     import fs from 'node:fs';
     import path from 'node:path';
     import type { Browser, Page, TestInfo } from '@playwright/test';
@@ -1534,7 +1534,7 @@ data:
 
       throw lastError ?? new Error(`journey for ${target.id} failed`);
     }
-  runner/jsonreporter.ts: |-
+  runner.jsonreporter.ts: |-
     import type { Reporter, TestCase, TestResult } from '@playwright/test';
     import { redactText } from './artifacts';
 
@@ -1580,7 +1580,7 @@ data:
     }
 
     export default SyntheticJsonReporter;
-  runner/loader.ts: |-
+  runner.loader.ts: |-
     import path from 'node:path';
     import fs from 'node:fs';
     import { globSync } from 'fs';
@@ -1643,7 +1643,7 @@ data:
       const known = new Set(targets.map((t) => t.id));
       return ids.filter((id) => !known.has(id));
     }
-  runner/locators.ts: |-
+  runner.locators.ts: |-
     import type { Locator, Page } from '@playwright/test';
 
     const PREFIX_RE = /^(data-testid|role|text|css):(.+)$/;
@@ -1733,7 +1733,7 @@ data:
         ? `selector ${ordered[0]} was not visible`
         : `none of the selectors were visible: ${ordered.join(' | ')}`;
     }
-  runner/lock.ts: |-
+  runner.lock.ts: |-
     import fs from 'node:fs';
     import path from 'node:path';
     import { z } from 'zod';
@@ -1767,7 +1767,7 @@ data:
       }
       return result.data.targets;
     }
-  runner/schema.ts: |-
+  runner.schema.ts: |-
     import { z } from 'zod';
 
     export const ENV_LOCK_FILE = 'SYNTHETIC_LOCK_FILE';
@@ -1906,7 +1906,7 @@ data:
     export function isCredentialed(target: Target): target is CredentialedTarget {
       return target.auth.mode === 'credentialed';
     }
-  runner/secrets.ts: |-
+  runner.secrets.ts: |-
     import { isCredentialed, type Target } from './schema';
 
     export type SecretCheck =
@@ -1930,7 +1930,7 @@ data:
       }
       return { ok: true };
     }
-  tests/journeys.spec.ts: |-
+  tests.journeys.spec.ts: |-
     import { test } from '@playwright/test';
     import { readLock } from '../runner/lock';
     import { runTargetJourney } from '../runner/journey';
@@ -2181,6 +2181,37 @@ spec:
             name: synthetic-app
           - configMap:
               defaultMode: 292
+              items:
+              - key: package-lock.json
+                path: package-lock.json
+              - key: package.json
+                path: package.json
+              - key: playwright.runner.config.ts
+                path: playwright.runner.config.ts
+              - key: runner.actions.ts
+                path: runner/actions.ts
+              - key: runner.artifacts.ts
+                path: runner/artifacts.ts
+              - key: runner.index.ts
+                path: runner/index.ts
+              - key: runner.journey.ts
+                path: runner/journey.ts
+              - key: runner.jsonreporter.ts
+                path: runner/jsonreporter.ts
+              - key: runner.loader.ts
+                path: runner/loader.ts
+              - key: runner.locators.ts
+                path: runner/locators.ts
+              - key: runner.lock.ts
+                path: runner/lock.ts
+              - key: runner.schema.ts
+                path: runner/schema.ts
+              - key: runner.secrets.ts
+                path: runner/secrets.ts
+              - key: tests.journeys.spec.ts
+                path: tests/journeys.spec.ts
+              - key: tsconfig.json
+                path: tsconfig.json
               name: synthetic-source
             name: synthetic-source
           - configMap:
