@@ -1019,7 +1019,6 @@ data:
   playwright.runner.config.ts: |-
     import path from 'node:path';
     import { defineConfig } from '@playwright/test';
-    import { SyntheticJsonReporter } from './runner/jsonreporter';
 
     const outputDir = process.env.SYNTHETIC_OUTPUT_DIR || path.resolve(__dirname, 'output');
 
@@ -1038,7 +1037,7 @@ data:
         ['list'],
         // One sanitized JSON line per target on stdout (CronJob log contract). See
         // runner/jsonreporter.ts. Non-zero exit on failure is the check result.
-        [SyntheticJsonReporter],
+        [path.join(__dirname, 'runner', 'jsonreporter.ts')],
       ],
       use: {
         browserName: 'chromium',
@@ -1535,7 +1534,7 @@ data:
       throw lastError ?? new Error(`journey for ${target.id} failed`);
     }
   runner.jsonreporter.ts: |-
-    import type { Reporter, TestCase, TestResult } from '@playwright/test';
+    import type { Reporter, TestCase, TestResult } from '@playwright/test/reporter';
     import { redactText } from './artifacts';
 
     export interface SyntheticRunLine {
@@ -1568,7 +1567,7 @@ data:
           target,
           status,
           startedAt: new Date(result.startTime).toISOString(),
-          finishedAt: new Date(result.startTime + result.duration).toISOString(),
+          finishedAt: new Date(result.startTime.getTime() + result.duration).toISOString(),
           durationMs: result.duration,
         };
         if (status !== 'passed') {
@@ -2133,10 +2132,13 @@ spec:
             workingDir: /app
           initContainers:
           - args:
-            - set -eu; cp -R --no-preserve=mode,ownership,timestamps /src/. /app/;
-              mkdir -p /app/targets; cp -R --no-preserve=mode,ownership,timestamps
-              /targets-source/. /app/targets/; cd /app; npm ci --omit=dev --no-audit
-              --no-fund --ignore-scripts --no-update-notifier
+            - set -eu; (cd /src && find -L . -path './..*' -prune -o -type f -print0
+              | tar --null --files-from=- --dereference -cf -) | tar --no-same-owner
+              --no-same-permissions --touch -C /app -xf -; mkdir -p /app/targets;
+              (cd /targets-source && find -L . -path './..*' -prune -o -type f -print0
+              | tar --null --files-from=- --dereference -cf -) | tar --no-same-owner
+              --no-same-permissions --touch -C /app/targets -xf -; cd /app; npm ci
+              --omit=dev --no-audit --no-fund --ignore-scripts --no-update-notifier
             command:
             - /bin/sh
             - -c
