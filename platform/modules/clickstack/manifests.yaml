@@ -316,9 +316,6 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: [""]
-    resources: ["pods", "namespaces"]
-    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -363,109 +360,11 @@ data:
       batch:
         send_batch_size: 8192
         timeout: 1s
-      filter/logs:
-        error_mode: ignore
-        logs:
-          log_record:
-          - resource.attributes["k8s.namespace.name"] == "clickstack"
-          - resource.attributes["k8s.namespace.name"] == "kube-system"
-          - resource.attributes["k8s.namespace.name"] == "kube-public"
-          - resource.attributes["k8s.namespace.name"] == "kube-node-lease"
-      k8sattributes/logs:
-        auth_type: serviceAccount
-        extract:
-          labels:
-          - from: pod
-            key: app.kubernetes.io/name
-            tag_name: app
-          - from: pod
-            key: app.kubernetes.io/component
-            tag_name: component
-          - from: pod
-            key: app.kubernetes.io/part-of
-            tag_name: workload
-          metadata:
-          - k8s.pod.name
-          - k8s.namespace.name
-          - k8s.node.name
-          - k8s.pod.uid
-        filter:
-          node_from_env_var: KUBE_NODE_NAME
-        pod_association:
-        - sources:
-          - from: resource_attribute
-            name: k8s.pod.uid
       memory_limiter:
         check_interval: 1s
         limit_mib: 512
         spike_limit_mib: 128
-      redaction:
-        allowed_keys:
-        - k8s.namespace.name
-        - k8s.pod.name
-        - k8s.pod.uid
-        - k8s.container.name
-        - k8s.node.name
-        - app
-        - component
-        - workload
-        ignored_keys: []
-      transform/log-path:
-        error_mode: ignore
-        log_statements:
-        - context: log
-          statements:
-          - set(resource.attributes["k8s.namespace.name"], attributes["namespace"])
-          - set(resource.attributes["k8s.pod.name"], attributes["pod_name"])
-          - set(resource.attributes["k8s.pod.uid"], attributes["uid"])
-          - set(resource.attributes["k8s.container.name"], attributes["container_name"])
-      transform/redact-log:
-        error_mode: ignore
-        log_statements:
-        - context: log
-          statements:
-          - replace_pattern(body, "(?i)(password|passwd|secret|token|api[_-]?key|authorization)[=:][^
-            \\t\\r\\n]+", "***REDACTED***")
-          - replace_pattern(body, "(?i)bearer [A-Za-z0-9\\-._~+/]+=*", "***REDACTED***")
     receivers:
-      filelog:
-        exclude:
-        - /var/log/pods/clickstack_*
-        - /var/log/pods/kube-system_*
-        - /var/log/pods/kube-public_*
-        - /var/log/pods/kube-node-lease_*
-        include:
-        - /var/log/pods/*/*/*.log
-        include_file_path: true
-        operators:
-        - parse_from: attributes["log.file.path"]
-          regex: ^/var/log/pods/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[^/]+)/(?P<container_name>[^/]+)/.*$
-          type: regex_parser
-        - regex: ^(?P<timestamp>\S+) (?P<stream>stdout|stderr) (?P<flags>[PF]) (?P<body>.*)$
-          severity:
-            mapping:
-              error: stderr
-              info: stdout
-            parse_from: attributes.stream
-          timestamp:
-            layout: 2006-01-02T15:04:05.999999999Z07:00
-            layout_type: gotime
-            parse_from: attributes.timestamp
-          type: regex_parser
-        - combine_field: attributes.body
-          combine_with: ""
-          is_last_entry: attributes.flags == 'F'
-          source_identifier: attributes["log.file.path"]
-          type: recombine
-        - from: attributes.body
-          to: body
-          type: move
-        - field: attributes.timestamp
-          type: remove
-        - field: attributes.stream
-          type: remove
-        - field: attributes.flags
-          type: remove
       hostmetrics:
         collection_interval: 30s
         scrapers:
@@ -487,15 +386,9 @@ data:
           - clickhouse
           processors:
           - memory_limiter
-          - transform/log-path
-          - filter/logs
-          - k8sattributes/logs
-          - transform/redact-log
-          - redaction
           - batch
           receivers:
           - otlp
-          - filelog
         metrics:
           exporters:
           - clickhouse

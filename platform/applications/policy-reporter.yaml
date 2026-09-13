@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cert-manager
+  name: policy-reporter
   namespace: argocd
   annotations:
     argocd.argoproj.io/refresh: hard
@@ -17,10 +17,10 @@ spec:
   source:
     repoURL: "https://github.com/dawid-koldras-home/sre-platform-gitops.git"
     targetRevision: "main"
-    path: "platform/modules/cert-manager"
+    path: "platform/modules/policy-reporter"
   destination:
     server: https://kubernetes.default.svc
-    namespace: "cert-manager"
+    namespace: "policy-reporter"
   syncPolicy:
     automated:
       prune: true

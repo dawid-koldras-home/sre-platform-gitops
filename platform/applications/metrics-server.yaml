@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cert-manager
+  name: metrics-server
   namespace: argocd
   annotations:
     argocd.argoproj.io/refresh: hard
@@ -17,10 +17,10 @@ spec:
   source:
     repoURL: "https://github.com/dawid-koldras-home/sre-platform-gitops.git"
     targetRevision: "main"
-    path: "platform/modules/cert-manager"
+    path: "platform/modules/metrics-server"
   destination:
     server: https://kubernetes.default.svc
-    namespace: "cert-manager"
+    namespace: "metrics-server"
   syncPolicy:
     automated:
       prune: true

@@ -1,0 +1,2197 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/component: synthetic-monitoring
+    app.kubernetes.io/name: synthetic-monitor
+    app.kubernetes.io/part-of: sre-platform
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+  name: synthetic-monitoring
+---
+apiVersion: v1
+data:
+  package-lock.json: |-
+    {
+      "name": "sre-platform-synthetic",
+      "version": "0.1.0",
+      "lockfileVersion": 3,
+      "requires": true,
+      "packages": {
+        "": {
+          "name": "sre-platform-synthetic",
+          "version": "0.1.0",
+          "dependencies": {
+            "@playwright/test": "1.63.0",
+            "esbuild": "0.28.2",
+            "tsx": "4.23.13",
+            "yaml": "2.9.1",
+            "zod": "4.6.2"
+          },
+          "devDependencies": {
+            "@types/node": "22.20.2",
+            "typescript": "7.0.2"
+          },
+          "engines": {
+            "node": ">=22 <25"
+          }
+        },
+        "node_modules/@esbuild/aix-ppc64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.28.2.tgz",
+          "integrity": "sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==",
+          "cpu": [
+            "ppc64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "aix"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/android-arm": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.28.2.tgz",
+          "integrity": "sha512-kXXoiPVVGQcnIYGOeaovwOURpniDBpSq4A03qkQ+BMQqtGG6HYap3xne9C1O1yo4TR3qxlCX5IqqmX6fFo2Lqg==",
+          "cpu": [
+            "arm"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "android"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/android-arm64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.28.2.tgz",
+          "integrity": "sha512-5YfKeeI8qWfBZIX+u2xZC3Zlb3Os/gLS2sbEKM+I4ZOcsWmHS2WLysCcQZDAFRslDUU5Oiq44gf6PYN1vGwG5A==",
+          "cpu": [
+            "arm64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "android"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/android-x64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.28.2.tgz",
+          "integrity": "sha512-O387ite7SzUyCcy3JQX4P4bLtEA7bLLkx+esve5JHnyYfNTxcVpXZo9jhdB0lTKN44gztELTdU7nS8Nr16Fs1Q==",
+          "cpu": [
+            "x64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "android"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/darwin-arm64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.28.2.tgz",
+          "integrity": "sha512-n4KqkOQrraxHJcgjM1RvwbigfQKIKJVpM7xp+KsxiyUSrRdIXnt73VhrPAx0fV44hgfmIVKjxMN9J1t5jySVkw==",
+          "cpu": [
+            "arm64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "darwin"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/darwin-x64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.28.2.tgz",
+          "integrity": "sha512-uq6suIWYP37qzGddBKPw5QEQPi6HiLGsO7UmkpfyaYNQ3D+rN6w6WfwH+nuqcGXWvawGwxOEroO4YGnFh95azw==",
+          "cpu": [
+            "x64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "darwin"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/freebsd-arm64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.28.2.tgz",
+          "integrity": "sha512-n+I0BTSRIoy+d6RPKnEVwql5UwBJolytvY4mAOIEJorKlqgPII8ix6slVVrfZ5Tnj7glIZvloylbB/EJPMWEXw==",
+          "cpu": [
+            "arm64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "freebsd"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/freebsd-x64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.28.2.tgz",
+          "integrity": "sha512-78XJTJkvPs0kz2w61301PJjXl4g7q3JqiYMZ/M/yVI73EHBrCRTgkhu9oqG7vPqq+a/yadEW8aD+agKlk5xrmg==",
+          "cpu": [
+            "x64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "freebsd"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/linux-arm": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.28.2.tgz",
+          "integrity": "sha512-XlDnu2q5yoqems+xay6wSAcg9DDD7K9RLKZEBOMZm3ckNpJBvOX20tSfby8KfrrhINDyv9V2YVZKY/SpoGJI8w==",
+          "cpu": [
+            "arm"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/linux-arm64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.28.2.tgz",
+          "integrity": "sha512-pW4AC0P3it8c7do9MVM4p51FzHzdM/TZrerurgRcHJ2WTa1VQ1CIq18xncfpBJw4ojkiZZrKW2yIBWBP92j6Ug==",
+          "cpu": [
+            "arm64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/linux-ia32": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.28.2.tgz",
+          "integrity": "sha512-CYbnj78HsIeA+DhgUKgFCfvNsTHFhMMrinUrMZpDXJXKN8T3XViTZ/+wtHeVxEWY8ewSzTFN+nRmSwO2tZaLUQ==",
+          "cpu": [
+            "ia32"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/linux-loong64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.28.2.tgz",
+          "integrity": "sha512-buwkd8nsph4R+ajRvw0qM5Hja/TXQow3ptzWO2EbG/cqcIkHloRrdlBtQlshyYGTNFvfkfJ5tpPLVkY4DtsPfQ==",
+          "cpu": [
+            "loong64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/linux-mips64el": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.28.2.tgz",
+          "integrity": "sha512-ZVykbDyk7519VwiNb9Lcj9m8XM6v5V9uKPvrEMkkEedVewf+0itkhahp4HDpgERXhwLRpWFypsGbG/J8s0QjJA==",
+          "cpu": [
+            "mips64el"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/linux-ppc64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.28.2.tgz",
+          "integrity": "sha512-CAXl+Dtd9UUuJd8pKKdwh6MLm3MUMiqMPmhZ3tTSXPqfyQ3vDl6R5hZdZ/kYojK4ofXtdfSv1tFq8XzWx3heNQ==",
+          "cpu": [
+            "ppc64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/linux-riscv64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.28.2.tgz",
+          "integrity": "sha512-GeXCej4IQtU1B+QlDV8W/RRvbzI3O/Stss+/bCXv4lZls5WGRtu2a+3JkA3i4qIUlMXpcHebWpF8AkJhATowuA==",
+          "cpu": [
+            "riscv64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/linux-s390x": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.28.2.tgz",
+          "integrity": "sha512-3H1weTYZPxt/WOhByszQZybS9w5lKzUn1FDMsgEChbHWQwHYQQRfBxgCcZvPhjHfKyJjIievvMmEUawJrdY9Dg==",
+          "cpu": [
+            "s390x"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/linux-x64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.2.tgz",
+          "integrity": "sha512-4xTZr1FUmSoQW4XIWmit3tzQrUTZM+N3P0XV8xROKYF50XfI7xeO90+1bZvNwxIufQ9hDQVRJH5YhgPVF8A/HQ==",
+          "cpu": [
+            "x64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/netbsd-arm64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/netbsd-arm64/-/netbsd-arm64-0.28.2.tgz",
+          "integrity": "sha512-sSATRjPeDBg3pdgHoQfoYBob11Kk1FGa9lui5RIHZCoCkJa9QKlvl3/vKz2usCmYYjs7ymJR/2Nnsqe+Hjt5nw==",
+          "cpu": [
+            "arm64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "netbsd"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/netbsd-x64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.28.2.tgz",
+          "integrity": "sha512-lqnzCV+mM0gIADaKihiCg6ifgfU2L3h5E33rNQBN1Y4MaVGnzryzmvvf7UHxprpQdE8hpqLolJ9Rl+SkIRDpyw==",
+          "cpu": [
+            "x64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "netbsd"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/openbsd-arm64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/openbsd-arm64/-/openbsd-arm64-0.28.2.tgz",
+          "integrity": "sha512-AL2qJILH7lNjrDmCQDvdxMfAUIv8KMNZOvrwAQ8i8//ntL9FflhOyMJ8OZSMBb8/AWXe3/5v5S20y3zCoZWKoQ==",
+          "cpu": [
+            "arm64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "openbsd"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/openbsd-x64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.28.2.tgz",
+          "integrity": "sha512-QtiuPytchRyC4rwUKhexJdQKvDuZ6hWloi3igqPQNUJCS1/v9EiO3UTOXR6A3FoMo4fnAKbWJdqaIwhOzh8qEw==",
+          "cpu": [
+            "x64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "openbsd"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/openharmony-arm64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/openharmony-arm64/-/openharmony-arm64-0.28.2.tgz",
+          "integrity": "sha512-WkhYDmpTjLvGlScA1rwjRUmhl4k8oXR3cIbtqWmELgU/dFeHHlEllxDvdWcNJV9rbzCexB5vz8gtNewWLgCT7Q==",
+          "cpu": [
+            "arm64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "openharmony"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/sunos-x64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.28.2.tgz",
+          "integrity": "sha512-GPMSkTOtMnv2U2F8gxe4Io6qmVs+YKyp832Etqqxr0hFngmXQ3rzwytelm3GIn7T4VviRUlf3sOgBOiTdvaf7g==",
+          "cpu": [
+            "x64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "sunos"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/win32-arm64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.28.2.tgz",
+          "integrity": "sha512-PIhhEkE9uPBleRBrQEJpUn7MBnibZzbGzYWPmY3x+YoVg/95zbjB4CxPPOQ8l5tYYM4mMaCthF8/1DIfBQQyWQ==",
+          "cpu": [
+            "arm64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "win32"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/win32-ia32": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.28.2.tgz",
+          "integrity": "sha512-YmJbfTlvU7Sdn9BB+4PRES4oB6pxgS37MAONj+hBr/cpXS1aBPKXxNnDbu+QCWPj0o9dgyxeq79g6c5P8KeuYA==",
+          "cpu": [
+            "ia32"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "win32"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@esbuild/win32-x64": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.28.2.tgz",
+          "integrity": "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==",
+          "cpu": [
+            "x64"
+          ],
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "win32"
+          ],
+          "engines": {
+            "node": ">=18"
+          }
+        },
+        "node_modules/@playwright/test": {
+          "version": "1.63.0",
+          "resolved": "https://registry.npmjs.org/@playwright/test/-/test-1.63.0.tgz",
+          "integrity": "sha512-oxMK4vllB9RK5NQ2l1pq1IfOf2AvnEuj/vYGDj0H2nMtmtZpKtCwt/l00GEO6xjGfpBNAvjovvYdCm50dRQkpQ==",
+          "license": "Apache-2.0",
+          "dependencies": {
+            "playwright": "1.63.0"
+          },
+          "bin": {
+            "playwright": "cli.js"
+          },
+          "engines": {
+            "node": ">=20"
+          }
+        },
+        "node_modules/@types/node": {
+          "version": "22.20.2",
+          "resolved": "https://registry.npmjs.org/@types/node/-/node-22.20.2.tgz",
+          "integrity": "sha512-xlvWf4Vs9n1PEVYwP1n4vvG07M6y8WgvJ2t0vbrWTmijsIHp1cS+uJ2kMIRdY3nHZK0nCYKrPeD171+SzF4/zw==",
+          "dev": true,
+          "license": "MIT",
+          "dependencies": {
+            "undici-types": "~6.21.0"
+          }
+        },
+        "node_modules/@typescript/typescript-aix-ppc64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-aix-ppc64/-/typescript-aix-ppc64-7.0.2.tgz",
+          "integrity": "sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==",
+          "cpu": [
+            "ppc64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "aix"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-darwin-arm64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-darwin-arm64/-/typescript-darwin-arm64-7.0.2.tgz",
+          "integrity": "sha512-gowzar9MwS/aRWp6f3a4KUqzRjAZjOsmGNCM6LcTgXum+dBfgsBVMN+AgvOCCbguXyick6LJhpBszxMebJ8syA==",
+          "cpu": [
+            "arm64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "darwin"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-darwin-x64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-darwin-x64/-/typescript-darwin-x64-7.0.2.tgz",
+          "integrity": "sha512-SZ9xZInqApNlNGc9s0W1VSsktYSOe9cFqNOIqmN1Gs8SmkjKZYFt017G4VwPxASInODuAdbTW7sXiFUf893RgA==",
+          "cpu": [
+            "x64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "darwin"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-freebsd-arm64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-freebsd-arm64/-/typescript-freebsd-arm64-7.0.2.tgz",
+          "integrity": "sha512-W5NH4y/J0plIIS5b2xvTEkU7JFxyqdMAOgf+Ilhl0vHQXKO5dZoxd+C/jEtq56c4F3wk71RB4BMRQ2XdI+bwYQ==",
+          "cpu": [
+            "arm64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "freebsd"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-freebsd-x64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-freebsd-x64/-/typescript-freebsd-x64-7.0.2.tgz",
+          "integrity": "sha512-UMGDx5sTpzNw3WiPebH7l90IWfJggEd+egHt/q6p7/Cm3zqoV7VxkGXt+3DxPIw8CcmvAB0j3sVVfbhX+M4Tpw==",
+          "cpu": [
+            "x64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "freebsd"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-linux-arm": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-arm/-/typescript-linux-arm-7.0.2.tgz",
+          "integrity": "sha512-gffT3xPz9sR7j/YJExkyPntrI0P2EP9XbOyWzth2/Gs0RstK+90RBcO0ncXoXy/beYll1SXw846Nf2zdnEz0QQ==",
+          "cpu": [
+            "arm"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-linux-arm64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-arm64/-/typescript-linux-arm64-7.0.2.tgz",
+          "integrity": "sha512-Qh4eU4/y3yDjnfjjyPYihMj5/ODIlmt+Bzu17OI+fiSRDW57QmU5SiN63exPRNJPKUzcc1INa1NXdrJ+MqHjUQ==",
+          "cpu": [
+            "arm64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-linux-loong64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-loong64/-/typescript-linux-loong64-7.0.2.tgz",
+          "integrity": "sha512-uEHck9i8hoAzXPiYRib1O7miOnz23SxIeVl6F4LXox+qov1K35jHcEW6VHKvZI+pyvl7fZEP4MCU5LYvIq1GuQ==",
+          "cpu": [
+            "loong64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-linux-mips64el": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-mips64el/-/typescript-linux-mips64el-7.0.2.tgz",
+          "integrity": "sha512-R4KvAMnE43W5Qeqb0Ly56O3mWMWIAgsMyz36DCaycd5nbg/9kzm0liw3JocfRqyJY0KPmzFjbswozXyW0DnIYA==",
+          "cpu": [
+            "mips64el"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-linux-ppc64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-ppc64/-/typescript-linux-ppc64-7.0.2.tgz",
+          "integrity": "sha512-DORx5b3sd/4S7eayxm4FQv+A7CrkUIGRaHiwI8oiHTAI1fAPWhF4J0vAlkC8biAlHSVVwxMQ3tjZ2/DVbnQiiA==",
+          "cpu": [
+            "ppc64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-linux-riscv64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-riscv64/-/typescript-linux-riscv64-7.0.2.tgz",
+          "integrity": "sha512-wf0jqEDOjrPRnKwYRyyJDRo11KMbvMFrU+q4zqKyChODBzvlkbhNQfKvLxQCcwTpdDaXSHZTVuh0JoCrKCUMHQ==",
+          "cpu": [
+            "riscv64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-linux-s390x": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-s390x/-/typescript-linux-s390x-7.0.2.tgz",
+          "integrity": "sha512-IkwJc3L7yhytWd/ewjyxNDfOmswCm9GWMJT/ue/dU4aZNbwZeYAetq42VyLmsmSjvoX7z74X6ZaYCtzAr0EuGw==",
+          "cpu": [
+            "s390x"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-linux-x64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-x64/-/typescript-linux-x64-7.0.2.tgz",
+          "integrity": "sha512-EYdf2cNg7rgCWJnxCdJ+F3V39O8ihb37eHAu1LK8oAFizgTQbPOK7zHHXbPt8rX24COqODXeI3sIf0fCXG7H/A==",
+          "cpu": [
+            "x64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "linux"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-netbsd-arm64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-netbsd-arm64/-/typescript-netbsd-arm64-7.0.2.tgz",
+          "integrity": "sha512-+polYF4MF04aPpO5FTkHran9yUQDSXqy5GiSDKpsll5jy3l3+g9QLhpf39T+ePtefhXLOGrLl0QIjkQP6VnelA==",
+          "cpu": [
+            "arm64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "netbsd"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-netbsd-x64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-netbsd-x64/-/typescript-netbsd-x64-7.0.2.tgz",
+          "integrity": "sha512-8YIT0EHM/3dq10ZOVF/A7pc/YSMtbcecct4rWtexrnSCHOPcpC2KTLXfTCR6vDpnSiY12heNb1GiN/wu+T/FyA==",
+          "cpu": [
+            "x64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "netbsd"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-openbsd-arm64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-openbsd-arm64/-/typescript-openbsd-arm64-7.0.2.tgz",
+          "integrity": "sha512-APT8+ClYnuYm1u9+kgGXoMj2VzWzcymwh2gNSQVySHfkRDGOTVkoWLjCmOQSaO+PoqQ57B0flRp9SA+7GnnkzQ==",
+          "cpu": [
+            "arm64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "openbsd"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-openbsd-x64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-openbsd-x64/-/typescript-openbsd-x64-7.0.2.tgz",
+          "integrity": "sha512-yX7s+Q0Dln0Dt9tEzZsAjXXR/+ytBM7AlglaqyeMPxQszJ1JhlJdZ6jLA+IzldHtflX81em7lDao1xXu+aRRkg==",
+          "cpu": [
+            "x64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "openbsd"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-sunos-x64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-sunos-x64/-/typescript-sunos-x64-7.0.2.tgz",
+          "integrity": "sha512-dLJDGaLZ1D4HPQn62u1n8mBDkJREwMsAkCdkwd4Ieqw+x3TUyTsqY0YiBCtE6H6OzzgGk3iuZ3vFWRS+E8/d1g==",
+          "cpu": [
+            "x64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "sunos"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-win32-arm64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz",
+          "integrity": "sha512-Gyl1Vy6OsWesLzmq+EP0Fb7b4Nid5232AvcA2SFcdYreldpNtYFFofPjnt62y9hQy7VTaZp65ICJjuAQRaVcIQ==",
+          "cpu": [
+            "arm64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "win32"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/@typescript/typescript-win32-x64": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz",
+          "integrity": "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g==",
+          "cpu": [
+            "x64"
+          ],
+          "dev": true,
+          "license": "Apache-2.0",
+          "optional": true,
+          "os": [
+            "win32"
+          ],
+          "engines": {
+            "node": ">=16.20.0"
+          }
+        },
+        "node_modules/esbuild": {
+          "version": "0.28.2",
+          "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.2.tgz",
+          "integrity": "sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==",
+          "hasInstallScript": true,
+          "license": "MIT",
+          "bin": {
+            "esbuild": "bin/esbuild"
+          },
+          "engines": {
+            "node": ">=18"
+          },
+          "optionalDependencies": {
+            "@esbuild/aix-ppc64": "0.28.2",
+            "@esbuild/android-arm": "0.28.2",
+            "@esbuild/android-arm64": "0.28.2",
+            "@esbuild/android-x64": "0.28.2",
+            "@esbuild/darwin-arm64": "0.28.2",
+            "@esbuild/darwin-x64": "0.28.2",
+            "@esbuild/freebsd-arm64": "0.28.2",
+            "@esbuild/freebsd-x64": "0.28.2",
+            "@esbuild/linux-arm": "0.28.2",
+            "@esbuild/linux-arm64": "0.28.2",
+            "@esbuild/linux-ia32": "0.28.2",
+            "@esbuild/linux-loong64": "0.28.2",
+            "@esbuild/linux-mips64el": "0.28.2",
+            "@esbuild/linux-ppc64": "0.28.2",
+            "@esbuild/linux-riscv64": "0.28.2",
+            "@esbuild/linux-s390x": "0.28.2",
+            "@esbuild/linux-x64": "0.28.2",
+            "@esbuild/netbsd-arm64": "0.28.2",
+            "@esbuild/netbsd-x64": "0.28.2",
+            "@esbuild/openbsd-arm64": "0.28.2",
+            "@esbuild/openbsd-x64": "0.28.2",
+            "@esbuild/openharmony-arm64": "0.28.2",
+            "@esbuild/sunos-x64": "0.28.2",
+            "@esbuild/win32-arm64": "0.28.2",
+            "@esbuild/win32-ia32": "0.28.2",
+            "@esbuild/win32-x64": "0.28.2"
+          }
+        },
+        "node_modules/fsevents": {
+          "version": "2.3.3",
+          "resolved": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
+          "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
+          "hasInstallScript": true,
+          "license": "MIT",
+          "optional": true,
+          "os": [
+            "darwin"
+          ],
+          "engines": {
+            "node": "^8.16.0 || ^10.6.0 || >=11.0.0"
+          }
+        },
+        "node_modules/playwright": {
+          "version": "1.63.0",
+          "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz",
+          "integrity": "sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==",
+          "license": "Apache-2.0",
+          "dependencies": {
+            "playwright-core": "1.63.0"
+          },
+          "bin": {
+            "playwright": "cli.js"
+          },
+          "engines": {
+            "node": ">=20"
+          }
+        },
+        "node_modules/playwright-core": {
+          "version": "1.63.0",
+          "resolved": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz",
+          "integrity": "sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==",
+          "license": "Apache-2.0",
+          "bin": {
+            "playwright-core": "cli.js"
+          },
+          "engines": {
+            "node": ">=20"
+          }
+        },
+        "node_modules/tsx": {
+          "version": "4.23.13",
+          "resolved": "https://registry.npmjs.org/tsx/-/tsx-4.23.13.tgz",
+          "integrity": "sha512-BL5MGkRln6aDYhb0xbQlEAGw743BaZYWdbWtdJOBriYJboKgUUYCadFp2/FpBBZquBC/ezNBn7wMMPx7FDZUDw==",
+          "license": "MIT",
+          "dependencies": {
+            "esbuild": "~0.28.0"
+          },
+          "bin": {
+            "tsx": "dist/cli.mjs"
+          },
+          "engines": {
+            "node": ">=18.0.0"
+          },
+          "optionalDependencies": {
+            "fsevents": "~2.3.3"
+          }
+        },
+        "node_modules/typescript": {
+          "version": "7.0.2",
+          "resolved": "https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz",
+          "integrity": "sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==",
+          "dev": true,
+          "license": "Apache-2.0",
+          "bin": {
+            "tsc": "bin/tsc"
+          },
+          "engines": {
+            "node": ">=16.20.0"
+          },
+          "optionalDependencies": {
+            "@typescript/typescript-aix-ppc64": "7.0.2",
+            "@typescript/typescript-darwin-arm64": "7.0.2",
+            "@typescript/typescript-darwin-x64": "7.0.2",
+            "@typescript/typescript-freebsd-arm64": "7.0.2",
+            "@typescript/typescript-freebsd-x64": "7.0.2",
+            "@typescript/typescript-linux-arm": "7.0.2",
+            "@typescript/typescript-linux-arm64": "7.0.2",
+            "@typescript/typescript-linux-loong64": "7.0.2",
+            "@typescript/typescript-linux-mips64el": "7.0.2",
+            "@typescript/typescript-linux-ppc64": "7.0.2",
+            "@typescript/typescript-linux-riscv64": "7.0.2",
+            "@typescript/typescript-linux-s390x": "7.0.2",
+            "@typescript/typescript-linux-x64": "7.0.2",
+            "@typescript/typescript-netbsd-arm64": "7.0.2",
+            "@typescript/typescript-netbsd-x64": "7.0.2",
+            "@typescript/typescript-openbsd-arm64": "7.0.2",
+            "@typescript/typescript-openbsd-x64": "7.0.2",
+            "@typescript/typescript-sunos-x64": "7.0.2",
+            "@typescript/typescript-win32-arm64": "7.0.2",
+            "@typescript/typescript-win32-x64": "7.0.2"
+          }
+        },
+        "node_modules/undici-types": {
+          "version": "6.21.0",
+          "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-6.21.0.tgz",
+          "integrity": "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==",
+          "dev": true,
+          "license": "MIT"
+        },
+        "node_modules/yaml": {
+          "version": "2.9.1",
+          "resolved": "https://registry.npmjs.org/yaml/-/yaml-2.9.1.tgz",
+          "integrity": "sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==",
+          "license": "ISC",
+          "bin": {
+            "yaml": "bin.mjs"
+          },
+          "engines": {
+            "node": ">= 14.6"
+          },
+          "funding": {
+            "url": "https://github.com/sponsors/eemeli"
+          }
+        },
+        "node_modules/zod": {
+          "version": "4.6.2",
+          "resolved": "https://registry.npmjs.org/zod/-/zod-4.6.2.tgz",
+          "integrity": "sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ==",
+          "license": "MIT",
+          "funding": {
+            "url": "https://github.com/sponsors/colinhacks"
+          }
+        }
+      }
+    }
+  package.json: |-
+    {
+      "name": "sre-platform-synthetic",
+      "version": "0.1.0",
+      "private": true,
+      "description": "Reusable configuration-driven Playwright synthetic monitoring framework (TASK-142)",
+      "type": "commonjs",
+      "engines": {
+        "node": ">=22 <25"
+      },
+      "scripts": {
+        "start": "tsx runner/index.ts",
+        "list": "tsx runner/index.ts --list",
+        "validate": "tsx runner/index.ts --validate-only",
+        "test": "node node_modules/@playwright/test/cli.js test tests --config=playwright.config.ts",
+        "browsers": "playwright install chromium"
+      },
+      "dependencies": {
+        "@playwright/test": "1.63.0",
+        "esbuild": "0.28.2",
+        "tsx": "4.23.13",
+        "yaml": "2.9.1",
+        "zod": "4.6.2"
+      },
+      "devDependencies": {
+        "@types/node": "22.20.2",
+        "typescript": "7.0.2"
+      }
+    }
+  playwright.runner.config.ts: |-
+    import path from 'node:path';
+    import { defineConfig } from '@playwright/test';
+    import { SyntheticJsonReporter } from './runner/jsonreporter';
+
+    const outputDir = process.env.SYNTHETIC_OUTPUT_DIR || path.resolve(__dirname, 'output');
+
+    // Runner-only config: executes the compiled journey spec produced by
+    // `npm run start`. The umbrella `npm test` suite must NOT see journeys.spec.ts,
+    // so this config is selected explicitly by runner/index.ts.
+    export default defineConfig({
+      testDir: 'tests',
+      testMatch: '**/journeys.spec.ts',
+      timeout: 120000,
+      expect: { timeout: 10000 },
+      fullyParallel: false,
+      workers: 1,
+      retries: 0,
+      reporter: [
+        ['list'],
+        // One sanitized JSON line per target on stdout (CronJob log contract). See
+        // runner/jsonreporter.ts. Non-zero exit on failure is the check result.
+        [SyntheticJsonReporter],
+      ],
+      use: {
+        browserName: 'chromium',
+        trace: 'off',
+        screenshot: 'off',
+        video: 'off',
+      },
+      outputDir: path.join(outputDir, '.playwright'),
+    });
+  runner/actions.ts: |-
+    import path from 'node:path';
+    import type { Page } from '@playwright/test';
+    import { ensureDir, evidenceDirFor, maskSelectorsFor, noArtifactsEnabled } from './artifacts';
+    import { findFirstVisible, resolveLocator, visibleSelectorReport } from './locators';
+    import { actionSchema, isCredentialed, type Action, type Target } from './schema';
+
+    export interface RunContext {
+      target: Target;
+      page: Page;
+      outputDir: string;
+    }
+
+    function resolveUrl(target: Target, url: string): string {
+      if (url.startsWith('/')) {
+        return new URL(url, target.baseUrl).toString();
+      }
+      return url;
+    }
+
+    function assertSingleVisible(ctx: RunContext, selectors: string[]): Promise<NonNullable<Awaited<ReturnType<typeof findFirstVisible>>>> {
+      return findFirstVisible(ctx.page, selectors, ctx.target.timeoutMs).then((locator) => {
+        if (locator === null) {
+          throw new Error(`visibility check failed for ${ctx.target.id}: ${visibleSelectorReport(selectors)}`);
+        }
+        return locator;
+      });
+    }
+
+    function normalizeText(text: string): string {
+      return text.replace(/\s+/g, ' ').trim();
+    }
+
+    export async function runActions(target: Target, page: Page, outputDir: string): Promise<void> {
+      // Re-validate so zod defaults (e.g. empty fallback lists) are applied even
+      // when a caller constructs a literal target without parsing it.
+      const actions = target.actions.map((a) => actionSchema.parse(a));
+      const ctx: RunContext = { target, page, outputDir };
+      for (const action of actions) {
+        await runAction(ctx, action);
+      }
+    }
+
+    export async function runAction(ctx: RunContext, action: Action): Promise<void> {
+      const { page, target } = ctx;
+      const selectorsOf = (primary: string, fallback: string[] | undefined): string[] => [primary, ...(fallback ?? [])];
+
+      switch (action.type) {
+        case 'goto': {
+          const url = resolveUrl(target, action.url);
+          const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: target.timeoutMs });
+          if (response !== null && !response.ok()) {
+            throw new Error(`HTTP ${response.status()} for ${url} on ${target.id}`);
+          }
+          return;
+        }
+        case 'visible': {
+          await assertSingleVisible(ctx, selectorsOf(action.selector, action.fallback));
+          return;
+        }
+        case 'text': {
+          let haystack: string;
+          if (action.selector !== undefined) {
+            const locator = await assertSingleVisible(ctx, selectorsOf(action.selector, action.fallback));
+            haystack = await locator.innerText();
+          } else {
+            const body = page.locator('body');
+            await body.waitFor({ state: 'visible', timeout: target.timeoutMs });
+            haystack = await body.innerText();
+          }
+          const needle = normalizeText(action.text);
+          const found = normalizeText(haystack).includes(needle);
+          if (action.contains && !found) {
+            throw new Error(`expected text '${action.text}' not found on ${target.id}`);
+          }
+          if (!action.contains && found) {
+            throw new Error(`unexpected text '${action.text}' present on ${target.id}`);
+          }
+          return;
+        }
+        case 'url': {
+          const current = page.url();
+          const matches = action.regex
+            ? new RegExp(action.pattern).test(current)
+            : current === action.pattern;
+          if (!matches) {
+            throw new Error(`URL check failed on ${target.id}: pattern '${action.pattern}' does not match '${current}'`);
+          }
+          return;
+        }
+        case 'fill': {
+          const value =
+            action.value !== undefined ? action.value : (process.env[action.valueFromEnv as string] ?? '');
+          if (value.trim() === '') {
+            throw new Error(`fill action on ${target.id} resolved to an empty value`);
+          }
+          const locator = await assertSingleVisible(ctx, selectorsOf(action.selector, action.fallback));
+          await locator.fill(value);
+          return;
+        }
+        case 'click': {
+          const locator = await assertSingleVisible(ctx, selectorsOf(action.selector, action.fallback));
+          await locator.click({ timeout: target.timeoutMs });
+          return;
+        }
+        case 'screenshot': {
+          if (noArtifactsEnabled()) {
+            return;
+          }
+          const dir = evidenceDirFor(ctx.outputDir, target.id);
+          ensureDir(dir);
+          const file = path.join(dir, `${action.name}.png`);
+          const masks = action.mask.map((raw) => resolveLocator(page, raw));
+          const masksForCredentialed = isCredentialed(target) ? masks : [];
+          await page.screenshot({
+            path: file,
+            fullPage: action.fullPage,
+            mask: [...masksForCredentialed, ...masks],
+          });
+          return;
+        }
+      }
+    }
+  runner/artifacts.ts: |-
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import { isCredentialed, type Target } from './schema';
+
+    // Scheduled CronJob runs set SYNTHETIC_NO_ARTIFACTS=1 so no screenshots,
+    // traces or evidence files are produced (see platform/synthetic-monitoring
+    // bases/cronjob.yaml). Local/CI runs keep the default artifact behavior.
+    export const NO_ARTIFACTS_ENV = 'SYNTHETIC_NO_ARTIFACTS';
+
+    export function noArtifactsEnabled(): boolean {
+      return process.env[NO_ARTIFACTS_ENV] === '1';
+    }
+
+    export function ensureDir(dir: string): void {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    export function cleanDir(dir: string): void {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+
+    const SECRET_LIKE =
+      /(?<=\s)(?:password|passwd|pass|secret|token|api[_-]?key|client[_-]?secret)\b.*/gi;
+
+    export function redactText(text: string): string {
+      return text.replace(SECRET_LIKE, (match) => match.replace(/[A-Za-z0-9_.\-]{4,}/g, '****'));
+    }
+
+    export function maskSelectorsFor(target: Target): string[] {
+      if (!isCredentialed(target)) {
+        return [];
+      }
+      return target.actions
+        .filter((a) => a.type === 'fill')
+        .map((a) => (a.type === 'fill' ? a.selector : ''));
+    }
+
+    export function evidenceDirFor(outputDir: string, targetId: string): string {
+      return path.join(outputDir, targetId);
+    }
+  runner/index.ts: |-
+    #!/usr/bin/env node
+    import { spawnSync } from 'node:child_process';
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import { build } from 'esbuild';
+    import { cleanDir, ensureDir } from './artifacts';
+    import { loadTargetsOrFail, filterTargetsById, unknownTargetIds, targetsDirectory } from './loader';
+    import { writeLock } from './lock';
+    import { checkTargetSecrets } from './secrets';
+    import { COMPILED_DIR, ENV_LOCK_FILE, ENV_OUTPUT_DIR, LOCK_FILE_NAME, type Target } from './schema';
+
+    const root = path.resolve(__dirname, '..');
+
+    interface CliArgs {
+      targets: string[];
+      outputDir: string;
+      listOnly: boolean;
+      validateOnly: boolean;
+    }
+
+    function parseArgs(argv: string[]): CliArgs {
+      const args: CliArgs = {
+        targets: [],
+        outputDir: path.join(root, 'output'),
+        listOnly: false,
+        validateOnly: false,
+      };
+      for (let i = 0; i < argv.length; i += 1) {
+        const arg = argv[i];
+        switch (arg) {
+          case '--targets': {
+            const value = argv[i + 1];
+            if (value === undefined) throw new Error('--targets requires a comma-separated list');
+            args.targets = value
+              .split(',')
+              .map((s) => s.trim())
+              .filter((s) => s.length > 0);
+            i += 1;
+            break;
+          }
+          case '--output-dir': {
+            const value = argv[i + 1];
+            if (value === undefined) throw new Error('--output-dir requires a path');
+            args.outputDir = path.resolve(value);
+            i += 1;
+            break;
+          }
+          case '--list':
+            args.listOnly = true;
+            break;
+          case '--validate-only':
+            args.validateOnly = true;
+            break;
+          default:
+            throw new Error(`unknown argument: ${arg}`);
+        }
+      }
+      return args;
+    }
+
+    function printTargets(targets: Target[]): void {
+      const rows = targets.map((t) => ({
+        id: t.id,
+        mode: t.auth.mode,
+        min: t.minIntervalMinutes,
+        retries: t.retries,
+        source: t.journey ?? `${t.actions.length} actions`,
+      }));
+      const width = (key: keyof (typeof rows)[number]) =>
+        Math.max(...rows.map((r) => String(r[key]).length), key.length);
+      const nameW = Math.max(...rows.map((r) => r.id.length), 'id'.length);
+      for (const r of rows) {
+        const pad = (s: string, n: number) => String(s).padEnd(n);
+        console.log(
+          `${pad(r.id, nameW)} | ${pad(r.mode, 12)} | ${pad(String(r.min), width('min'))} | ${pad(
+            String(r.retries),
+            width('retries'),
+          )} | ${r.source}`,
+        );
+      }
+      console.log(`${rows.length} target(s) configured`);
+    }
+
+    async function compileJourneys(targets: Target[], outputDir: string): Promise<void> {
+      const wanted = targets.filter((t) => t.journey !== undefined);
+      if (wanted.length === 0) {
+        return;
+      }
+      const journeyDir = path.join(root, 'journeys');
+      const entryPoints: string[] = [];
+      for (const target of wanted) {
+        const entry = path.join(journeyDir, path.basename(target.journey as string));
+        if (!fs.existsSync(entry)) {
+          throw new Error(`journey file not found: ${target.journey}`);
+        }
+        entryPoints.push(entry);
+      }
+      const compileDir = path.join(outputDir, COMPILED_DIR);
+      cleanDir(compileDir);
+      ensureDir(compileDir);
+      await build({
+        entryPoints,
+        outdir: compileDir,
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        target: 'node22',
+        sourcemap: false,
+        logLevel: 'error',
+      });
+    }
+
+    function run(args: CliArgs, targets: Target[]): void {
+      const lockFile = writeLock(targets, args.outputDir);
+
+      const skips = targets
+        .map((t) => checkTargetSecrets(t))
+        .filter((c): c is Extract<typeof c, { ok: false }> => !c.ok);
+      if (skips.length > 0) {
+        console.warn(`[warn] ${skips.length} credentialed target(s) will be skipped (secrets not provided):`);
+        for (const skip of skips) {
+          console.warn(`  ${skip.reason}`);
+        }
+      }
+
+      const cli = path.join(root, 'node_modules', '@playwright', 'test', 'cli.js');
+      const specFilter = 'tests/journeys.spec.ts'; // relative filter within testDir
+      const runnerConfig = path.join(root, 'playwright.runner.config.ts');
+      const result = spawnSync(
+        process.execPath,
+        [cli, 'test', specFilter, '--config', runnerConfig],
+        {
+          cwd: root,
+          stdio: 'inherit',
+          env: {
+            ...process.env,
+            [ENV_LOCK_FILE]: lockFile,
+            [ENV_OUTPUT_DIR]: args.outputDir,
+          },
+        },
+      );
+      process.exit(result.status ?? 1);
+    }
+
+    async function main(): Promise<void> {
+      const args = parseArgs(process.argv.slice(2));
+
+      const all = loadTargetsOrFail(root);
+
+      let selected = all;
+      if (args.targets.length > 0) {
+        const unknown = unknownTargetIds(all, args.targets);
+        if (unknown.length > 0) {
+          console.error(`unknown target(s): ${unknown.join(', ')}`);
+          process.exit(1);
+        }
+        selected = filterTargetsById(all, args.targets);
+      }
+
+      if (args.listOnly) {
+        printTargets(selected);
+        return;
+      }
+
+      if (args.validateOnly) {
+        printTargets(selected);
+        return;
+      }
+
+      await compileJourneys(selected, args.outputDir);
+      run(args, selected);
+    }
+
+    ensureDir(targetsDirectory(root));
+    main().catch((err: unknown) => {
+      console.error(`synthetic: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    });
+  runner/journey.ts: |-
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import type { Browser, Page, TestInfo } from '@playwright/test';
+    import { runActions } from './actions';
+    import { ensureDir, evidenceDirFor, maskSelectorsFor, noArtifactsEnabled } from './artifacts';
+    import { resolveLocator } from './locators';
+    import { COMPILED_DIR, isCredentialed, type Target } from './schema';
+    import { checkTargetSecrets } from './secrets';
+
+    export interface JourneyHelpers {
+      navigate: (path: string) => Promise<void>;
+      screenshot: (name: string, fullPage?: boolean) => Promise<void>;
+    }
+
+    export type JourneyFunction = (page: Page, target: Target, helpers: JourneyHelpers) => Promise<void>;
+
+    export interface RunOutcome {
+      status: 'passed' | 'skipped';
+      reason?: string;
+    }
+
+    export function compileJourneyPath(outputDir: string, target: Target): string | null {
+      if (target.journey === undefined) {
+        return null;
+      }
+      return path.join(outputDir, COMPILED_DIR, `${path.basename(target.journey, '.ts')}.js`);
+    }
+
+    function loadJourney(outputDir: string, target: Target): JourneyFunction | null {
+      const compiled = compileJourneyPath(outputDir, target);
+      if (compiled === null || !fs.existsSync(compiled)) {
+        return null;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mod = require(compiled) as { default?: JourneyFunction };
+      if (mod.default === undefined || typeof mod.default !== 'function') {
+        throw new Error(`journey ${target.journey} must export a default async function`);
+      }
+      return mod.default;
+    }
+
+    function maskLocators(page: Page, target: Target) {
+      return maskSelectorsFor(target).map((raw) => resolveLocator(page, raw));
+    }
+
+    export async function runTargetJourney(args: {
+      target: Target;
+      browser: Browser;
+      testInfo: TestInfo;
+      outputDir: string;
+    }): Promise<RunOutcome> {
+      const { target, browser, testInfo, outputDir } = args;
+      const secretCheck = checkTargetSecrets(target);
+      if (!secretCheck.ok) {
+        return { status: 'skipped', reason: secretCheck.reason };
+      }
+
+      const evidenceDir = evidenceDirFor(outputDir, target.id);
+      const artifactsOff = noArtifactsEnabled();
+      if (!artifactsOff) {
+        ensureDir(evidenceDir);
+      }
+      const traceAllowed = !isCredentialed(target) && !artifactsOff;
+
+      const journey = loadJourney(outputDir, target);
+      const attempts = isCredentialed(target) ? 1 : target.retries + 1;
+
+      let lastError: Error | null = null;
+      const pageRef: { current?: Page } = {};
+
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        const context = await browser.newContext({
+          userAgent: 'Mozilla/5.0 (compatible; SRE-Platform-Synthetic/0.1)',
+        });
+        pageRef.current = await context.newPage();
+        if (traceAllowed) {
+          await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
+        }
+        try {
+          const helpers: JourneyHelpers = {
+            navigate: async (p: string) => {
+              await pageRef.current!.goto(new URL(p, target.baseUrl).toString(), {
+                waitUntil: 'domcontentloaded',
+                timeout: target.timeoutMs,
+              });
+            },
+            screenshot: async (name: string, fullPage = true) => {
+              if (artifactsOff) {
+                return;
+              }
+              ensureDir(evidenceDir);
+              const masks = maskLocators(pageRef.current!, target);
+              await pageRef.current!.screenshot({
+                path: path.join(evidenceDir, `${name}.png`),
+                fullPage,
+                mask: masks,
+              });
+            },
+          };
+          if (journey !== null) {
+            await journey(pageRef.current, target, helpers);
+          } else {
+            await runActions(target, pageRef.current, outputDir);
+          }
+          if (traceAllowed) {
+            await context.tracing.stop();
+          }
+          return { status: 'passed' };
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          if (traceAllowed) {
+            try {
+              const tracePath = path.join(evidenceDir, 'failure.trace.zip');
+              await context.tracing.stop({ path: tracePath });
+              await testInfo.attach(`${target.id}-trace`, {
+                path: tracePath,
+                contentType: 'application/zip',
+              });
+            } catch {
+              // tracing artifacts are best-effort
+            }
+          }
+          try {
+            if (!artifactsOff) {
+              const shotPath = path.join(evidenceDir, 'failure.png');
+              await pageRef.current.screenshot({
+                path: shotPath,
+                fullPage: true,
+                mask: maskLocators(pageRef.current, target),
+              });
+              await testInfo.attach(`${target.id}-screenshot`, { path: shotPath, contentType: 'image/png' });
+            }
+          } catch {
+            // screenshot artifacts are best-effort
+          }
+        } finally {
+          await context.close();
+        }
+      }
+
+      throw lastError ?? new Error(`journey for ${target.id} failed`);
+    }
+  runner/jsonreporter.ts: |-
+    import type { Reporter, TestCase, TestResult } from '@playwright/test';
+    import { redactText } from './artifacts';
+
+    export interface SyntheticRunLine {
+      target: string;
+      status: 'passed' | 'failed' | 'skipped';
+      startedAt: string;
+      finishedAt: string;
+      durationMs: number;
+      error?: string;
+    }
+
+    function scrub(text: string): string {
+      const flattened = redactText(text);
+      return flattened
+        .replace(/\u001b\[[0-9;]*m/g, '')
+        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    // Emits exactly one sanitized JSON object per target to stdout. Playwright
+    // exits non-zero when any test fails, so the container exit code remains the
+    // source of truth for the CronJob; this line is the machine-readable summary.
+    export class SyntheticJsonReporter implements Reporter {
+      onTestEnd(test: TestCase, result: TestResult): void {
+        const target = test.title.split(': ')[0] || test.title;
+        const status: SyntheticRunLine['status'] =
+          result.status === 'passed' ? 'passed' : result.status === 'skipped' ? 'skipped' : 'failed';
+        const line: SyntheticRunLine = {
+          target,
+          status,
+          startedAt: new Date(result.startTime).toISOString(),
+          finishedAt: new Date(result.startTime + result.duration).toISOString(),
+          durationMs: result.duration,
+        };
+        if (status !== 'passed') {
+          const errors = result.errors.map((e) => e.message ?? String(e)).join('\n');
+          line.error = scrub(errors) || `target ${target} did not finish successfully`;
+        }
+        process.stdout.write(`${JSON.stringify(line)}\n`);
+      }
+    }
+
+    export default SyntheticJsonReporter;
+  runner/loader.ts: |-
+    import path from 'node:path';
+    import fs from 'node:fs';
+    import { globSync } from 'fs';
+    import { parse } from 'yaml';
+    import { targetSchema, TARGETS_DIR, type Target } from './schema';
+
+    export interface TargetFile {
+      file: string;
+      target?: Target;
+      error?: string;
+    }
+
+    export function targetsDirectory(root: string): string {
+      return path.join(root, TARGETS_DIR);
+    }
+
+    export function loadAllTargets(root: string): TargetFile[] {
+      const dir = targetsDirectory(root);
+      if (!fs.existsSync(dir)) {
+        throw new Error(`targets directory not found: ${dir}`);
+      }
+      const files = globSync('*.yaml', { cwd: dir }).sort();
+      return files.map((file) => loadTargetFile(path.join(dir, file)));
+    }
+
+    export function loadTargetFile(file: string): TargetFile {
+      const raw = fs.readFileSync(file, 'utf8');
+      let parsed: unknown;
+      try {
+        parsed = parse(raw);
+      } catch (err) {
+        return { file, error: `invalid YAML: ${(err as Error).message}` };
+      }
+      const result = targetSchema.safeParse(parsed);
+      if (!result.success) {
+        return {
+          file,
+          error: result.error.issues.map((i) => `${i.path.join('.') || 'target'}: ${i.message}`).join('; '),
+        };
+      }
+      return { file, target: result.data };
+    }
+
+    export function loadTargetsOrFail(root: string): Target[] {
+      const results = loadAllTargets(root);
+      const errors = results.filter((r) => r.error !== undefined);
+      if (errors.length > 0) {
+        const detail = errors.map((e) => `  ${e.file}: ${e.error}`).join('\n');
+        throw new Error(`target validation failed:\n${detail}`);
+      }
+      return results.map((r) => r.target as Target);
+    }
+
+    export function filterTargetsById(targets: Target[], ids: string[]): Target[] {
+      const wanted = new Set(ids);
+      return targets.filter((t) => wanted.has(t.id));
+    }
+
+    export function unknownTargetIds(targets: Target[], ids: string[]): string[] {
+      const known = new Set(targets.map((t) => t.id));
+      return ids.filter((id) => !known.has(id));
+    }
+  runner/locators.ts: |-
+    import type { Locator, Page } from '@playwright/test';
+
+    const PREFIX_RE = /^(data-testid|role|text|css):(.+)$/;
+
+    export interface ResolvedSelector {
+      selector: string;
+      kind: 'data-testid' | 'role' | 'text' | 'css';
+      value: string;
+      name?: string;
+    }
+
+    const PRIORITY = ['data-testid', 'role', 'text', 'css'] as const;
+
+    export function parseSelector(raw: string): ResolvedSelector {
+      const m = PREFIX_RE.exec(raw);
+      if (!m) {
+        throw new Error(`selector must be prefixed (data-testid: | role: | text: | css:): ${raw}`);
+      }
+      const kind = m[1] as ResolvedSelector['kind'];
+      const value = m[2];
+      if (kind === 'role') {
+        const colon = value.indexOf(':');
+        if (colon === -1) {
+          return { selector: raw, kind, value };
+        }
+        return { selector: raw, kind, value: value.slice(0, colon), name: value.slice(colon + 1) };
+      }
+      return { selector: raw, kind, value };
+    }
+
+    export function selectorKindOrder(raw: string): number {
+      return PRIORITY.indexOf(parseSelector(raw).kind);
+    }
+
+    export function orderSelectors(primary: string, fallback: string[]): string[] {
+      const ordered = [primary, ...fallback].slice();
+      const byKind: Record<ResolvedSelector['kind'], string[]> = {
+        'data-testid': [],
+        role: [],
+        text: [],
+        css: [],
+      };
+      for (const raw of ordered) {
+        byKind[parseSelector(raw).kind].push(raw);
+      }
+      const result: string[] = [];
+      for (const kind of PRIORITY) {
+        result.push(...byKind[kind]);
+      }
+      return result;
+    }
+
+    function shortProbeTimeout(timeoutMs: number): number {
+      return Math.min(3000, Math.max(500, Math.floor(timeoutMs / 6)));
+    }
+
+    export async function findFirstVisible(page: Page, selectors: string[], timeoutMs: number): Promise<Locator | null> {
+      for (const raw of orderSelectors(selectors[0], selectors.slice(1))) {
+        const locator = resolveLocator(page, raw);
+        try {
+          await locator.waitFor({ state: 'visible', timeout: shortProbeTimeout(timeoutMs) });
+          return locator;
+        } catch {
+          // probe next
+        }
+      }
+      return null;
+    }
+
+    export function resolveLocator(page: Page, raw: string): Locator {
+      const parsed = parseSelector(raw);
+      switch (parsed.kind) {
+        case 'data-testid':
+          return page.getByTestId(parsed.value);
+        case 'role':
+          return page.getByRole(parsed.value as never, parsed.name ? { name: parsed.name } : undefined);
+        case 'text':
+          return page.getByText(parsed.value, { exact: false });
+        case 'css':
+          return page.locator(parsed.value);
+      }
+    }
+
+    export function visibleSelectorReport(selectors: string[]): string {
+      const ordered = orderSelectors(selectors[0], selectors.slice(1));
+      return ordered.length === 1
+        ? `selector ${ordered[0]} was not visible`
+        : `none of the selectors were visible: ${ordered.join(' | ')}`;
+    }
+  runner/lock.ts: |-
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import { z } from 'zod';
+    import { ensureDir } from './artifacts';
+    import { targetSchema, LOCK_FILE_NAME, type Target } from './schema';
+
+    const lockSchema = z.object({
+      version: z.number(),
+      targets: z.array(targetSchema),
+    });
+
+    export const LOCK_VERSION = 1;
+
+    export function writeLock(targets: Target[], outputDir: string): string {
+      ensureDir(outputDir);
+      const file = path.join(outputDir, LOCK_FILE_NAME);
+      const payload = { version: LOCK_VERSION, targets };
+      fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf8');
+      return file;
+    }
+
+    export function readLock(lockFile: string): Target[] {
+      const raw = fs.readFileSync(lockFile, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      const result = lockSchema.safeParse(parsed);
+      if (!result.success) {
+        throw new Error(`invalid target lock file ${lockFile}: ${result.error.message}`);
+      }
+      if (result.data.version !== LOCK_VERSION) {
+        throw new Error(`unsupported target lock version ${result.data.version}`);
+      }
+      return result.data.targets;
+    }
+  runner/schema.ts: |-
+    import { z } from 'zod';
+
+    export const ENV_LOCK_FILE = 'SYNTHETIC_LOCK_FILE';
+    export const ENV_OUTPUT_DIR = 'SYNTHETIC_OUTPUT_DIR';
+    export const DEFAULT_OUTPUT_DIR = 'output';
+    export const TARGETS_DIR = 'targets';
+    export const COMPILED_DIR = '.compiled';
+    export const LOCK_FILE_NAME = '.target-lock.json';
+
+    export const selectorField = (message: string) =>
+      z
+        .string()
+        .min(1)
+        .refine(isPrefixedSelector, { message });
+
+    export function isPrefixedSelector(raw: string): boolean {
+      return /^(data-testid|role|text|css):/.test(raw);
+    }
+
+    const goToAction = z.object({
+      type: z.literal('goto'),
+      url: z.string().refine(
+        (u) => u.startsWith('https://') || u.startsWith('/'),
+        'goto url must be an absolute HTTPS URL or a root-relative path',
+      ),
+    });
+
+    const visibleAction = z
+      .object({
+        type: z.literal('visible'),
+        selector: selectorField(
+          'visible selector must be prefixed: data-testid:<id> | role:<role>[:<name>] | text:<text> | css:<selector>',
+        ),
+      })
+      .extend({ fallback: z.array(selectorField('fallback selectors must be prefixed')).default([]) });
+
+    const textAction = z
+      .object({
+        type: z.literal('text'),
+        text: z.string().min(1),
+        selector: selectorField('text selector must be prefixed').optional(),
+        contains: z.boolean().default(true),
+      })
+      .extend({ fallback: z.array(selectorField('fallback selectors must be prefixed')).default([]) });
+
+    const urlAction = z.object({
+      type: z.literal('url'),
+      pattern: z.string().min(1),
+      regex: z.boolean().default(false),
+    });
+
+    const fillAction = z
+      .object({
+        type: z.literal('fill'),
+        selector: selectorField('fill selector must be prefixed'),
+        value: z.string().optional(),
+        valueFromEnv: z
+          .string()
+          .regex(/^[A-Z][A-Z0-9_]*$/, 'valueFromEnv must be an UPPER_CASE environment variable name')
+          .optional(),
+      })
+      .extend({ fallback: z.array(selectorField('fallback selectors must be prefixed')).default([]) })
+      .superRefine((v, ctx) => {
+        if ((v.value !== undefined) === (v.valueFromEnv !== undefined)) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'fill requires exactly one of value or valueFromEnv',
+          });
+        }
+      });
+
+    const clickAction = z
+      .object({
+        type: z.literal('click'),
+        selector: selectorField('click selector must be prefixed'),
+      })
+      .extend({ fallback: z.array(selectorField('fallback selectors must be prefixed')).default([]) });
+
+    const screenshotAction = z.object({
+      type: z.literal('screenshot'),
+      name: z.string().regex(/^[a-zA-Z0-9_-]+$/, 'screenshot name must be [a-zA-Z0-9_-]'),
+      fullPage: z.boolean().default(true),
+      mask: z.array(selectorField('mask selectors must be prefixed')).default([]),
+    });
+
+    export const actionSchema = z.discriminatedUnion('type', [
+      goToAction,
+      visibleAction,
+      textAction,
+      urlAction,
+      fillAction,
+      clickAction,
+      screenshotAction,
+    ]);
+    export type Action = z.infer<typeof actionSchema>;
+
+    const anonymousAuth = z.object({ mode: z.literal('anonymous') });
+    const credentialedAuth = z.object({
+      mode: z.literal('credentialed'),
+      envVars: z
+        .array(z.string().regex(/^[A-Z][A-Z0-9_]*$/, 'envVar names must be UPPER_CASE'))
+        .min(1, 'credentialed targets must declare at least one envVars name'),
+    });
+    export const authSchema = z.discriminatedUnion('mode', [anonymousAuth, credentialedAuth]);
+    export type Auth = z.infer<typeof authSchema>;
+
+    export const targetSchema = z
+      .object({
+        id: z.string().regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'id must be lowercase kebab-case'),
+        name: z.string().min(1).max(200),
+        baseUrl: z
+          .string()
+          .url('baseUrl must be a valid absolute URL')
+          .refine((u) => u.startsWith('https://'), 'baseUrl must be HTTPS (never plain http)'),
+        auth: authSchema.default({ mode: 'anonymous' }),
+        minIntervalMinutes: z.number().int().min(15).max(1440).default(15),
+        timeoutMs: z.number().int().min(5000).max(600000).default(120000),
+        retries: z.number().int().min(0).max(2).default(0),
+        journey: z
+          .string()
+          .regex(/^journeys\/[a-z0-9-]+\.ts$/, 'journey must be journeys/<kebab-id>.ts')
+          .optional(),
+        selectors: z.string().optional(),
+        actions: z.array(actionSchema).default([]),
+      })
+      .refine((t) => t.journey !== undefined || t.actions.length > 0, {
+        message: 'target must declare a journey or at least one action to execute',
+      });
+
+    export type Target = z.infer<typeof targetSchema>;
+
+    export type CredentialedTarget = Target & {
+      auth: { mode: 'credentialed'; envVars: string[] };
+    };
+
+    export function isCredentialed(target: Target): target is CredentialedTarget {
+      return target.auth.mode === 'credentialed';
+    }
+  runner/secrets.ts: |-
+    import { isCredentialed, type Target } from './schema';
+
+    export type SecretCheck =
+      | { ok: true }
+      | { ok: false; missing: string[]; reason: string };
+
+    export function checkTargetSecrets(target: Target, env: NodeJS.ProcessEnv = process.env): SecretCheck {
+      if (!isCredentialed(target)) {
+        return { ok: true };
+      }
+      const missing = target.auth.envVars.filter((name) => {
+        const value = env[name];
+        return value === undefined || value.trim() === '';
+      });
+      if (missing.length > 0) {
+        return {
+          ok: false,
+          missing,
+          reason: `credentialed target '${target.id}' requires env vars ${missing.join(', ')}; set them to execute, or the target is skipped`,
+        };
+      }
+      return { ok: true };
+    }
+  tests/journeys.spec.ts: |-
+    import { test } from '@playwright/test';
+    import { readLock } from '../runner/lock';
+    import { runTargetJourney } from '../runner/journey';
+    import { ENV_LOCK_FILE, ENV_OUTPUT_DIR, DEFAULT_OUTPUT_DIR } from '../runner/schema';
+
+    const lockFile = process.env[ENV_LOCK_FILE];
+    if (lockFile === undefined) {
+      throw new Error(`${ENV_LOCK_FILE} must point at the target lock file`);
+    }
+    const outputDir = process.env[ENV_OUTPUT_DIR] || DEFAULT_OUTPUT_DIR;
+
+    const targets = readLock(lockFile);
+
+    for (const target of targets) {
+      test(`${target.id}: ${target.name}`, async ({ browser }, testInfo) => {
+        const outcome = await runTargetJourney({
+          target,
+          browser,
+          testInfo,
+          outputDir,
+        });
+        if (outcome.status === 'skipped') {
+          test.skip(true, outcome.reason ?? 'target skipped');
+        }
+      });
+    }
+  tsconfig.json: |-
+    {
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "noEmit": true,
+        "types": ["node"]
+      },
+      "include": ["runner/**/*.ts", "tests/**/*.ts", "journeys/**/*.ts", "*.ts"]
+    }
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: synthetic-monitoring
+    app.kubernetes.io/name: synthetic-monitor
+    app.kubernetes.io/part-of: sre-platform
+  name: synthetic-source
+  namespace: synthetic-monitoring
+---
+apiVersion: v1
+data:
+  plantmaster.yaml: |-
+    # Synthetic monitoring target: PlantMaster public marketing site (TASK-142, TASK-146)
+    #
+    # SELECTOR RATIONALE
+    # The PlantMaster homepage is a server-rendered Zurb Foundation site. It exposes:
+    #   - no ARIA roles and no data-testid attributes (verified against live HTML)
+    #   - semantic <header> and <footer id="footer"> landmarks
+    #   - the primary navigation is the Foundation top bar:
+    #       header .top-bar > .top-bar-left > ul.menu > li > a
+    #   - branding is the PlantMaster logo image: header .top-bar-logo
+    # Therefore this target uses css:/text: prefixed selectors with fallbacks and
+    # deliberately avoids asserting exact marketing copy that may change.
+    #
+    # SAFETY
+    # Read-only availability checks only. No forms are submitted, no records are
+    # created or mutated, no login is performed, no client storage is relied upon,
+    # and this profile never persists credentials. Retries are zero; the scheduled
+    # CronJob run executes this anonymous target and never receives secrets. The
+    # scheduled run also sets SYNTHETIC_NO_ARTIFACTS=1 (see cronjob.yaml) so no
+    # screenshots or traces are produced on CronJob runs.
+
+    id: plantmaster
+    name: PlantMaster public site - availability and essential rendering
+    baseUrl: https://plantmaster.com/
+    # Bounded schedule: 15 minutes is the maximum permitted frequency
+    # (minIntervalMinutes >= 15 enforced by the schema).
+    minIntervalMinutes: 15
+    timeoutMs: 120000
+    retries: 0
+
+    actions:
+      # 1. Page loads over HTTPS with a 2xx status
+      - type: goto
+        url: https://plantmaster.com/
+
+      # 2. URL reflects the expected site (allow hash anchors, no redirect target
+      #    drift expected; do not assert marketing landing paths that may change)
+      - type: url
+        pattern: ^https://plantmaster\.com/?(#.*)?$
+        regex: true
+
+      # 3. Branding/header renders (logo image in the Foundation top bar;
+      #    fall back to the whole top bar, then site header, then skip-to-content)
+      - type: visible
+        selector: css:header .top-bar-logo
+        fallback:
+          - css:#plantmaster-menu
+          - css:header
+          - css:a[href="#content"]
+
+      # 4. Primary navigation renders (top bar menu links; fall back to the two
+      #    header auth links which have been stable on this site)
+      - type: visible
+        selector: css:header .top-bar ul.menu a
+        fallback:
+          - text:Log In
+          - text:Sign Up
+
+      # 5. Footer renders
+      - type: visible
+        selector: css:footer#footer
+        fallback:
+          - css:footer
+          - text:PlantMaster
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: synthetic-monitoring
+    app.kubernetes.io/name: synthetic-monitor
+    app.kubernetes.io/part-of: sre-platform
+  name: synthetic-targets
+  namespace: synthetic-monitoring
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  labels:
+    app.kubernetes.io/component: synthetic-monitoring
+    app.kubernetes.io/name: synthetic-monitor
+    app.kubernetes.io/part-of: sre-platform
+  name: synthetic-monitor
+  namespace: synthetic-monitoring
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/component: synthetic-monitoring
+        app.kubernetes.io/name: synthetic-monitor
+        app.kubernetes.io/part-of: sre-platform
+    spec:
+      activeDeadlineSeconds: 900
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: synthetic-monitoring
+            app.kubernetes.io/name: synthetic-monitor
+            app.kubernetes.io/part-of: sre-platform
+        spec:
+          containers:
+          - args:
+            - node_modules/tsx/dist/cli.mjs
+            - runner/index.ts
+            - --targets
+            - plantmaster
+            - --output-dir
+            - /synthetic-output
+            command:
+            - node
+            env:
+            - name: HOME
+              value: /synthetic-tmp
+            - name: TMPDIR
+              value: /synthetic-tmp
+            - name: PLAYWRIGHT_BROWSERS_PATH
+              value: /ms-playwright
+            - name: SYNTHETIC_OUTPUT_DIR
+              value: /synthetic-output
+            - name: SYNTHETIC_NO_ARTIFACTS
+              value: "1"
+            image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+            name: synthetic-monitor
+            resources:
+              limits:
+                cpu: 500m
+                memory: 1Gi
+              requests:
+                cpu: 100m
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              readOnlyRootFilesystem: true
+            volumeMounts:
+            - mountPath: /app
+              name: synthetic-app
+              readOnly: true
+            - mountPath: /app/targets
+              name: synthetic-targets
+              readOnly: true
+            - mountPath: /synthetic-tmp
+              name: synthetic-tmp
+            - mountPath: /synthetic-output
+              name: synthetic-output
+            workingDir: /app
+          initContainers:
+          - args:
+            - set -eu; cp -a /src/. /app/; cd /app; npm ci --omit=dev --no-audit --no-fund
+              --ignore-scripts --no-update-notifier
+            command:
+            - /bin/sh
+            - -c
+            env:
+            - name: HOME
+              value: /synthetic-tmp
+            - name: TMPDIR
+              value: /synthetic-tmp
+            image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+            name: npm-ci
+            resources:
+              limits:
+                cpu: 500m
+                memory: 1Gi
+              requests:
+                cpu: 100m
+                memory: 256Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              readOnlyRootFilesystem: true
+            volumeMounts:
+            - mountPath: /app
+              name: synthetic-app
+            - mountPath: /src
+              name: synthetic-source
+              readOnly: true
+            - mountPath: /synthetic-tmp
+              name: synthetic-tmp
+            workingDir: /app
+          restartPolicy: Never
+          securityContext:
+            runAsGroup: 1000
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          volumes:
+          - emptyDir: {}
+            name: synthetic-app
+          - configMap:
+              defaultMode: 292
+              name: synthetic-source
+            name: synthetic-source
+          - configMap:
+              defaultMode: 292
+              name: synthetic-targets
+            name: synthetic-targets
+          - emptyDir: {}
+            name: synthetic-tmp
+          - emptyDir: {}
+            name: synthetic-output
+      ttlSecondsAfterFinished: 600
+  schedule: '*/15 * * * *'
+  startingDeadlineSeconds: 60
+  successfulJobsHistoryLimit: 2

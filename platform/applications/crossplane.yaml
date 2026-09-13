@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cert-manager
+  name: crossplane
   namespace: argocd
   annotations:
     argocd.argoproj.io/refresh: hard
@@ -17,10 +17,10 @@ spec:
   source:
     repoURL: "https://github.com/dawid-koldras-home/sre-platform-gitops.git"
     targetRevision: "main"
-    path: "platform/modules/cert-manager"
+    path: "platform/modules/crossplane"
   destination:
     server: https://kubernetes.default.svc
-    namespace: "cert-manager"
+    namespace: "crossplane"
   syncPolicy:
     automated:
       prune: true
