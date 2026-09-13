@@ -2126,9 +2126,6 @@ spec:
             - mountPath: /app
               name: synthetic-app
               readOnly: true
-            - mountPath: /app/targets
-              name: synthetic-targets
-              readOnly: true
             - mountPath: /synthetic-tmp
               name: synthetic-tmp
             - mountPath: /synthetic-output
@@ -2137,7 +2134,9 @@ spec:
           initContainers:
           - args:
             - set -eu; cp -R --no-preserve=mode,ownership,timestamps /src/. /app/;
-              cd /app; npm ci --omit=dev --no-audit --no-fund --ignore-scripts --no-update-notifier
+              mkdir -p /app/targets; cp -R --no-preserve=mode,ownership,timestamps
+              /targets-source/. /app/targets/; cd /app; npm ci --omit=dev --no-audit
+              --no-fund --ignore-scripts --no-update-notifier
             command:
             - /bin/sh
             - -c
@@ -2167,6 +2166,9 @@ spec:
               name: synthetic-app
             - mountPath: /src
               name: synthetic-source
+              readOnly: true
+            - mountPath: /targets-source
+              name: synthetic-targets
               readOnly: true
             - mountPath: /synthetic-tmp
               name: synthetic-tmp
