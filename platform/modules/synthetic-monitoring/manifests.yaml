@@ -2120,6 +2120,7 @@ spec:
               capabilities:
                 drop:
                 - ALL
+              privileged: false
               readOnlyRootFilesystem: true
             volumeMounts:
             - mountPath: /app
@@ -2135,8 +2136,8 @@ spec:
             workingDir: /app
           initContainers:
           - args:
-            - set -eu; cp -a /src/. /app/; cd /app; npm ci --omit=dev --no-audit --no-fund
-              --ignore-scripts --no-update-notifier
+            - set -eu; cp -R --no-preserve=mode,ownership,timestamps /src/. /app/;
+              cd /app; npm ci --omit=dev --no-audit --no-fund --ignore-scripts --no-update-notifier
             command:
             - /bin/sh
             - -c
@@ -2159,6 +2160,7 @@ spec:
               capabilities:
                 drop:
                 - ALL
+              privileged: false
               readOnlyRootFilesystem: true
             volumeMounts:
             - mountPath: /app
