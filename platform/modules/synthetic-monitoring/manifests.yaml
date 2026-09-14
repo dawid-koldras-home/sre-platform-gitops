@@ -1136,6 +1136,10 @@ data:
           }
           return response === null ? {} : { httpStatus: response.status() };
         }
+        case 'wait': {
+          await page.waitForTimeout(action.durationMs);
+          return {};
+        }
         case 'visible': {
           await assertSingleVisible(ctx, selectorsOf(action.selector, action.fallback));
           return { selector: action.selector };
@@ -2017,6 +2021,12 @@ data:
       ),
     });
 
+    const waitAction = z.object({
+      check: checkField,
+      type: z.literal('wait'),
+      durationMs: z.number().int().min(1).max(60000),
+    });
+
     const visibleAction = z
       .object({
         check: checkField,
@@ -2083,6 +2093,7 @@ data:
 
     export const actionSchema = z.discriminatedUnion('type', [
       goToAction,
+      waitAction,
       visibleAction,
       textAction,
       urlAction,
@@ -2270,6 +2281,21 @@ data:
       - type: visible
         check: authenticated-projects-navigation
         selector: css:a[href="/projects/"]
+
+      # Revisit the public homepage after a short session-settling period. The
+      # user-menu control is present only in the authenticated homepage view; its
+      # text is deliberately not read or logged.
+      - type: goto
+        check: authenticated-homepage-http
+        url: /
+
+      - type: wait
+        check: authenticated-homepage-settled
+        durationMs: 10000
+
+      - type: visible
+        check: authenticated-homepage-user-menu
+        selector: css:#plantmaster-menu .top-bar-right a[href="#"][role="menuitem"]
   plantmaster.yaml: |-
     # Synthetic monitoring target: PlantMaster public marketing site (TASK-142, TASK-146)
     #
