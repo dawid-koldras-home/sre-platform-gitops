@@ -2242,19 +2242,9 @@ data:
         text: Forgot Password?
         contains: false
 
-      # Read-only live inspection found these stable authenticated controls on the
-      # Project Plants landing page. They prove an active session without reading
-      # project, plant, or account content.
-      # The navigation is rendered inside the collapsed responsive menu, so expose
-      # it first; this is a UI-only action and does not navigate or mutate data.
-      - type: click
-        check: authenticated-menu-open
-        selector: css:#pm-menu-button
-
-      - type: visible
-        check: authenticated-logout-control
-        selector: css:a[href="/logout.php"]
-
+      # Live inspection confirms Projects is a visible top-level authenticated
+      # navigation control. Log Out is deliberately not checked because it sits in
+      # a hidden nested user menu at the scheduled desktop viewport.
       - type: visible
         check: authenticated-projects-navigation
         selector: css:a[href="/projects/"]
