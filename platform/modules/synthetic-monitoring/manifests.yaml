@@ -2242,12 +2242,12 @@ data:
         text: Forgot Password?
         contains: false
 
-      # Live inspection confirms Projects is a visible top-level authenticated
-      # navigation control. Log Out is deliberately not checked because it sits in
-      # a hidden nested user menu at the scheduled desktop viewport.
+      # The scheduled desktop viewport keeps the navigation collapsed. The
+      # authenticated landing heading is visibly rendered after a successful login
+      # and does not expose account, plant, or project data.
       - type: visible
-        check: authenticated-projects-navigation
-        selector: css:a[href="/projects/"]
+        check: authenticated-landing-heading
+        selector: text:Project Plants
   plantmaster.yaml: |-
     # Synthetic monitoring target: PlantMaster public marketing site (TASK-142, TASK-146)
     #
