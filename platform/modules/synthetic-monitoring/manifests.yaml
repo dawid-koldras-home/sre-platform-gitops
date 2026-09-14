@@ -1071,7 +1071,7 @@ data:
       error?: string;
     }
 
-    export type CheckReporter = (result: CheckResult) => void;
+    export type CheckReporter = (result: CheckResult) => void | Promise<void>;
 
     function resolveUrl(target: Target, url: string): string {
       if (url.startsWith('/')) {
@@ -1103,10 +1103,10 @@ data:
         const check = action.check ?? `${action.type}-${index + 1}`;
         try {
           const details = await runAction(ctx, action);
-          report?.({ target: target.id, check, action: action.type, status: 'passed', durationMs: Date.now() - startedAt, ...details });
+          await report?.({ target: target.id, check, action: action.type, status: 'passed', durationMs: Date.now() - startedAt, ...details });
         } catch (err) {
           const error = err instanceof Error ? err.message : String(err);
-          report?.({ target: target.id, check, action: action.type, status: 'failed', durationMs: Date.now() - startedAt, error });
+          await report?.({ target: target.id, check, action: action.type, status: 'failed', durationMs: Date.now() - startedAt, error });
           throw err;
         }
       }
@@ -1417,7 +1417,7 @@ data:
     import path from 'node:path';
     import type { Browser, Page, TestInfo } from '@playwright/test';
     import { runActions } from './actions';
-    import { emitCheckResult } from './jsonreporter';
+    import { checkAttachmentName, formatCheckResult } from './jsonreporter';
     import { ensureDir, evidenceDirFor, maskSelectorsFor, noArtifactsEnabled } from './artifacts';
     import { resolveLocator } from './locators';
     import { COMPILED_DIR, isCredentialed, type Target } from './schema';
@@ -1516,7 +1516,12 @@ data:
           if (journey !== null) {
             await journey(pageRef.current, target, helpers);
           } else {
-            await runActions(target, pageRef.current, outputDir, emitCheckResult);
+            await runActions(target, pageRef.current, outputDir, async (result) => {
+              await testInfo.attach(checkAttachmentName(result.check), {
+                body: Buffer.from(formatCheckResult(result)),
+                contentType: 'application/json',
+              });
+            });
           }
           if (traceAllowed) {
             await context.tracing.stop();
@@ -1570,6 +1575,8 @@ data:
       error?: string;
     }
 
+    const CHECK_ATTACHMENT_PREFIX = 'synthetic-check:';
+
     function scrub(text: string): string {
       const flattened = redactText(text);
       return flattened
@@ -1582,7 +1589,7 @@ data:
 
     // Emits scrubbed per-action diagnostics. Values typed into forms and URL query
     // strings are deliberately never included in this contract.
-    export function emitCheckResult(result: CheckResult): void {
+    export function formatCheckResult(result: CheckResult): string {
       const line = {
         target: result.target,
         check: result.check,
@@ -1593,7 +1600,11 @@ data:
         ...(result.selector === undefined ? {} : { selector: result.selector }),
         ...(result.error === undefined ? {} : { error: scrub(result.error) }),
       };
-      process.stdout.write(`${JSON.stringify(line)}\n`);
+      return JSON.stringify(line);
+    }
+
+    export function checkAttachmentName(check: string): string {
+      return `${CHECK_ATTACHMENT_PREFIX}${check}`;
     }
 
     // Emits exactly one sanitized JSON object per target to stdout. Playwright
@@ -1601,6 +1612,11 @@ data:
     // source of truth for the CronJob; this line is the machine-readable summary.
     export class SyntheticJsonReporter implements Reporter {
       onTestEnd(test: TestCase, result: TestResult): void {
+        for (const attachment of result.attachments) {
+          if (attachment.name.startsWith(CHECK_ATTACHMENT_PREFIX) && attachment.body !== undefined) {
+            process.stdout.write(`${attachment.body.toString()}\n`);
+          }
+        }
         const target = test.title.split(': ')[0] || test.title;
         const status: SyntheticRunLine['status'] =
           result.status === 'passed' ? 'passed' : result.status === 'skipped' ? 'skipped' : 'failed';
