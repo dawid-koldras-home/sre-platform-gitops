@@ -1897,11 +1897,16 @@ data:
     export async function findFirstVisible(page: Page, selectors: string[], timeoutMs: number): Promise<Locator | null> {
       for (const raw of orderSelectors(selectors[0], selectors.slice(1))) {
         const locator = resolveLocator(page, raw);
-        try {
-          await locator.waitFor({ state: 'visible', timeout: shortProbeTimeout(timeoutMs) });
-          return locator;
-        } catch {
-          // probe next
+        const deadline = Date.now() + shortProbeTimeout(timeoutMs);
+        while (Date.now() < deadline) {
+          const count = await locator.count();
+          for (let index = 0; index < count; index += 1) {
+            const candidate = locator.nth(index);
+            if (await candidate.isVisible().catch(() => false)) {
+              return candidate;
+            }
+          }
+          await page.waitForTimeout(100);
         }
       }
       return null;
@@ -2242,12 +2247,12 @@ data:
         text: Forgot Password?
         contains: false
 
-      # The scheduled desktop viewport keeps the navigation collapsed. The
-      # authenticated landing heading is visibly rendered after a successful login
-      # and does not expose account, plant, or project data.
+      # The authenticated landing page exposes a Projects link. The responsive
+      # markup also contains a hidden duplicate, so the runner intentionally
+      # selects the first visible match without opening or following the link.
       - type: visible
-        check: authenticated-landing-heading
-        selector: text:Project Plants
+        check: authenticated-projects-navigation
+        selector: css:a[href="/projects/"]
   plantmaster.yaml: |-
     # Synthetic monitoring target: PlantMaster public marketing site (TASK-142, TASK-146)
     #
