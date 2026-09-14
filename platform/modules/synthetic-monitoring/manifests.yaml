@@ -2241,6 +2241,17 @@ data:
         check: authenticated-form-dismissed
         text: Forgot Password?
         contains: false
+
+      # Read-only live inspection found these stable authenticated controls on the
+      # Project Plants landing page. They prove an active session without reading
+      # project, plant, or account content.
+      - type: visible
+        check: authenticated-logout-control
+        selector: css:a[href="/logout.php"]
+
+      - type: visible
+        check: authenticated-projects-navigation
+        selector: css:a[href="/projects/"]
   plantmaster.yaml: |-
     # Synthetic monitoring target: PlantMaster public marketing site (TASK-142, TASK-146)
     #
