@@ -26,6 +26,7 @@ data:
           "dependencies": {
             "@playwright/test": "1.63.0",
             "esbuild": "0.28.2",
+            "nodemailer": "10.0.9",
             "tsx": "4.23.13",
             "yaml": "2.9.1",
             "zod": "4.6.2"
@@ -874,6 +875,15 @@ data:
             "node": "^8.16.0 || ^10.6.0 || >=11.0.0"
           }
         },
+        "node_modules/nodemailer": {
+          "version": "10.0.9",
+          "resolved": "https://registry.npmjs.org/nodemailer/-/nodemailer-10.0.9.tgz",
+          "integrity": "sha512-BF0qcyplCwp+jMk6HCjFykBz/YhhZSsxrARhOldLwFWH+8kGjQsd2WIMIZhqEuyXRoGFi0ONbDeWDMDoL8MhLw==",
+          "license": "MIT-0",
+          "engines": {
+            "node": ">=20.0.0"
+          }
+        },
         "node_modules/playwright": {
           "version": "1.63.0",
           "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz",
@@ -1007,6 +1017,7 @@ data:
       "dependencies": {
         "@playwright/test": "1.63.0",
         "esbuild": "0.28.2",
+        "nodemailer": "10.0.9",
         "tsx": "4.23.13",
         "yaml": "2.9.1",
         "zod": "4.6.2"
@@ -1233,6 +1244,120 @@ data:
     export function evidenceDirFor(outputDir: string, targetId: string): string {
       return path.join(outputDir, targetId);
     }
+  runner.email.ts: |-
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import nodemailer from 'nodemailer';
+
+    export interface CheckEvent {
+      target: string;
+      check: string;
+      action: string;
+      status: 'passed' | 'failed';
+      durationMs: number;
+      httpStatus?: number;
+      selector?: string;
+    }
+
+    export interface TargetSummary {
+      target: string;
+      status: 'passed' | 'failed' | 'skipped';
+      startedAt: string;
+      finishedAt: string;
+      durationMs: number;
+    }
+
+    export interface EmailConfig {
+      host: string;
+      port: number;
+      user: string;
+      pass: string;
+      from: string;
+      to: string;
+    }
+
+    export interface EmailTransport {
+      sendMail(message: { from: string; to: string; subject: string; html: string }): Promise<unknown>;
+    }
+
+    const emailDir = () => process.env.SYNTHETIC_EMAIL_DIR || '/synthetic-email';
+
+    function readSecretFile(dir: string, key: string): string | undefined {
+      const file = path.join(dir, key);
+      if (!fs.existsSync(file)) return undefined;
+      const value = fs.readFileSync(file, 'utf8').trim();
+      return value === '' ? undefined : value;
+    }
+
+    export function loadEmailConfig(dir = emailDir()): EmailConfig | undefined {
+      const host = readSecretFile(dir, 'SMTP_HOST');
+      if (host === undefined) return undefined;
+      const port = Number(readSecretFile(dir, 'SMTP_PORT'));
+      const user = readSecretFile(dir, 'SMTP_USER');
+      const pass = readSecretFile(dir, 'SMTP_PASS');
+      const from = readSecretFile(dir, 'MAIL_FROM');
+      const to = readSecretFile(dir, 'MAIL_TO');
+      if (!Number.isInteger(port) || port < 1 || port > 65535 || !user || !pass || !from || !to) {
+        throw new Error('synthetic email Secret is incomplete or invalid');
+      }
+      return { host, port, user, pass, from, to };
+    }
+
+    function isCheckEvent(value: unknown): value is CheckEvent {
+      return typeof value === 'object' && value !== null && 'check' in value && 'action' in value && 'target' in value;
+    }
+
+    function isTargetSummary(value: unknown): value is TargetSummary {
+      return typeof value === 'object' && value !== null && !('check' in value) && 'target' in value && 'status' in value;
+    }
+
+    export function parseRunOutput(output: string): { checks: CheckEvent[]; summaries: TargetSummary[] } {
+      const checks: CheckEvent[] = [];
+      const summaries: TargetSummary[] = [];
+      for (const line of output.split(/\r?\n/)) {
+        try {
+          const parsed: unknown = JSON.parse(line);
+          if (isCheckEvent(parsed)) checks.push(parsed);
+          if (isTargetSummary(parsed)) summaries.push(parsed);
+        } catch {
+          // Playwright's human-readable output is not part of the notification.
+        }
+      }
+      return { checks, summaries };
+    }
+
+    function escapeHTML(value: string | number): string {
+      return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] as string);
+    }
+
+    export function successEmailHTML(summary: TargetSummary, checks: CheckEvent[]): string {
+      const rows = checks
+        .filter((check) => check.target === summary.target)
+        .map((check) => `<tr><td>${escapeHTML(check.check)}</td><td>${escapeHTML(check.action)}</td><td style="color:#16794c;font-weight:600">PASSED</td><td>${escapeHTML(check.durationMs)} ms</td><td>${check.httpStatus === undefined ? '-' : escapeHTML(check.httpStatus)}</td></tr>`)
+        .join('');
+      return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#172033"><h2 style="color:#16794c">Synthetic monitor passed</h2><p><strong>Target:</strong> ${escapeHTML(summary.target)}<br><strong>Duration:</strong> ${escapeHTML(summary.durationMs)} ms<br><strong>Finished:</strong> ${escapeHTML(summary.finishedAt)}</p><table style="border-collapse:collapse;width:100%"><thead><tr><th style="text-align:left;border-bottom:1px solid #d0d7de">Check</th><th style="text-align:left;border-bottom:1px solid #d0d7de">Action</th><th style="text-align:left;border-bottom:1px solid #d0d7de">Status</th><th style="text-align:left;border-bottom:1px solid #d0d7de">Duration</th><th style="text-align:left;border-bottom:1px solid #d0d7de">HTTP</th></tr></thead><tbody>${rows}</tbody></table><p style="color:#57606a;font-size:12px">Generated by SRE Platform synthetic monitoring.</p></body></html>`;
+    }
+
+    export async function sendSuccessNotifications(
+      output: string,
+      config = loadEmailConfig(),
+      createTransport: (config: EmailConfig) => EmailTransport = (smtp) => nodemailer.createTransport({ host: smtp.host, port: smtp.port, secure: smtp.port === 465, requireTLS: smtp.port === 587, auth: { user: smtp.user, pass: smtp.pass } }),
+    ): Promise<number> {
+      if (config === undefined) return 0;
+      const { checks, summaries } = parseRunOutput(output);
+      const transport = createTransport(config);
+      let sent = 0;
+      for (const summary of summaries.filter((item) => item.status === 'passed')) {
+        await transport.sendMail({
+          from: config.from,
+          to: config.to,
+          subject: `[PASS] SRE Synthetic Monitor: ${summary.target}`,
+          html: successEmailHTML(summary, checks),
+        });
+        sent += 1;
+      }
+      return sent;
+    }
   runner.index.ts: |-
     #!/usr/bin/env node
     import { spawnSync } from 'node:child_process';
@@ -1243,6 +1368,7 @@ data:
     import { loadTargetsOrFail, filterTargetsById, unknownTargetIds, targetsDirectory } from './loader';
     import { writeLock } from './lock';
     import { checkTargetSecrets } from './secrets';
+    import { sendSuccessNotifications } from './email';
     import { COMPILED_DIR, ENV_LOCK_FILE, ENV_OUTPUT_DIR, LOCK_FILE_NAME, type Target } from './schema';
 
     const root = path.resolve(__dirname, '..');
@@ -1346,7 +1472,7 @@ data:
       });
     }
 
-    function run(args: CliArgs, targets: Target[]): void {
+    async function run(args: CliArgs, targets: Target[]): Promise<number> {
       const lockFile = writeLock(targets, args.outputDir);
 
       const skips = targets
@@ -1367,7 +1493,8 @@ data:
         [cli, 'test', specFilter, '--config', runnerConfig],
         {
           cwd: root,
-          stdio: 'inherit',
+          stdio: ['inherit', 'pipe', 'inherit'],
+          encoding: 'utf8',
           env: {
             ...process.env,
             [ENV_LOCK_FILE]: lockFile,
@@ -1375,7 +1502,18 @@ data:
           },
         },
       );
-      process.exit(result.status ?? 1);
+      const output = result.stdout ?? '';
+      process.stdout.write(output);
+      const status = result.status ?? 1;
+      if (status !== 0) return status;
+      try {
+        const sent = await sendSuccessNotifications(output);
+        if (sent > 0) console.log(`[notification] sent ${sent} success email(s)`);
+      } catch {
+        console.error('[notification] email delivery failed; inspect the synthetic-email Secret and SMTP access');
+        return 1;
+      }
+      return 0;
     }
 
     async function main(): Promise<void> {
@@ -1404,7 +1542,7 @@ data:
       }
 
       await compileJourneys(selected, args.outputDir);
-      run(args, selected);
+      process.exit(await run(args, selected));
     }
 
     ensureDir(targetsDirectory(root));
@@ -2179,6 +2317,8 @@ spec:
               value: /synthetic-output
             - name: SYNTHETIC_NO_ARTIFACTS
               value: "1"
+            - name: SYNTHETIC_EMAIL_DIR
+              value: /synthetic-email
             image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
             name: synthetic-monitor
             resources:
@@ -2203,6 +2343,9 @@ spec:
               name: synthetic-tmp
             - mountPath: /synthetic-output
               name: synthetic-output
+            - mountPath: /synthetic-email
+              name: synthetic-email
+              readOnly: true
             workingDir: /app
           initContainers:
           - args:
@@ -2272,6 +2415,8 @@ spec:
                 path: runner/actions.ts
               - key: runner.artifacts.ts
                 path: runner/artifacts.ts
+              - key: runner.email.ts
+                path: runner/email.ts
               - key: runner.index.ts
                 path: runner/index.ts
               - key: runner.journey.ts
@@ -2302,6 +2447,10 @@ spec:
             name: synthetic-tmp
           - emptyDir: {}
             name: synthetic-output
+          - name: synthetic-email
+            secret:
+              optional: true
+              secretName: synthetic-email
       ttlSecondsAfterFinished: 600
   schedule: '*/15 * * * *'
   startingDeadlineSeconds: 60
