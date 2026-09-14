@@ -2190,6 +2190,57 @@ metadata:
 ---
 apiVersion: v1
 data:
+  plantmaster-auth.yaml: |-
+    # Synthetic monitoring target: PlantMaster authenticated login (TASK-154)
+    #
+    # This is deliberately a read-only session check. It submits the login form,
+    # then verifies that the anonymous recovery text is absent. It never creates,
+    # updates, deletes, or submits any business data.
+    #
+    # Credentials are declared only by environment-variable names. The Kubernetes
+    # CronJob maps them from the existing plantmaster-synthetic-auth Secret.
+
+    id: plantmaster-auth
+    name: PlantMaster authenticated login and session rendering
+    baseUrl: https://plantmaster.com/
+    auth:
+      mode: credentialed
+      envVars:
+        - PLANTMASTER_USER
+        - PLANTMASTER_PASS
+    minIntervalMinutes: 15
+    timeoutMs: 120000
+    retries: 0
+
+    actions:
+      - type: goto
+        check: login-page-http
+        url: /login.php
+
+      - type: visible
+        check: login-form
+        selector: css:form#frmLogin
+
+      - type: fill
+        check: login-username
+        selector: css:input#email
+        valueFromEnv: PLANTMASTER_USER
+
+      - type: fill
+        check: login-password
+        selector: css:input#password
+        valueFromEnv: PLANTMASTER_PASS
+
+      - type: click
+        check: login-submit
+        selector: css:input#submit
+
+      # A successful session must replace the anonymous login form. This check
+      # avoids account data and remains robust if dashboard copy changes.
+      - type: text
+        check: authenticated-form-dismissed
+        text: Forgot Password?
+        contains: false
   plantmaster.yaml: |-
     # Synthetic monitoring target: PlantMaster public marketing site (TASK-142, TASK-146)
     #
@@ -2301,7 +2352,7 @@ spec:
             - node_modules/tsx/dist/cli.mjs
             - runner/index.ts
             - --targets
-            - plantmaster
+            - plantmaster,plantmaster-auth
             - --output-dir
             - /synthetic-output
             command:
@@ -2319,6 +2370,18 @@ spec:
               value: "1"
             - name: SYNTHETIC_EMAIL_DIR
               value: /synthetic-email
+            - name: PLANTMASTER_USER
+              valueFrom:
+                secretKeyRef:
+                  key: PLANTMASTER_USER
+                  name: plantmaster-synthetic-auth
+                  optional: true
+            - name: PLANTMASTER_PASS
+              valueFrom:
+                secretKeyRef:
+                  key: PLANTMASTER_PASS
+                  name: plantmaster-synthetic-auth
+                  optional: true
             image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
             name: synthetic-monitor
             resources:
