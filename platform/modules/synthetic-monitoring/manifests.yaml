@@ -1060,6 +1060,19 @@ data:
       outputDir: string;
     }
 
+    export interface CheckResult {
+      target: string;
+      check: string;
+      action: Action['type'];
+      status: 'passed' | 'failed';
+      durationMs: number;
+      httpStatus?: number;
+      selector?: string;
+      error?: string;
+    }
+
+    export type CheckReporter = (result: CheckResult) => void;
+
     function resolveUrl(target: Target, url: string): string {
       if (url.startsWith('/')) {
         return new URL(url, target.baseUrl).toString();
@@ -1080,17 +1093,26 @@ data:
       return text.replace(/\s+/g, ' ').trim();
     }
 
-    export async function runActions(target: Target, page: Page, outputDir: string): Promise<void> {
+    export async function runActions(target: Target, page: Page, outputDir: string, report?: CheckReporter): Promise<void> {
       // Re-validate so zod defaults (e.g. empty fallback lists) are applied even
       // when a caller constructs a literal target without parsing it.
       const actions = target.actions.map((a) => actionSchema.parse(a));
       const ctx: RunContext = { target, page, outputDir };
-      for (const action of actions) {
-        await runAction(ctx, action);
+      for (const [index, action] of actions.entries()) {
+        const startedAt = Date.now();
+        const check = action.check ?? `${action.type}-${index + 1}`;
+        try {
+          const details = await runAction(ctx, action);
+          report?.({ target: target.id, check, action: action.type, status: 'passed', durationMs: Date.now() - startedAt, ...details });
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          report?.({ target: target.id, check, action: action.type, status: 'failed', durationMs: Date.now() - startedAt, error });
+          throw err;
+        }
       }
     }
 
-    export async function runAction(ctx: RunContext, action: Action): Promise<void> {
+    export async function runAction(ctx: RunContext, action: Action): Promise<Pick<CheckResult, 'httpStatus' | 'selector'>> {
       const { page, target } = ctx;
       const selectorsOf = (primary: string, fallback: string[] | undefined): string[] => [primary, ...(fallback ?? [])];
 
@@ -1101,11 +1123,11 @@ data:
           if (response !== null && !response.ok()) {
             throw new Error(`HTTP ${response.status()} for ${url} on ${target.id}`);
           }
-          return;
+          return response === null ? {} : { httpStatus: response.status() };
         }
         case 'visible': {
           await assertSingleVisible(ctx, selectorsOf(action.selector, action.fallback));
-          return;
+          return { selector: action.selector };
         }
         case 'text': {
           let haystack: string;
@@ -1125,7 +1147,7 @@ data:
           if (!action.contains && found) {
             throw new Error(`unexpected text '${action.text}' present on ${target.id}`);
           }
-          return;
+          return action.selector === undefined ? {} : { selector: action.selector };
         }
         case 'url': {
           const current = page.url();
@@ -1135,7 +1157,7 @@ data:
           if (!matches) {
             throw new Error(`URL check failed on ${target.id}: pattern '${action.pattern}' does not match '${current}'`);
           }
-          return;
+          return {};
         }
         case 'fill': {
           const value =
@@ -1145,16 +1167,16 @@ data:
           }
           const locator = await assertSingleVisible(ctx, selectorsOf(action.selector, action.fallback));
           await locator.fill(value);
-          return;
+          return { selector: action.selector };
         }
         case 'click': {
           const locator = await assertSingleVisible(ctx, selectorsOf(action.selector, action.fallback));
           await locator.click({ timeout: target.timeoutMs });
-          return;
+          return { selector: action.selector };
         }
         case 'screenshot': {
           if (noArtifactsEnabled()) {
-            return;
+            return {};
           }
           const dir = evidenceDirFor(ctx.outputDir, target.id);
           ensureDir(dir);
@@ -1166,7 +1188,7 @@ data:
             fullPage: action.fullPage,
             mask: [...masksForCredentialed, ...masks],
           });
-          return;
+          return {};
         }
       }
     }
@@ -1395,6 +1417,7 @@ data:
     import path from 'node:path';
     import type { Browser, Page, TestInfo } from '@playwright/test';
     import { runActions } from './actions';
+    import { emitCheckResult } from './jsonreporter';
     import { ensureDir, evidenceDirFor, maskSelectorsFor, noArtifactsEnabled } from './artifacts';
     import { resolveLocator } from './locators';
     import { COMPILED_DIR, isCredentialed, type Target } from './schema';
@@ -1493,7 +1516,7 @@ data:
           if (journey !== null) {
             await journey(pageRef.current, target, helpers);
           } else {
-            await runActions(target, pageRef.current, outputDir);
+            await runActions(target, pageRef.current, outputDir, emitCheckResult);
           }
           if (traceAllowed) {
             await context.tracing.stop();
@@ -1536,6 +1559,7 @@ data:
   runner.jsonreporter.ts: |-
     import type { Reporter, TestCase, TestResult } from '@playwright/test/reporter';
     import { redactText } from './artifacts';
+    import type { CheckResult } from './actions';
 
     export interface SyntheticRunLine {
       target: string;
@@ -1549,10 +1573,27 @@ data:
     function scrub(text: string): string {
       const flattened = redactText(text);
       return flattened
+        .replace(/https?:\/\/[^\s'\"]+/gi, '[url]')
         .replace(/\u001b\[[0-9;]*m/g, '')
         .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
+    }
+
+    // Emits scrubbed per-action diagnostics. Values typed into forms and URL query
+    // strings are deliberately never included in this contract.
+    export function emitCheckResult(result: CheckResult): void {
+      const line = {
+        target: result.target,
+        check: result.check,
+        action: result.action,
+        status: result.status,
+        durationMs: result.durationMs,
+        ...(result.httpStatus === undefined ? {} : { httpStatus: result.httpStatus }),
+        ...(result.selector === undefined ? {} : { selector: result.selector }),
+        ...(result.error === undefined ? {} : { error: scrub(result.error) }),
+      };
+      process.stdout.write(`${JSON.stringify(line)}\n`);
     }
 
     // Emits exactly one sanitized JSON object per target to stdout. Playwright
@@ -1786,7 +1827,13 @@ data:
       return /^(data-testid|role|text|css):/.test(raw);
     }
 
+    const checkField = z
+      .string()
+      .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'check must be lowercase kebab-case')
+      .optional();
+
     const goToAction = z.object({
+      check: checkField,
       type: z.literal('goto'),
       url: z.string().refine(
         (u) => u.startsWith('https://') || u.startsWith('/'),
@@ -1796,6 +1843,7 @@ data:
 
     const visibleAction = z
       .object({
+        check: checkField,
         type: z.literal('visible'),
         selector: selectorField(
           'visible selector must be prefixed: data-testid:<id> | role:<role>[:<name>] | text:<text> | css:<selector>',
@@ -1805,6 +1853,7 @@ data:
 
     const textAction = z
       .object({
+        check: checkField,
         type: z.literal('text'),
         text: z.string().min(1),
         selector: selectorField('text selector must be prefixed').optional(),
@@ -1813,6 +1862,7 @@ data:
       .extend({ fallback: z.array(selectorField('fallback selectors must be prefixed')).default([]) });
 
     const urlAction = z.object({
+      check: checkField,
       type: z.literal('url'),
       pattern: z.string().min(1),
       regex: z.boolean().default(false),
@@ -1820,6 +1870,7 @@ data:
 
     const fillAction = z
       .object({
+        check: checkField,
         type: z.literal('fill'),
         selector: selectorField('fill selector must be prefixed'),
         value: z.string().optional(),
@@ -1840,12 +1891,14 @@ data:
 
     const clickAction = z
       .object({
+        check: checkField,
         type: z.literal('click'),
         selector: selectorField('click selector must be prefixed'),
       })
       .extend({ fallback: z.array(selectorField('fallback selectors must be prefixed')).default([]) });
 
     const screenshotAction = z.object({
+      check: checkField,
       type: z.literal('screenshot'),
       name: z.string().regex(/^[a-zA-Z0-9_-]+$/, 'screenshot name must be [a-zA-Z0-9_-]'),
       fullPage: z.boolean().default(true),
@@ -2016,17 +2069,20 @@ data:
     actions:
       # 1. Page loads over HTTPS with a 2xx status
       - type: goto
+        check: homepage-http
         url: https://plantmaster.com/
 
       # 2. URL reflects the expected site (allow hash anchors, no redirect target
       #    drift expected; do not assert marketing landing paths that may change)
       - type: url
+        check: homepage-url
         pattern: ^https://plantmaster\.com/?(#.*)?$
         regex: true
 
       # 3. Branding/header renders (logo image in the Foundation top bar;
       #    fall back to the whole top bar, then site header, then skip-to-content)
       - type: visible
+        check: header-logo
         selector: css:header .top-bar-logo
         fallback:
           - css:#plantmaster-menu
@@ -2036,6 +2092,7 @@ data:
       # 4. Primary navigation renders (top bar menu links; fall back to the two
       #    header auth links which have been stable on this site)
       - type: visible
+        check: primary-navigation
         selector: css:header .top-bar ul.menu a
         fallback:
           - text:Log In
@@ -2043,6 +2100,7 @@ data:
 
       # 5. Footer renders
       - type: visible
+        check: footer
         selector: css:footer#footer
         fallback:
           - css:footer
