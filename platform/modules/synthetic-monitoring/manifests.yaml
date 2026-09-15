@@ -1817,7 +1817,9 @@ data:
       if (!fs.existsSync(dir)) {
         throw new Error(`targets directory not found: ${dir}`);
       }
-      const files = globSync('*.yaml', { cwd: dir }).sort();
+      // Customer targets are grouped below targets/customers/<customer>/ while
+      // _template.yaml deliberately remains at the root for discoverability.
+      const files = globSync('**/*.yaml', { cwd: dir }).sort();
       return files.map((file) => loadTargetFile(path.join(dir, file)));
     }
 
@@ -2223,7 +2225,7 @@ metadata:
 ---
 apiVersion: v1
 data:
-  electrocraft-updates.yaml: |-
+  customers.newmedia.electrocraft-updates.yaml: |-
     # Synthetic monitoring target: ElectroCraft MotionPRO public update catalog (TASK-164)
     #
     # This host intentionally serves an Apache directory index. Its useful service
@@ -2263,7 +2265,7 @@ data:
       - type: visible
         check: firmware-directory
         selector: css:a[href="Firmware/"]
-  hansen-motor.yaml: |-
+  customers.newmedia.hansen-motor.yaml: |-
     # Synthetic monitoring target: Hansen Corporation public site (TASK-164)
     #
     # Read-only availability and essential rendering checks. The live homepage
@@ -2302,7 +2304,7 @@ data:
       - type: visible
         check: footer
         selector: css:footer#main-footer
-  mechatronics-bearing.yaml: |-
+  customers.newmedia.mechatronics-bearing.yaml: |-
     # Synthetic monitoring target: Mechatronics Bearing Group public site (TASK-164)
     #
     # The HTTP host redirects to this www HTTPS canonical hostname. Checks cover
@@ -2340,7 +2342,7 @@ data:
       - type: visible
         check: footer
         selector: css:footer
-  new-media-consulting.yaml: |-
+  customers.newmedia.new-media-consulting.yaml: |-
     # Synthetic monitoring target: New Media Consulting public site (TASK-164)
     #
     # A deliberately small public-site check: successful HTTPS rendering, the
@@ -2376,7 +2378,7 @@ data:
         check: brand-copy
         text: New Media Consulting
         contains: true
-  plantmaster-auth.yaml: |-
+  customers.plantmaster.plantmaster-auth.yaml: |-
     # Synthetic monitoring target: PlantMaster authenticated login (TASK-154)
     #
     # This is deliberately a read-only session check. It submits the login form,
@@ -2449,7 +2451,7 @@ data:
       - type: visible
         check: authenticated-homepage-user-menu
         selector: css:#plantmaster-menu .top-bar-right a[href="#"][role="menuitem"]
-  plantmaster.yaml: |-
+  customers.plantmaster.plantmaster.yaml: |-
     # Synthetic monitoring target: PlantMaster public marketing site (TASK-142, TASK-146)
     #
     # SELECTOR RATIONALE
@@ -2712,6 +2714,19 @@ spec:
             name: synthetic-source
           - configMap:
               defaultMode: 292
+              items:
+              - key: customers.plantmaster.plantmaster.yaml
+                path: customers/plantmaster/plantmaster.yaml
+              - key: customers.plantmaster.plantmaster-auth.yaml
+                path: customers/plantmaster/plantmaster-auth.yaml
+              - key: customers.newmedia.hansen-motor.yaml
+                path: customers/newmedia/hansen-motor.yaml
+              - key: customers.newmedia.mechatronics-bearing.yaml
+                path: customers/newmedia/mechatronics-bearing.yaml
+              - key: customers.newmedia.electrocraft-updates.yaml
+                path: customers/newmedia/electrocraft-updates.yaml
+              - key: customers.newmedia.new-media-consulting.yaml
+                path: customers/newmedia/new-media-consulting.yaml
               name: synthetic-targets
             name: synthetic-targets
           - emptyDir: {}
