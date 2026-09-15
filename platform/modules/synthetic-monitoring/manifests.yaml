@@ -2223,6 +2223,159 @@ metadata:
 ---
 apiVersion: v1
 data:
+  electrocraft-updates.yaml: |-
+    # Synthetic monitoring target: ElectroCraft MotionPRO public update catalog (TASK-164)
+    #
+    # This host intentionally serves an Apache directory index. Its useful service
+    # contract is the HTTPS /motionpro/ catalog and the listed release directories;
+    # checks never follow links or download artifacts.
+
+    id: electrocraft-updates
+    name: ElectroCraft MotionPRO update catalog - availability and listing rendering
+    baseUrl: https://updates.electrocraft.com/motionpro/
+    minIntervalMinutes: 15
+    timeoutMs: 120000
+    retries: 0
+
+    actions:
+      - type: goto
+        check: motionpro-catalog-http
+        url: https://updates.electrocraft.com/motionpro/
+
+      - type: url
+        check: motionpro-catalog-url
+        pattern: ^https://updates\.electrocraft\.com/motionpro/?$
+        regex: true
+
+      - type: visible
+        check: catalog-heading
+        selector: css:h1
+
+      - type: text
+        check: catalog-title
+        text: Index of /motionpro
+        contains: true
+
+      - type: visible
+        check: configurations-directory
+        selector: css:a[href="Configurations/"]
+
+      - type: visible
+        check: firmware-directory
+        selector: css:a[href="Firmware/"]
+  hansen-motor.yaml: |-
+    # Synthetic monitoring target: Hansen Corporation public site (TASK-164)
+    #
+    # Read-only availability and essential rendering checks. The live homepage
+    # exposes a stable main header, branded logo, product heading, and footer.
+
+    id: hansen-motor
+    name: Hansen Corporation public site - availability and essential rendering
+    baseUrl: https://www.hansen-motor.com/
+    minIntervalMinutes: 15
+    timeoutMs: 120000
+    retries: 0
+
+    actions:
+      - type: goto
+        check: homepage-http
+        url: https://www.hansen-motor.com/
+
+      - type: url
+        check: homepage-url
+        pattern: ^https://www\.hansen-motor\.com/?$
+        regex: true
+
+      - type: visible
+        check: main-header
+        selector: css:header#main-header
+
+      - type: visible
+        check: brand-logo
+        selector: css:img[alt="Hansen Corporation logo"]
+
+      - type: text
+        check: product-heading
+        text: Hansen Precision Electric Motors
+        contains: true
+
+      - type: visible
+        check: footer
+        selector: css:footer#main-footer
+  mechatronics-bearing.yaml: |-
+    # Synthetic monitoring target: Mechatronics Bearing Group public site (TASK-164)
+    #
+    # The HTTP host redirects to this www HTTPS canonical hostname. Checks cover
+    # the branded header/logo, visible Products navigation, and footer only.
+
+    id: mechatronics-bearing
+    name: Mechatronics Bearing Group public site - availability and essential rendering
+    baseUrl: https://www.mechatronicsbearing.com/
+    minIntervalMinutes: 15
+    timeoutMs: 120000
+    retries: 0
+
+    actions:
+      - type: goto
+        check: homepage-http
+        url: https://www.mechatronicsbearing.com/
+
+      - type: url
+        check: homepage-url
+        pattern: ^https://www\.mechatronicsbearing\.com/?$
+        regex: true
+
+      - type: visible
+        check: site-header
+        selector: css:header
+
+      - type: visible
+        check: brand-logo
+        selector: css:img[src*="mechatronics-logo-white.svg"]
+
+      - type: visible
+        check: products-navigation
+        selector: css:a[href="#products"]
+
+      - type: visible
+        check: footer
+        selector: css:footer
+  new-media-consulting.yaml: |-
+    # Synthetic monitoring target: New Media Consulting public site (TASK-164)
+    #
+    # A deliberately small public-site check: successful HTTPS rendering, the
+    # contact route, and stable visible marketing copy. No secured login is opened.
+
+    id: new-media-consulting
+    name: New Media Consulting public site - availability and essential rendering
+    baseUrl: https://newmediaconsulting.com/
+    minIntervalMinutes: 15
+    timeoutMs: 120000
+    retries: 0
+
+    actions:
+      - type: goto
+        check: homepage-http
+        url: https://newmediaconsulting.com/
+
+      - type: url
+        check: homepage-url
+        pattern: ^https://newmediaconsulting\.com/?$
+        regex: true
+
+      - type: visible
+        check: contact-navigation
+        selector: css:a[href="/contact/"]
+
+      - type: text
+        check: marketing-copy
+        text: Since 1998, NMC provides integrated online marketing strategies
+        contains: true
+
+      - type: text
+        check: brand-copy
+        text: New Media Consulting
+        contains: true
   plantmaster-auth.yaml: |-
     # Synthetic monitoring target: PlantMaster authenticated login (TASK-154)
     #
@@ -2407,7 +2560,7 @@ spec:
             - node_modules/tsx/dist/cli.mjs
             - runner/index.ts
             - --targets
-            - plantmaster,plantmaster-auth
+            - plantmaster,plantmaster-auth,hansen-motor,mechatronics-bearing,electrocraft-updates,new-media-consulting
             - --output-dir
             - /synthetic-output
             command:
