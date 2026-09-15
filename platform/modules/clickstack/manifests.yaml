@@ -362,7 +362,7 @@ data:
     extensions:
       file_storage:
         create_directory: true
-        directory: /var/lib/otelcol-agent
+        directory: /var/lib/otelcol-agent/filelog-v2
     processors:
       batch:
         send_batch_size: 8192
@@ -594,7 +594,7 @@ spec:
   template:
     metadata:
       annotations:
-        otel.sre-platform.dev/collector-config-checksum: 93dc62fb4570cadb2f2a6a85d3e4a1ecc9fdcb121e513bebd73ad975183c0917
+        otel.sre-platform.dev/collector-config-checksum: 16828db246547aa9dce971b074493d8d1330a66c2bf318dac1c9291490c8e58f
       labels:
         app.kubernetes.io/name: otel-collector
         app.kubernetes.io/part-of: sre-platform
