@@ -359,6 +359,10 @@ data:
           max_interval: 30s
         traces_table_name: otel_traces
         ttl: 0
+    extensions:
+      file_storage:
+        create_directory: true
+        directory: /var/lib/otelcol-agent
     processors:
       batch:
         send_batch_size: 8192
@@ -442,7 +446,7 @@ data:
           regex: ^/var/log/pods/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[^/]+)/(?P<container_name>[^/]+)/.*$
           type: regex_parser
         - on_error: drop
-          regex: ^(?P<timestamp>\S+) (?P<stream>stdout|stderr) (?P<flags>[PF]) (?P<body>.*)$
+          regex: ^(?P<timestamp>\S+) (?P<stream>stdout|stderr) (?P<flags>[PF]) ?(?P<body>.*)$
           severity:
             mapping:
               error: stderr
@@ -473,6 +477,8 @@ data:
         - field: attributes.flags
           if: attributes.flags != nil
           type: remove
+        start_at: beginning
+        storage: file_storage
       hostmetrics:
         collection_interval: 30s
         scrapers:
@@ -488,6 +494,8 @@ data:
           http:
             endpoint: 0.0.0.0:4318
     service:
+      extensions:
+      - file_storage
       pipelines:
         logs:
           exporters:
@@ -583,13 +591,20 @@ spec:
   template:
     metadata:
       annotations:
-        otel.sre-platform.dev/collector-config-checksum: 011280c35c00f42c6e5e2d4f50638ef655bf178155f5c78bbc9072bc2abac797
+        otel.sre-platform.dev/collector-config-checksum: 3a946704ad646aa363f8191b28eb638c56cd87d0e89df263e15b2d167d343fc1
       labels:
         app.kubernetes.io/name: otel-collector
         app.kubernetes.io/part-of: sre-platform
         app.kubernetes.io/component: agent
     spec:
       serviceAccountName: otel-collector
+      initContainers:
+        - name: fix-permissions
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 10001:10001 /var/lib/otelcol-agent && chmod 0700 /var/lib/otelcol-agent"]
+          volumeMounts:
+            - name: filestorage
+              mountPath: /var/lib/otelcol-agent
       containers:
         - name: collector
           image: otel/opentelemetry-collector-contrib:0.112.0
@@ -618,6 +633,8 @@ spec:
             - name: hostfs
               mountPath: /host
               readOnly: true
+            - name: filestorage
+              mountPath: /var/lib/otelcol-agent
           env:
             - name: HOST_FS
               value: /host
@@ -641,6 +658,10 @@ spec:
         - name: hostfs
           hostPath:
             path: /
+        - name: filestorage
+          hostPath:
+            path: /var/lib/otelcol-agent
+            type: DirectoryOrCreate
       tolerations:
         - operator: Exists
 ---
