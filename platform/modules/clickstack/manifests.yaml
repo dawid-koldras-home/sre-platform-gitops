@@ -438,6 +438,8 @@ data:
         - /var/log/pods/kube-system_*
         - /var/log/pods/kube-public_*
         - /var/log/pods/kube-node-lease_*
+        exclude_older_than: 1h
+        fingerprint_size: 64KiB
         include:
         - /var/log/pods/*/*/*.log
         include_file_path: true
@@ -477,6 +479,7 @@ data:
         - field: attributes.flags
           if: attributes.flags != nil
           type: remove
+        poll_interval: 100ms
         start_at: beginning
         storage: file_storage
       hostmetrics:
@@ -591,7 +594,7 @@ spec:
   template:
     metadata:
       annotations:
-        otel.sre-platform.dev/collector-config-checksum: 3a946704ad646aa363f8191b28eb638c56cd87d0e89df263e15b2d167d343fc1
+        otel.sre-platform.dev/collector-config-checksum: 93dc62fb4570cadb2f2a6a85d3e4a1ecc9fdcb121e513bebd73ad975183c0917
       labels:
         app.kubernetes.io/name: otel-collector
         app.kubernetes.io/part-of: sre-platform
