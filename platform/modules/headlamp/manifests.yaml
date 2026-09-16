@@ -297,7 +297,9 @@ spec:
             defaultMode: 420
             items:
             - key: main.js
-              path: frontend/dist/main.js
+              path: main.js
+            - key: package.json
+              path: package.json
             name: cost-explorer-plugin
           name: cost-explorer-plugin
 
