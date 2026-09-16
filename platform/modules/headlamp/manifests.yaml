@@ -285,11 +285,21 @@ spec:
               cpu: 100m
               memory: 128Mi
           volumeMounts:
+            - mountPath: /headlamp/plugins/cost-explorer
+              name: cost-explorer-plugin
+              readOnly: true
             - name: headlamp-tmp
               mountPath: /tmp
       volumes:
         - name: headlamp-tmp
           emptyDir: {}
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: main.js
+              path: frontend/dist/main.js
+            name: cost-explorer-plugin
+          name: cost-explorer-plugin
 
 ---
 apiVersion: networking.k8s.io/v1
