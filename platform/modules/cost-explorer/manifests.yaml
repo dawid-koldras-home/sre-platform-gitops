@@ -120,10 +120,24 @@ data:
   package.json: |-
     
     {
-      "name": "cost-explorer",
+      "name": "headlamp-plugin-cost-explorer",
       "version": "0.1.0",
       "description": "SRE Platform Cost Explorer Headlamp plugin",
-      "main": "main.js"
+      "private": true,
+      "main": "frontend/src/index.tsx",
+      "scripts": {
+        "build": "headlamp-plugin build .",
+        "prettier": "headlamp-plugin format . --write",
+        "tsc": "tsc --noEmit"
+      },
+      "devDependencies": {
+        "@kinvolk/headlamp-plugin": "0.13.1",
+        "typescript": "^5.0.0"
+      },
+      "allowScripts": {
+        "@swc/core@1.16.2": true,
+        "esbuild@0.25.12": true
+      }
     }
 ---
 # Source: cost-explorer/templates/crd.yaml
