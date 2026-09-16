@@ -14,6 +14,31 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 automountServiceAccountToken: true
 ---
+# Source: opencost/templates/configmap-custom-pricing.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-pricing-model
+  namespace: opencost
+data:
+  default.json: |-
+    {
+      "CPU": "0.0135",
+      "GPU": "0.95",
+      "LBIngressDataCost": "0",
+      "RAM": "0.00675",
+      "additionalForwardingRuleCost": "0",
+      "description": "SRE Platform explicit customer pricing allocation; not an official cloud invoice",
+      "firstFiveForwardingRulesCost": "0.0136986",
+      "internetNetworkEgress": "0.12",
+      "regionNetworkEgress": "0.01",
+      "spotCPU": "0.006655",
+      "spotRAM": "0.000892",
+      "storage": "0.000147088",
+      "zoneNetworkEgress": "0.01",
+      "provider" : "custom"
+    }
+---
 # Source: opencost/templates/configmap-frontend.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -249,7 +274,7 @@ metadata:
     app.kubernetes.io/part-of: opencost
     app.kubernetes.io/managed-by: Helm
   annotations:
-    checksum/configs: 4569726d0fe47576a4c87d13ad9fdf7c7ab5b3a26c685051f1cbf03bbdf8e7e9
+    checksum/configs: baacb86acbdd5e9c10ad579405de0f82a267cbe59c2db24bb1d1c127ca97de10
 spec:
   replicas: 1
   selector:
@@ -321,6 +346,8 @@ spec:
               value: "false"
             - name: CLUSTER_ID
               value: "default-cluster"
+            - name: CONFIG_PATH
+              value: "/tmp/custom-config"
             - name: DATA_RETENTION_DAILY_RESOLUTION_DAYS
               value: "15"
             - name: CLOUD_COST_ENABLED
@@ -334,6 +361,11 @@ spec:
             - name: CLOUD_COST_RUN_WINDOW_DAYS
               value: "3"
             # Add any additional provided variables
+          volumeMounts:
+            - mountPath: /tmp/custom-config/default.json
+              name: custom-configs
+              subPath: default.json
+              readOnly: true
         - name: opencost-ui
           image: ghcr.io/opencost/opencost-ui:1.116.0@sha256:09253417a761ec2ee5d60d7d5db249d0be7b48506855152be5328906a45dbd33
           imagePullPolicy: IfNotPresent
@@ -370,6 +402,9 @@ spec:
               mountPath: /etc/nginx/conf.d/default.nginx.conf
               subPath: default.nginx.conf
       volumes:
+        - name: custom-configs
+          configMap:
+            name: custom-pricing-model
         - name: opencost-ui-nginx-config-volume
           configMap:
             name: opencost-ui-nginx-config
