@@ -121,7 +121,7 @@ data:
     
     {
       "name": "headlamp-plugin-cost-explorer",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "SRE Platform Cost Explorer Headlamp plugin",
       "private": true,
       "main": "frontend/src/index.tsx",
