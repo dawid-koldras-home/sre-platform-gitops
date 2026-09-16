@@ -144,6 +144,26 @@ rules:
     - volumesnapshotcontents
     - volumesnapshotclasses
   verbs: [get, list, watch]
+# Custom-resource visibility for the supported platform integrations. These are
+# explicit API groups rather than a global wildcard, so core resources such as
+# Secrets remain outside the Headlamp service account's reach.
+- apiGroups:
+    - acme.cert-manager.io
+    - apiextensions.crossplane.io
+    - argoproj.io
+    - autoscaling.k8s.io
+    - cert-manager.io
+    - crd.projectcalico.org
+    - kyverno.io
+    - ops.crossplane.io
+    - pkg.crossplane.io
+    - policy.networking.k8s.io
+    - protection.crossplane.io
+    - reports.kyverno.io
+    - sre-platform.io
+    - wgpolicyk8s.io
+  resources: ["*"]
+  verbs: [get, list, watch]
 # Secrets, serviceaccounts/token, pods/exec, pods/attach,
 # pods/portforward, pods/proxy, tokenreviews, subjectaccessreviews,
 # impersonation, bind, escalate and all mutating verbs are explicitly
