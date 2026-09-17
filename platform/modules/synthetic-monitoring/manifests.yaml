@@ -2265,6 +2265,58 @@ data:
       - type: visible
         check: firmware-directory
         selector: css:a[href="Firmware/"]
+  customers.newmedia.hansen-dc-motors.yaml: |-
+    # Synthetic monitoring target: Hansen DC Brush Motors catalog (TASK-177)
+    #
+    # This anonymous, read-only check covers the public DC motors category rather
+    # than the Hansen homepage. The selected content is core catalog information:
+    # the category heading, product family and two persistent catalog series.
+
+    id: hansen-dc-motors
+    name: Hansen DC Brush Motors catalog - availability and essential rendering
+    baseUrl: https://www.hansen-motor.com/products/dc-motors/
+    minIntervalMinutes: 15
+    timeoutMs: 120000
+    retries: 0
+
+    actions:
+      - type: goto
+        check: dc-motors-http
+        url: https://www.hansen-motor.com/products/dc-motors/
+
+      - type: url
+        check: dc-motors-url
+        pattern: ^https://www\.hansen-motor\.com/products/dc-motors/?$
+        regex: true
+
+      - type: visible
+        check: main-header
+        selector: css:header#main-header
+
+      - type: text
+        check: catalog-heading
+        selector: css:h1
+        text: DC Brush Motors
+        contains: true
+
+      - type: text
+        check: pmdc-brush-motors
+        text: PMDC Brush Motors
+        contains: true
+
+      - type: text
+        check: series-116-1-product
+        text: "Series 116-1: 1.6 inch PMDC Brush Motor"
+        contains: true
+
+      - type: text
+        check: series-121-1-product
+        text: "Series 121-1: 2.1 inch PMDC Brush Motor"
+        contains: true
+
+      - type: visible
+        check: footer
+        selector: css:footer#main-footer
   customers.newmedia.hansen-motor.yaml: |-
     # Synthetic monitoring target: Hansen Corporation public site (TASK-164)
     #
@@ -2562,7 +2614,7 @@ spec:
             - node_modules/tsx/dist/cli.mjs
             - runner/index.ts
             - --targets
-            - plantmaster,plantmaster-auth,hansen-motor,mechatronics-bearing,electrocraft-updates,new-media-consulting
+            - plantmaster,plantmaster-auth,hansen-motor,hansen-dc-motors,mechatronics-bearing,electrocraft-updates,new-media-consulting
             - --output-dir
             - /synthetic-output
             command:
@@ -2721,6 +2773,8 @@ spec:
                 path: customers/plantmaster/plantmaster-auth.yaml
               - key: customers.newmedia.hansen-motor.yaml
                 path: customers/newmedia/hansen-motor.yaml
+              - key: customers.newmedia.hansen-dc-motors.yaml
+                path: customers/newmedia/hansen-dc-motors.yaml
               - key: customers.newmedia.mechatronics-bearing.yaml
                 path: customers/newmedia/mechatronics-bearing.yaml
               - key: customers.newmedia.electrocraft-updates.yaml
