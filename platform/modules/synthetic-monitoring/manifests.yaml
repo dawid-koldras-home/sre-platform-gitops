@@ -1391,6 +1391,7 @@ data:
     import { writeLock } from './lock';
     import { checkTargetSecrets } from './secrets';
     import { sendFailureNotifications } from './email';
+    import { sendNtfyNotifications } from './ntfy';
     import { COMPILED_DIR, ENV_LOCK_FILE, ENV_OUTPUT_DIR, LOCK_FILE_NAME, type Target } from './schema';
 
     const root = path.resolve(__dirname, '..');
@@ -1532,6 +1533,13 @@ data:
         if (sent > 0) console.log(`[notification] sent ${sent} failure email(s)`);
       } catch {
         console.error('[notification] email delivery failed; inspect the synthetic-email Secret and SMTP access');
+        return 1;
+      }
+      try {
+        const pushed = await sendNtfyNotifications(output, status !== 0);
+        if (pushed > 0) console.log(`[notification] sent ${pushed} ntfy push(es)`);
+      } catch {
+        console.error('[notification] ntfy delivery failed; inspect the synthetic-ntfy Secret and endpoint access, and keep the synthetic check failed');
         return 1;
       }
       return status;
@@ -1988,6 +1996,177 @@ data:
         throw new Error(`unsupported target lock version ${result.data.version}`);
       }
       return result.data.targets;
+    }
+  runner.ntfy.ts: |-
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import { redactText } from './artifacts';
+    import { parseRunOutput, type CheckEvent, type TargetSummary } from './email';
+
+    export interface NtfyConfig {
+      baseUrl: string;
+      topic: string;
+      token?: string;
+    }
+
+    export interface NtfyPublishResponse {
+      status: number;
+    }
+
+    export type NtfyPublish = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<NtfyPublishResponse>;
+
+    const ntfyDir = () => process.env.SYNTHETIC_NTFY_DIR || '/synthetic-ntfy';
+
+    const TOPIC_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+
+    function readSecretFile(dir: string, key: string): string | undefined {
+      const file = path.join(dir, key);
+      if (!fs.existsSync(file)) return undefined;
+      const value = fs.readFileSync(file, 'utf8').trim();
+      return value === '' ? undefined : value;
+    }
+
+    export function validateNtfyBaseUrl(raw: string): string {
+      if (raw.includes('<') || raw.includes('>') || raw.includes('{{') || raw.includes('}}')) {
+        throw new Error('ntfy base URL must not contain placeholder values');
+      }
+      let parsed: URL;
+      try {
+        parsed = new URL(raw);
+      } catch {
+        throw new Error('ntfy base URL must be a valid HTTPS URL');
+      }
+      if (parsed.protocol !== 'https:') {
+        throw new Error('ntfy base URL must use HTTPS');
+      }
+      if (parsed.username !== '' || parsed.password !== '') {
+        throw new Error('ntfy base URL must not embed credentials');
+      }
+      if (parsed.search !== '') {
+        throw new Error('ntfy base URL must not contain a query string');
+      }
+      if (parsed.hash !== '') {
+        throw new Error('ntfy base URL must not contain a fragment');
+      }
+      const hostname = parsed.hostname.toLowerCase();
+      if (hostname === 'localhost' || hostname === '0.0.0.0') {
+        throw new Error('ntfy base URL must not target a loopback address');
+      }
+      if (hostname === '::1' || parsed.hostname === '[::1]') {
+        throw new Error('ntfy base URL must not target a loopback address');
+      }
+      if (/^127\./.test(hostname)) {
+        throw new Error('ntfy base URL must not target a loopback address');
+      }
+      return parsed.toString().replace(/\/+$/, '');
+    }
+
+    export function validateNtfyTopic(topic: string): string {
+      if (topic.length === 0) {
+        throw new Error('ntfy topic is required when the synthetic-ntfy Secret is present');
+      }
+      if (!TOPIC_PATTERN.test(topic)) {
+        throw new Error('ntfy topic must be a safe identifier (letters, digits, dot, dash, underscore; 1-64 characters)');
+      }
+      return topic;
+    }
+
+    export function loadNtfyConfig(dir = ntfyDir()): NtfyConfig | undefined {
+      const baseUrlRaw = readSecretFile(dir, 'NTFY_BASE_URL');
+      if (baseUrlRaw === undefined) return undefined;
+      const baseUrl = validateNtfyBaseUrl(baseUrlRaw);
+      const topic = validateNtfyTopic(readSecretFile(dir, 'NTFY_TOPIC') ?? '');
+      const token = readSecretFile(dir, 'NTFY_TOKEN');
+      return token === undefined ? { baseUrl, topic } : { baseUrl, topic, token };
+    }
+
+    function sanitize(value: string): string {
+      return redactText(value)
+        .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '')
+        .replace(/https?:\/\/[^\s'"]+/gi, '[url]')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    export function ntfyFailureMessage(summary: TargetSummary, checks: CheckEvent[]): { title: string; message: string } {
+      const target = sanitize(summary.target);
+      const failed = checks.filter((check) => check.target === summary.target && check.status === 'failed');
+      const lines: string[] = [
+        `Target: ${target}`,
+        `Time: ${summary.finishedAt}`,
+        `Duration: ${summary.durationMs} ms`,
+      ];
+      for (const check of failed) {
+        const detail = check.error !== undefined
+          ? sanitize(check.error)
+          : check.httpStatus !== undefined
+            ? `HTTP ${check.httpStatus}`
+            : 'no details';
+        lines.push(`Check: ${sanitize(check.check)} | Action: ${sanitize(check.action)} | ${sanitize(check.status)} | ${detail}`);
+      }
+      if (failed.length === 0) {
+        lines.push('Check: unknown synthetic failure');
+      }
+      return {
+        title: `[FAIL] Synthetic monitor: ${target}`,
+        message: lines.join('\n'),
+      };
+    }
+
+    const defaultPublish: NtfyPublish = async (url, init) => {
+      const response = await fetch(url, {
+        method: init.method,
+        headers: init.headers,
+        body: init.body,
+      });
+      return { status: response.status };
+    };
+
+    export async function sendNtfyNotifications(
+      output: string,
+      runFailed: boolean,
+      config = loadNtfyConfig(),
+      publish: NtfyPublish = defaultPublish,
+    ): Promise<number> {
+      if (!runFailed || config === undefined) return 0;
+      const { checks, summaries } = parseRunOutput(output);
+      const failedTargets = new Set([
+        ...summaries.filter((summary) => summary.status === 'failed').map((summary) => summary.target),
+        ...checks.filter((check) => check.status === 'failed').map((check) => check.target),
+      ]);
+      let sent = 0;
+      for (const target of failedTargets) {
+        const summary = summaries.find((item) => item.target === target) ?? {
+          target,
+          status: 'failed' as const,
+          startedAt: '',
+          finishedAt: '',
+          durationMs: 0,
+        };
+        const { title, message } = ntfyFailureMessage(summary, checks);
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (config.token !== undefined) {
+          headers['Authorization'] = `Bearer ${config.token}`;
+        }
+        const response = await publish(config.baseUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            topic: config.topic,
+            title,
+            message,
+            priority: 4,
+            tags: ['warning'],
+          }),
+        });
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`ntfy endpoint returned non-success status ${response.status}`);
+        }
+        sent += 1;
+      }
+      return sent;
     }
   runner.schema.ts: |-
     import { z } from 'zod';
@@ -2632,6 +2811,8 @@ spec:
               value: "1"
             - name: SYNTHETIC_EMAIL_DIR
               value: /synthetic-email
+            - name: SYNTHETIC_NTFY_DIR
+              value: /synthetic-ntfy
             - name: PLANTMASTER_USER
               valueFrom:
                 secretKeyRef:
@@ -2670,6 +2851,9 @@ spec:
               name: synthetic-output
             - mountPath: /synthetic-email
               name: synthetic-email
+              readOnly: true
+            - mountPath: /synthetic-ntfy
+              name: synthetic-ntfy
               readOnly: true
             workingDir: /app
           initContainers:
@@ -2754,6 +2938,8 @@ spec:
                 path: runner/locators.ts
               - key: runner.lock.ts
                 path: runner/lock.ts
+              - key: runner.ntfy.ts
+                path: runner/ntfy.ts
               - key: runner.schema.ts
                 path: runner/schema.ts
               - key: runner.secrets.ts
@@ -2791,6 +2977,10 @@ spec:
             secret:
               optional: true
               secretName: synthetic-email
+          - name: synthetic-ntfy
+            secret:
+              optional: true
+              secretName: synthetic-ntfy
       ttlSecondsAfterFinished: 600
   schedule: '*/15 * * * *'
   startingDeadlineSeconds: 60
