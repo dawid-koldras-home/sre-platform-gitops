@@ -1392,6 +1392,7 @@ data:
     import { checkTargetSecrets } from './secrets';
     import { sendFailureNotifications } from './email';
     import { sendNtfyNotifications } from './ntfy';
+    import { sendSlackNotifications } from './slack';
     import { COMPILED_DIR, ENV_LOCK_FILE, ENV_OUTPUT_DIR, LOCK_FILE_NAME, type Target } from './schema';
 
     const root = path.resolve(__dirname, '..');
@@ -1540,6 +1541,13 @@ data:
         if (pushed > 0) console.log(`[notification] sent ${pushed} ntfy push(es)`);
       } catch {
         console.error('[notification] ntfy delivery failed; inspect the synthetic-ntfy Secret and endpoint access, and keep the synthetic check failed');
+        return 1;
+      }
+      try {
+        const sent = await sendSlackNotifications(output, status !== 0, targets);
+        if (sent > 0) console.log(`[notification] sent ${sent} Slack alert(s)`);
+      } catch {
+        console.error('[notification] Slack delivery failed; inspect the synthetic-slack Secret and endpoint access, and keep the synthetic check failed');
         return 1;
       }
       return status;
@@ -2193,6 +2201,10 @@ data:
       .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'check must be lowercase kebab-case')
       .optional();
 
+    const slackRouteField = z
+      .string()
+      .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'slackRoute must be lowercase kebab-case');
+
     const goToAction = z.object({
       check: checkField,
       type: z.literal('goto'),
@@ -2306,6 +2318,7 @@ data:
         minIntervalMinutes: z.number().int().min(15).max(1440).default(15),
         timeoutMs: z.number().int().min(5000).max(600000).default(120000),
         retries: z.number().int().min(0).max(2).default(0),
+        notifications: z.object({ slackRoute: slackRouteField }).strict().optional(),
         journey: z
           .string()
           .regex(/^journeys\/[a-z0-9-]+\.ts$/, 'journey must be journeys/<kebab-id>.ts')
@@ -2349,6 +2362,142 @@ data:
         };
       }
       return { ok: true };
+    }
+  runner.slack.ts: |-
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import { redactText } from './artifacts';
+    import { parseRunOutput, type CheckEvent, type TargetSummary } from './email';
+    import type { Target } from './schema';
+
+    export type SlackConfig = ReadonlyMap<string, string>;
+
+    export interface SlackPublishResponse {
+      status: number;
+    }
+
+    export type SlackPublish = (url: string, init: {
+      method: string;
+      headers: Record<string, string>;
+      body: string;
+    }) => Promise<SlackPublishResponse>;
+
+    const slackDir = () => process.env.SYNTHETIC_SLACK_DIR || '/synthetic-slack';
+
+    function readSecretFile(dir: string, key: string): string | undefined {
+      const file = path.join(dir, key);
+      if (!fs.existsSync(file)) return undefined;
+      const value = fs.readFileSync(file, 'utf8').trim();
+      return value === '' ? undefined : value;
+    }
+
+    export function slackWebhookKey(route: string): string {
+      return `SLACK_WEBHOOK_${route.toUpperCase().replaceAll('-', '_')}`;
+    }
+
+    export function validateSlackWebhook(raw: string): string {
+      let parsed: URL;
+      try {
+        parsed = new URL(raw);
+      } catch {
+        throw new Error('Slack webhook must be a valid HTTPS URL');
+      }
+      if (parsed.protocol !== 'https:') throw new Error('Slack webhook must use HTTPS');
+      if (parsed.username !== '' || parsed.password !== '') throw new Error('Slack webhook must not embed credentials');
+      if (parsed.search !== '' || parsed.hash !== '') throw new Error('Slack webhook must not contain a query string or fragment');
+      if (!['hooks.slack.com', 'hooks.slack-gov.com'].includes(parsed.hostname.toLowerCase())) {
+        throw new Error('Slack webhook must use an approved Slack webhook host');
+      }
+      if (!/^\/services\/[A-Za-z0-9]+\/[A-Za-z0-9]+\/[A-Za-z0-9]+$/.test(parsed.pathname)) {
+        throw new Error('Slack webhook must use the expected Incoming Webhook path');
+      }
+      return parsed.toString();
+    }
+
+    export function loadSlackConfig(targets: Target[], dir = slackDir()): SlackConfig {
+      const configured = new Map<string, string>();
+      const routes = new Set(
+        targets.flatMap((target) => target.notifications?.slackRoute === undefined ? [] : [target.notifications.slackRoute]),
+      );
+      for (const route of routes) {
+        const raw = readSecretFile(dir, slackWebhookKey(route));
+        if (raw !== undefined) configured.set(route, validateSlackWebhook(raw));
+      }
+      return configured;
+    }
+
+    function sanitize(value: string): string {
+      return redactText(value)
+        .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '')
+        .replace(/https?:\/\/[^\s'"]+/gi, '[url]')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    export function slackFailureMessage(summary: TargetSummary, checks: CheckEvent[]): { text: string; blocks: unknown[] } {
+      const target = sanitize(summary.target);
+      const failed = checks.filter((check) => check.target === summary.target && check.status === 'failed');
+      const details = failed.map((check) => {
+        const detail = check.error !== undefined
+          ? sanitize(check.error)
+          : check.httpStatus !== undefined
+            ? `HTTP ${check.httpStatus}`
+            : 'no details';
+        return `*${sanitize(check.check)}* (${sanitize(check.action)}): ${detail}`;
+      });
+      if (details.length === 0) details.push('*unknown synthetic failure*');
+      const text = `[FAIL] Synthetic monitor: ${target}`;
+      return {
+        text,
+        blocks: [
+          { type: 'header', text: { type: 'plain_text', text, emoji: true } },
+          { type: 'section', text: { type: 'mrkdwn', text: `*Target:* ${target}\n*Finished:* ${sanitize(summary.finishedAt)}\n*Duration:* ${summary.durationMs} ms` } },
+          { type: 'section', text: { type: 'mrkdwn', text: `*Failed checks*\n${details.join('\n')}` } },
+        ],
+      };
+    }
+
+    const defaultPublish: SlackPublish = async (url, init) => {
+      const response = await fetch(url, { method: init.method, headers: init.headers, body: init.body });
+      return { status: response.status };
+    };
+
+    export async function sendSlackNotifications(
+      output: string,
+      runFailed: boolean,
+      targets: Target[],
+      config = loadSlackConfig(targets),
+      publish: SlackPublish = defaultPublish,
+    ): Promise<number> {
+      if (!runFailed || config.size === 0) return 0;
+      const byId = new Map(targets.map((target) => [target.id, target]));
+      const { checks, summaries } = parseRunOutput(output);
+      const failedTargets = new Set([
+        ...summaries.filter((summary) => summary.status === 'failed').map((summary) => summary.target),
+        ...checks.filter((check) => check.status === 'failed').map((check) => check.target),
+      ]);
+      let sent = 0;
+      for (const targetId of failedTargets) {
+        const target = byId.get(targetId);
+        const webhook = target?.notifications?.slackRoute === undefined
+          ? undefined
+          : config.get(target.notifications.slackRoute);
+        if (webhook === undefined) continue;
+        const summary = summaries.find((item) => item.target === targetId) ?? {
+          target: targetId, status: 'failed' as const, startedAt: '', finishedAt: '', durationMs: 0,
+        };
+        const { text, blocks } = slackFailureMessage(summary, checks);
+        const response = await publish(webhook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ text, blocks }),
+        });
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`Slack endpoint returned non-success status ${response.status}`);
+        }
+        sent += 1;
+      }
+      return sent;
     }
   tests.journeys.spec.ts: |-
     import { test } from '@playwright/test';
@@ -2417,6 +2566,8 @@ data:
     minIntervalMinutes: 15
     timeoutMs: 120000
     retries: 0
+    notifications:
+      slackRoute: newmedia
 
     actions:
       - type: goto
@@ -2457,6 +2608,8 @@ data:
     minIntervalMinutes: 15
     timeoutMs: 120000
     retries: 0
+    notifications:
+      slackRoute: newmedia
 
     actions:
       - type: goto
@@ -2508,6 +2661,8 @@ data:
     minIntervalMinutes: 15
     timeoutMs: 120000
     retries: 0
+    notifications:
+      slackRoute: newmedia
 
     actions:
       - type: goto
@@ -2547,6 +2702,8 @@ data:
     minIntervalMinutes: 15
     timeoutMs: 120000
     retries: 0
+    notifications:
+      slackRoute: newmedia
 
     actions:
       - type: goto
@@ -2585,6 +2742,8 @@ data:
     minIntervalMinutes: 15
     timeoutMs: 120000
     retries: 0
+    notifications:
+      slackRoute: newmedia
 
     actions:
       - type: goto
@@ -2813,6 +2972,8 @@ spec:
               value: /synthetic-email
             - name: SYNTHETIC_NTFY_DIR
               value: /synthetic-ntfy
+            - name: SYNTHETIC_SLACK_DIR
+              value: /synthetic-slack
             - name: PLANTMASTER_USER
               valueFrom:
                 secretKeyRef:
@@ -2854,6 +3015,9 @@ spec:
               readOnly: true
             - mountPath: /synthetic-ntfy
               name: synthetic-ntfy
+              readOnly: true
+            - mountPath: /synthetic-slack
+              name: synthetic-slack
               readOnly: true
             workingDir: /app
           initContainers:
@@ -2940,6 +3104,8 @@ spec:
                 path: runner/lock.ts
               - key: runner.ntfy.ts
                 path: runner/ntfy.ts
+              - key: runner.slack.ts
+                path: runner/slack.ts
               - key: runner.schema.ts
                 path: runner/schema.ts
               - key: runner.secrets.ts
@@ -2981,6 +3147,10 @@ spec:
             secret:
               optional: true
               secretName: synthetic-ntfy
+          - name: synthetic-slack
+            secret:
+              optional: true
+              secretName: synthetic-slack
       ttlSecondsAfterFinished: 600
   schedule: '*/15 * * * *'
   startingDeadlineSeconds: 60
