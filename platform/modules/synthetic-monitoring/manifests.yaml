@@ -2492,6 +2492,22 @@ data:
         .trim();
     }
 
+    function formEncode(values: Record<string, string>): string {
+      return new URLSearchParams(values).toString();
+    }
+
+    function slackErrorCode(body: string | undefined): string {
+      try {
+        const parsed = JSON.parse(body ?? '{}') as { error?: unknown };
+        if (typeof parsed.error === 'string' && /^[a-z_]+$/.test(parsed.error)) {
+          return parsed.error;
+        }
+      } catch {
+        // Slack error bodies are untrusted transport input; never log them verbatim.
+      }
+      return 'unknown';
+    }
+
     export function slackFailureMessage(summary: TargetSummary, checks: CheckEvent[]): { text: string; blocks: unknown[] } {
       const target = sanitize(summary.target);
       const failed = checks.filter((check) => check.target === summary.target && check.status === 'failed');
@@ -2579,9 +2595,9 @@ data:
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${botToken}`,
-          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
         },
-        body: JSON.stringify({ filename, length: pngBytes.length }),
+        body: formEncode({ filename, length: String(pngBytes.length) }),
       });
       if (getUploadUrlResponse.status < 200 || getUploadUrlResponse.status >= 300) {
         throw new Error(`Slack files.getUploadURLExternal returned status ${getUploadUrlResponse.status}`);
@@ -2590,17 +2606,15 @@ data:
         ok?: boolean;
         upload_url?: string;
         file_id?: string;
-        errors?: { code?: string; message?: string }[];
       };
       if (!getUploadUrlBody.ok || !getUploadUrlBody.upload_url || !getUploadUrlBody.file_id) {
-        const errCode = getUploadUrlBody.errors?.[0]?.code ?? 'unknown';
-        throw new Error(`Slack files.getUploadURLExternal failed: ${errCode}`);
+        throw new Error(`Slack files.getUploadURLExternal failed: ${slackErrorCode(getUploadUrlResponse.body)}`);
       }
 
       const uploadResponse = await publish(getUploadUrlBody.upload_url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${botToken}`,
+          'Content-Type': 'application/octet-stream',
         },
         body: new Uint8Array(pngBytes),
       });
@@ -2612,19 +2626,19 @@ data:
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${botToken}`,
-          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
         },
-        body: JSON.stringify({
-          files: [{ id: getUploadUrlBody.file_id, title: `Failure screenshot: ${targetId}` }],
+        body: formEncode({
+          files: JSON.stringify([{ id: getUploadUrlBody.file_id, title: `Failure screenshot: ${targetId}` }]),
           channel_id: channelId,
         }),
       });
       if (completeResponse.status < 200 || completeResponse.status >= 300) {
         throw new Error(`Slack files.completeUploadExternal returned status ${completeResponse.status}`);
       }
-      const completeBody = JSON.parse(completeResponse.body ?? '{}') as { ok?: boolean; error?: string };
+      const completeBody = JSON.parse(completeResponse.body ?? '{}') as { ok?: boolean };
       if (!completeBody.ok) {
-        throw new Error(`Slack files.completeUploadExternal failed: ${completeBody.error ?? 'unknown'}`);
+        throw new Error(`Slack files.completeUploadExternal failed: ${slackErrorCode(completeResponse.body)}`);
       }
 
       return true;
@@ -2656,8 +2670,9 @@ data:
         try {
           const ok = await uploadFailureScreenshot({ targetId, route, screenshotPath, filesConfig, publish });
           if (ok) uploaded += 1;
-        } catch {
-          console.error(`[notification] Slack screenshot upload failed for ${targetId}; continuing without screenshot`);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : 'unknown';
+          console.error(`[notification] Slack screenshot upload failed for ${targetId}: ${reason}; continuing without screenshot`);
         }
       }
       return uploaded;
