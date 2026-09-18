@@ -1248,6 +1248,10 @@ data:
     export function evidenceDirFor(outputDir: string, targetId: string): string {
       return path.join(outputDir, targetId);
     }
+
+    export function failureScreenshotPath(outputDir: string, targetId: string): string {
+      return path.join(evidenceDirFor(outputDir, targetId), 'failure.png');
+    }
   runner.email.ts: |-
     import fs from 'node:fs';
     import path from 'node:path';
@@ -1392,7 +1396,7 @@ data:
     import { checkTargetSecrets } from './secrets';
     import { sendFailureNotifications } from './email';
     import { sendNtfyNotifications } from './ntfy';
-    import { sendSlackNotifications } from './slack';
+    import { sendSlackNotifications, sendFailureScreenshotUploads } from './slack';
     import { COMPILED_DIR, ENV_LOCK_FILE, ENV_OUTPUT_DIR, LOCK_FILE_NAME, type Target } from './schema';
 
     const root = path.resolve(__dirname, '..');
@@ -1550,6 +1554,12 @@ data:
         console.error('[notification] Slack delivery failed; inspect the synthetic-slack Secret and endpoint access, and keep the synthetic check failed');
         return 1;
       }
+      try {
+        const uploaded = await sendFailureScreenshotUploads(output, status !== 0, targets, args.outputDir);
+        if (uploaded > 0) console.log(`[notification] uploaded ${uploaded} Slack failure screenshot(s)`);
+      } catch {
+        console.error('[notification] Slack screenshot upload failed; continuing without screenshot');
+      }
       return status;
     }
 
@@ -1593,7 +1603,7 @@ data:
     import type { Browser, Page, TestInfo } from '@playwright/test';
     import { runActions } from './actions';
     import { checkAttachmentName, formatCheckResult } from './jsonreporter';
-    import { ensureDir, evidenceDirFor, maskSelectorsFor, noArtifactsEnabled } from './artifacts';
+    import { ensureDir, evidenceDirFor, failureScreenshotPath, maskSelectorsFor, noArtifactsEnabled } from './artifacts';
     import { resolveLocator } from './locators';
     import { COMPILED_DIR, isCredentialed, type Target } from './schema';
     import { checkTargetSecrets } from './secrets';
@@ -1608,6 +1618,7 @@ data:
     export interface RunOutcome {
       status: 'passed' | 'skipped';
       reason?: string;
+      failureScreenshotPath?: string;
     }
 
     export function compileJourneyPath(outputDir: string, target: Target): string | null {
@@ -1658,6 +1669,11 @@ data:
 
       let lastError: Error | null = null;
       const pageRef: { current?: Page } = {};
+      let capturedFailureScreenshot: string | undefined;
+
+      const failureScreenshotEnabled =
+        target.notifications?.failureScreenshot === true &&
+        !isCredentialed(target);
 
       for (let attempt = 1; attempt <= attempts; attempt += 1) {
         const context = await browser.newContext({
@@ -1725,6 +1741,15 @@ data:
                 mask: maskLocators(pageRef.current, target),
               });
               await testInfo.attach(`${target.id}-screenshot`, { path: shotPath, contentType: 'image/png' });
+            } else if (failureScreenshotEnabled && !capturedFailureScreenshot) {
+              const shotPath = failureScreenshotPath(outputDir, target.id);
+              ensureDir(path.dirname(shotPath));
+              await pageRef.current.screenshot({
+                path: shotPath,
+                fullPage: true,
+                mask: maskLocators(pageRef.current, target),
+              });
+              capturedFailureScreenshot = shotPath;
             }
           } catch {
             // screenshot artifacts are best-effort
@@ -2318,7 +2343,10 @@ data:
         minIntervalMinutes: z.number().int().min(15).max(1440).default(15),
         timeoutMs: z.number().int().min(5000).max(600000).default(120000),
         retries: z.number().int().min(0).max(2).default(0),
-        notifications: z.object({ slackRoute: slackRouteField }).strict().optional(),
+        notifications: z.object({
+          slackRoute: slackRouteField,
+          failureScreenshot: z.boolean().default(false),
+        }).strict().optional(),
         journey: z
           .string()
           .regex(/^journeys\/[a-z0-9-]+\.ts$/, 'journey must be journeys/<kebab-id>.ts')
@@ -2374,15 +2402,17 @@ data:
 
     export interface SlackPublishResponse {
       status: number;
+      body?: string;
     }
 
     export type SlackPublish = (url: string, init: {
       method: string;
       headers: Record<string, string>;
-      body: string;
+      body: string | Uint8Array;
     }) => Promise<SlackPublishResponse>;
 
     const slackDir = () => process.env.SYNTHETIC_SLACK_DIR || '/synthetic-slack';
+    const slackFilesDir = () => process.env.SYNTHETIC_SLACK_FILES_DIR || '/synthetic-slack-files';
 
     function readSecretFile(dir: string, key: string): string | undefined {
       const file = path.join(dir, key);
@@ -2393,6 +2423,14 @@ data:
 
     export function slackWebhookKey(route: string): string {
       return `SLACK_WEBHOOK_${route.toUpperCase().replaceAll('-', '_')}`;
+    }
+
+    export function slackBotTokenKey(route: string): string {
+      return `SLACK_BOT_TOKEN_${route.toUpperCase().replaceAll('-', '_')}`;
+    }
+
+    export function slackChannelIdKey(route: string): string {
+      return `SLACK_CHANNEL_ID_${route.toUpperCase().replaceAll('-', '_')}`;
     }
 
     export function validateSlackWebhook(raw: string): string {
@@ -2424,6 +2462,26 @@ data:
         if (raw !== undefined) configured.set(route, validateSlackWebhook(raw));
       }
       return configured;
+    }
+
+    export interface SlackFilesConfig {
+      botTokens: ReadonlyMap<string, string>;
+      channelIds: ReadonlyMap<string, string>;
+    }
+
+    export function loadSlackFilesConfig(targets: Target[], dir = slackFilesDir()): SlackFilesConfig {
+      const botTokens = new Map<string, string>();
+      const channelIds = new Map<string, string>();
+      const routes = new Set(
+        targets.flatMap((target) => target.notifications?.slackRoute === undefined ? [] : [target.notifications.slackRoute]),
+      );
+      for (const route of routes) {
+        const token = readSecretFile(dir, slackBotTokenKey(route));
+        if (token !== undefined) botTokens.set(route, token);
+        const channelId = readSecretFile(dir, slackChannelIdKey(route));
+        if (channelId !== undefined) channelIds.set(route, channelId);
+      }
+      return { botTokens, channelIds };
     }
 
     function sanitize(value: string): string {
@@ -2458,8 +2516,9 @@ data:
     }
 
     const defaultPublish: SlackPublish = async (url, init) => {
-      const response = await fetch(url, { method: init.method, headers: init.headers, body: init.body });
-      return { status: response.status };
+      const response = await fetch(url, { method: init.method, headers: init.headers, body: init.body as BodyInit });
+      const body = await response.text().catch(() => '');
+      return { status: response.status, body };
     };
 
     export async function sendSlackNotifications(
@@ -2498,6 +2557,110 @@ data:
         sent += 1;
       }
       return sent;
+    }
+
+    export async function uploadFailureScreenshot(args: {
+      targetId: string;
+      route: string;
+      screenshotPath: string;
+      filesConfig: SlackFilesConfig;
+      publish?: SlackPublish;
+    }): Promise<boolean> {
+      const { targetId, route, screenshotPath, filesConfig, publish = defaultPublish } = args;
+      const botToken = filesConfig.botTokens.get(route);
+      const channelId = filesConfig.channelIds.get(route);
+      if (botToken === undefined || channelId === undefined) return false;
+      if (!fs.existsSync(screenshotPath)) return false;
+
+      const pngBytes = fs.readFileSync(screenshotPath);
+      const filename = `${targetId}-failure.png`;
+
+      const getUploadUrlResponse = await publish('https://slack.com/api/files.getUploadURLExternal', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${botToken}`,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify({ filename, length: pngBytes.length }),
+      });
+      if (getUploadUrlResponse.status < 200 || getUploadUrlResponse.status >= 300) {
+        throw new Error(`Slack files.getUploadURLExternal returned status ${getUploadUrlResponse.status}`);
+      }
+      const getUploadUrlBody = JSON.parse(getUploadUrlResponse.body ?? '{}') as {
+        ok?: boolean;
+        upload_url?: string;
+        file_id?: string;
+        errors?: { code?: string; message?: string }[];
+      };
+      if (!getUploadUrlBody.ok || !getUploadUrlBody.upload_url || !getUploadUrlBody.file_id) {
+        const errCode = getUploadUrlBody.errors?.[0]?.code ?? 'unknown';
+        throw new Error(`Slack files.getUploadURLExternal failed: ${errCode}`);
+      }
+
+      const uploadResponse = await publish(getUploadUrlBody.upload_url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${botToken}`,
+        },
+        body: new Uint8Array(pngBytes),
+      });
+      if (uploadResponse.status < 200 || uploadResponse.status >= 300) {
+        throw new Error(`Slack file upload returned status ${uploadResponse.status}`);
+      }
+
+      const completeResponse = await publish('https://slack.com/api/files.completeUploadExternal', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${botToken}`,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify({
+          files: [{ id: getUploadUrlBody.file_id, title: `Failure screenshot: ${targetId}` }],
+          channel_id: channelId,
+        }),
+      });
+      if (completeResponse.status < 200 || completeResponse.status >= 300) {
+        throw new Error(`Slack files.completeUploadExternal returned status ${completeResponse.status}`);
+      }
+      const completeBody = JSON.parse(completeResponse.body ?? '{}') as { ok?: boolean; error?: string };
+      if (!completeBody.ok) {
+        throw new Error(`Slack files.completeUploadExternal failed: ${completeBody.error ?? 'unknown'}`);
+      }
+
+      return true;
+    }
+
+    export async function sendFailureScreenshotUploads(
+      output: string,
+      runFailed: boolean,
+      targets: Target[],
+      outputDir: string,
+      filesConfig: SlackFilesConfig = loadSlackFilesConfig(targets),
+      publish: SlackPublish = defaultPublish,
+    ): Promise<number> {
+      if (!runFailed || (filesConfig.botTokens.size === 0 && filesConfig.channelIds.size === 0)) return 0;
+      const byId = new Map(targets.map((target) => [target.id, target]));
+      const { summaries } = parseRunOutput(output);
+      const failedTargets = summaries
+        .filter((summary) => summary.status === 'failed')
+        .map((summary) => summary.target);
+      let uploaded = 0;
+      for (const targetId of failedTargets) {
+        const target = byId.get(targetId);
+        if (target === undefined) continue;
+        if (target.notifications?.failureScreenshot !== true) continue;
+        if (target.auth.mode === 'credentialed') continue;
+        const route = target.notifications?.slackRoute;
+        if (route === undefined) continue;
+        const screenshotPath = path.join(outputDir, targetId, 'failure.png');
+        try {
+          const ok = await uploadFailureScreenshot({ targetId, route, screenshotPath, filesConfig, publish });
+          if (ok) uploaded += 1;
+        } catch {
+          console.error(`[notification] Slack screenshot upload failed for ${targetId}; continuing without screenshot`);
+        }
+      }
+      return uploaded;
     }
   tests.journeys.spec.ts: |-
     import { test } from '@playwright/test';
@@ -2568,6 +2731,7 @@ data:
     retries: 0
     notifications:
       slackRoute: newmedia
+      failureScreenshot: true
 
     actions:
       - type: goto
@@ -2610,6 +2774,7 @@ data:
     retries: 0
     notifications:
       slackRoute: newmedia
+      failureScreenshot: true
 
     actions:
       - type: goto
@@ -2663,6 +2828,7 @@ data:
     retries: 0
     notifications:
       slackRoute: newmedia
+      failureScreenshot: true
 
     actions:
       - type: goto
@@ -2704,6 +2870,7 @@ data:
     retries: 0
     notifications:
       slackRoute: newmedia
+      failureScreenshot: true
 
     actions:
       - type: goto
@@ -2744,6 +2911,7 @@ data:
     retries: 0
     notifications:
       slackRoute: newmedia
+      failureScreenshot: true
 
     actions:
       - type: goto
@@ -2974,6 +3142,8 @@ spec:
               value: /synthetic-ntfy
             - name: SYNTHETIC_SLACK_DIR
               value: /synthetic-slack
+            - name: SYNTHETIC_SLACK_FILES_DIR
+              value: /synthetic-slack-files
             - name: PLANTMASTER_USER
               valueFrom:
                 secretKeyRef:
@@ -3018,6 +3188,9 @@ spec:
               readOnly: true
             - mountPath: /synthetic-slack
               name: synthetic-slack
+              readOnly: true
+            - mountPath: /synthetic-slack-files
+              name: synthetic-slack-files
               readOnly: true
             workingDir: /app
           initContainers:
@@ -3151,6 +3324,10 @@ spec:
             secret:
               optional: true
               secretName: synthetic-slack
+          - name: synthetic-slack-files
+            secret:
+              optional: true
+              secretName: synthetic-slack-files
       ttlSecondsAfterFinished: 600
   schedule: '*/15 * * * *'
   startingDeadlineSeconds: 60
