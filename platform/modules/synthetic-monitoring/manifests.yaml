@@ -1396,7 +1396,7 @@ data:
     import { checkTargetSecrets } from './secrets';
     import { sendFailureNotifications } from './email';
     import { sendNtfyNotifications } from './ntfy';
-    import { sendSlackNotifications, sendFailureScreenshotUploads } from './slack';
+    import { sendSlackUnifiedAlerts } from './slack';
     import { COMPILED_DIR, ENV_LOCK_FILE, ENV_OUTPUT_DIR, LOCK_FILE_NAME, type Target } from './schema';
 
     const root = path.resolve(__dirname, '..');
@@ -1548,17 +1548,12 @@ data:
         return 1;
       }
       try {
-        const sent = await sendSlackNotifications(output, status !== 0, targets);
-        if (sent > 0) console.log(`[notification] sent ${sent} Slack alert(s)`);
-      } catch {
-        console.error('[notification] Slack delivery failed; inspect the synthetic-slack Secret and endpoint access, and keep the synthetic check failed');
-        return 1;
-      }
-      try {
-        const uploaded = await sendFailureScreenshotUploads(output, status !== 0, targets, args.outputDir);
+        const { uploaded, fallbacks } = await sendSlackUnifiedAlerts(output, status !== 0, targets, args.outputDir);
         if (uploaded > 0) console.log(`[notification] uploaded ${uploaded} Slack failure screenshot(s)`);
+        if (fallbacks > 0) console.log(`[notification] sent ${fallbacks} Slack text alert(s)`);
       } catch {
-        console.error('[notification] Slack screenshot upload failed; continuing without screenshot');
+        console.error('[notification] Slack alert delivery failed; inspect the synthetic-slack-files Secret and Slack app scopes, and keep the synthetic check failed');
+        return 1;
       }
       return status;
     }
@@ -2398,8 +2393,6 @@ data:
     import { parseRunOutput, type CheckEvent, type TargetSummary } from './email';
     import type { Target } from './schema';
 
-    export type SlackConfig = ReadonlyMap<string, string>;
-
     export interface SlackPublishResponse {
       status: number;
       body?: string;
@@ -2411,7 +2404,6 @@ data:
       body: string | Uint8Array;
     }) => Promise<SlackPublishResponse>;
 
-    const slackDir = () => process.env.SYNTHETIC_SLACK_DIR || '/synthetic-slack';
     const slackFilesDir = () => process.env.SYNTHETIC_SLACK_FILES_DIR || '/synthetic-slack-files';
 
     function readSecretFile(dir: string, key: string): string | undefined {
@@ -2421,47 +2413,12 @@ data:
       return value === '' ? undefined : value;
     }
 
-    export function slackWebhookKey(route: string): string {
-      return `SLACK_WEBHOOK_${route.toUpperCase().replaceAll('-', '_')}`;
-    }
-
     export function slackBotTokenKey(route: string): string {
       return `SLACK_BOT_TOKEN_${route.toUpperCase().replaceAll('-', '_')}`;
     }
 
     export function slackChannelIdKey(route: string): string {
       return `SLACK_CHANNEL_ID_${route.toUpperCase().replaceAll('-', '_')}`;
-    }
-
-    export function validateSlackWebhook(raw: string): string {
-      let parsed: URL;
-      try {
-        parsed = new URL(raw);
-      } catch {
-        throw new Error('Slack webhook must be a valid HTTPS URL');
-      }
-      if (parsed.protocol !== 'https:') throw new Error('Slack webhook must use HTTPS');
-      if (parsed.username !== '' || parsed.password !== '') throw new Error('Slack webhook must not embed credentials');
-      if (parsed.search !== '' || parsed.hash !== '') throw new Error('Slack webhook must not contain a query string or fragment');
-      if (!['hooks.slack.com', 'hooks.slack-gov.com'].includes(parsed.hostname.toLowerCase())) {
-        throw new Error('Slack webhook must use an approved Slack webhook host');
-      }
-      if (!/^\/services\/[A-Za-z0-9]+\/[A-Za-z0-9]+\/[A-Za-z0-9]+$/.test(parsed.pathname)) {
-        throw new Error('Slack webhook must use the expected Incoming Webhook path');
-      }
-      return parsed.toString();
-    }
-
-    export function loadSlackConfig(targets: Target[], dir = slackDir()): SlackConfig {
-      const configured = new Map<string, string>();
-      const routes = new Set(
-        targets.flatMap((target) => target.notifications?.slackRoute === undefined ? [] : [target.notifications.slackRoute]),
-      );
-      for (const route of routes) {
-        const raw = readSecretFile(dir, slackWebhookKey(route));
-        if (raw !== undefined) configured.set(route, validateSlackWebhook(raw));
-      }
-      return configured;
     }
 
     export interface SlackFilesConfig {
@@ -2508,7 +2465,7 @@ data:
       return 'unknown';
     }
 
-    export function slackFailureMessage(summary: TargetSummary, checks: CheckEvent[]): { text: string; blocks: unknown[] } {
+    export function slackFailureSummary(summary: TargetSummary, checks: CheckEvent[]): string {
       const target = sanitize(summary.target);
       const failed = checks.filter((check) => check.target === summary.target && check.status === 'failed');
       const details = failed.map((check) => {
@@ -2520,15 +2477,15 @@ data:
         return `*${sanitize(check.check)}* (${sanitize(check.action)}): ${detail}`;
       });
       if (details.length === 0) details.push('*unknown synthetic failure*');
-      const text = `[FAIL] Synthetic monitor: ${target}`;
-      return {
-        text,
-        blocks: [
-          { type: 'header', text: { type: 'plain_text', text, emoji: true } },
-          { type: 'section', text: { type: 'mrkdwn', text: `*Target:* ${target}\n*Finished:* ${sanitize(summary.finishedAt)}\n*Duration:* ${summary.durationMs} ms` } },
-          { type: 'section', text: { type: 'mrkdwn', text: `*Failed checks*\n${details.join('\n')}` } },
-        ],
-      };
+      return `*[FAIL] Synthetic monitor: ${target}*\n*Target:* ${target}\n*Finished:* ${sanitize(summary.finishedAt)}\n*Duration:* ${summary.durationMs} ms\n*Failed checks*\n${details.join('\n')}`;
+    }
+
+    export function slackFailureBlocks(summary: TargetSummary, checks: CheckEvent[]): unknown[] {
+      const text = slackFailureSummary(summary, checks);
+      return [
+        { type: 'header', text: { type: 'plain_text', text: `[FAIL] Synthetic monitor: ${sanitize(summary.target)}`, emoji: true } },
+        { type: 'section', text: { type: 'mrkdwn', text } },
+      ];
     }
 
     const defaultPublish: SlackPublish = async (url, init) => {
@@ -2537,52 +2494,15 @@ data:
       return { status: response.status, body };
     };
 
-    export async function sendSlackNotifications(
-      output: string,
-      runFailed: boolean,
-      targets: Target[],
-      config = loadSlackConfig(targets),
-      publish: SlackPublish = defaultPublish,
-    ): Promise<number> {
-      if (!runFailed || config.size === 0) return 0;
-      const byId = new Map(targets.map((target) => [target.id, target]));
-      const { checks, summaries } = parseRunOutput(output);
-      const failedTargets = new Set([
-        ...summaries.filter((summary) => summary.status === 'failed').map((summary) => summary.target),
-        ...checks.filter((check) => check.status === 'failed').map((check) => check.target),
-      ]);
-      let sent = 0;
-      for (const targetId of failedTargets) {
-        const target = byId.get(targetId);
-        const webhook = target?.notifications?.slackRoute === undefined
-          ? undefined
-          : config.get(target.notifications.slackRoute);
-        if (webhook === undefined) continue;
-        const summary = summaries.find((item) => item.target === targetId) ?? {
-          target: targetId, status: 'failed' as const, startedAt: '', finishedAt: '', durationMs: 0,
-        };
-        const { text, blocks } = slackFailureMessage(summary, checks);
-        const response = await publish(webhook, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify({ text, blocks }),
-        });
-        if (response.status < 200 || response.status >= 300) {
-          throw new Error(`Slack endpoint returned non-success status ${response.status}`);
-        }
-        sent += 1;
-      }
-      return sent;
-    }
-
     export async function uploadFailureScreenshot(args: {
       targetId: string;
       route: string;
       screenshotPath: string;
       filesConfig: SlackFilesConfig;
+      initialComment?: string;
       publish?: SlackPublish;
     }): Promise<boolean> {
-      const { targetId, route, screenshotPath, filesConfig, publish = defaultPublish } = args;
+      const { targetId, route, screenshotPath, filesConfig, initialComment, publish = defaultPublish } = args;
       const botToken = filesConfig.botTokens.get(route);
       const channelId = filesConfig.channelIds.get(route);
       if (botToken === undefined || channelId === undefined) return false;
@@ -2622,16 +2542,20 @@ data:
         throw new Error(`Slack file upload returned status ${uploadResponse.status}`);
       }
 
+      const completeFields: Record<string, string> = {
+        files: JSON.stringify([{ id: getUploadUrlBody.file_id, title: `Failure screenshot: ${targetId}` }]),
+        channel_id: channelId,
+      };
+      if (initialComment !== undefined) {
+        completeFields.initial_comment = initialComment;
+      }
       const completeResponse = await publish('https://slack.com/api/files.completeUploadExternal', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${botToken}`,
           'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
         },
-        body: formEncode({
-          files: JSON.stringify([{ id: getUploadUrlBody.file_id, title: `Failure screenshot: ${targetId}` }]),
-          channel_id: channelId,
-        }),
+        body: formEncode(completeFields),
       });
       if (completeResponse.status < 200 || completeResponse.status >= 300) {
         throw new Error(`Slack files.completeUploadExternal returned status ${completeResponse.status}`);
@@ -2644,38 +2568,101 @@ data:
       return true;
     }
 
-    export async function sendFailureScreenshotUploads(
+    export async function sendChatPostMessage(args: {
+      targetId: string;
+      route: string;
+      text: string;
+      filesConfig: SlackFilesConfig;
+      publish?: SlackPublish;
+    }): Promise<boolean> {
+      const { targetId, route, text, filesConfig, publish = defaultPublish } = args;
+      const botToken = filesConfig.botTokens.get(route);
+      const channelId = filesConfig.channelIds.get(route);
+      if (botToken === undefined || channelId === undefined) return false;
+
+      const response = await publish('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${botToken}`,
+          'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+        },
+        body: formEncode({
+          channel: channelId,
+          text,
+        }),
+      });
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`Slack chat.postMessage returned status ${response.status}`);
+      }
+      const body = JSON.parse(response.body ?? '{}') as { ok?: boolean };
+      if (!body.ok) {
+        throw new Error(`Slack chat.postMessage failed: ${slackErrorCode(response.body)}`);
+      }
+      return true;
+    }
+
+    export async function sendSlackUnifiedAlerts(
       output: string,
       runFailed: boolean,
       targets: Target[],
       outputDir: string,
       filesConfig: SlackFilesConfig = loadSlackFilesConfig(targets),
       publish: SlackPublish = defaultPublish,
-    ): Promise<number> {
-      if (!runFailed || (filesConfig.botTokens.size === 0 && filesConfig.channelIds.size === 0)) return 0;
+    ): Promise<{ uploaded: number; fallbacks: number }> {
+      if (!runFailed || (filesConfig.botTokens.size === 0 && filesConfig.channelIds.size === 0)) {
+        return { uploaded: 0, fallbacks: 0 };
+      }
       const byId = new Map(targets.map((target) => [target.id, target]));
-      const { summaries } = parseRunOutput(output);
-      const failedTargets = summaries
-        .filter((summary) => summary.status === 'failed')
-        .map((summary) => summary.target);
+      const { checks, summaries } = parseRunOutput(output);
+      const failedTargets = new Set([
+        ...summaries.filter((summary) => summary.status === 'failed').map((summary) => summary.target),
+        ...checks.filter((check) => check.status === 'failed').map((check) => check.target),
+      ]);
       let uploaded = 0;
+      let fallbacks = 0;
       for (const targetId of failedTargets) {
         const target = byId.get(targetId);
         if (target === undefined) continue;
-        if (target.notifications?.failureScreenshot !== true) continue;
-        if (target.auth.mode === 'credentialed') continue;
         const route = target.notifications?.slackRoute;
         if (route === undefined) continue;
-        const screenshotPath = path.join(outputDir, targetId, 'failure.png');
+
+        const summary = summaries.find((item) => item.target === targetId) ?? {
+          target: targetId, status: 'failed' as const, startedAt: '', finishedAt: '', durationMs: 0,
+        };
+        const failureText = slackFailureSummary(summary, checks);
+        const failureBlocks = slackFailureBlocks(summary, checks);
+
+        const wantsScreenshot =
+          target.notifications?.failureScreenshot === true &&
+          target.auth.mode !== 'credentialed';
+
+        if (wantsScreenshot) {
+          const screenshotPath = path.join(outputDir, targetId, 'failure.png');
+          try {
+            const ok = await uploadFailureScreenshot({
+              targetId, route, screenshotPath, filesConfig,
+              initialComment: failureText,
+              publish,
+            });
+            if (ok) {
+              uploaded += 1;
+              continue;
+            }
+          } catch {
+            // Screenshot upload failed; fall through to text-only alert.
+          }
+        }
+
         try {
-          const ok = await uploadFailureScreenshot({ targetId, route, screenshotPath, filesConfig, publish });
-          if (ok) uploaded += 1;
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : 'unknown';
-          console.error(`[notification] Slack screenshot upload failed for ${targetId}: ${reason}; continuing without screenshot`);
+          const ok = await sendChatPostMessage({
+            targetId, route, text: failureText, filesConfig, publish,
+          });
+          if (ok) fallbacks += 1;
+        } catch {
+          console.error(`[notification] Slack text alert failed for ${targetId}; continuing without alert`);
         }
       }
-      return uploaded;
+      return { uploaded, fallbacks };
     }
   tests.journeys.spec.ts: |-
     import { test } from '@playwright/test';
@@ -3155,8 +3142,6 @@ spec:
               value: /synthetic-email
             - name: SYNTHETIC_NTFY_DIR
               value: /synthetic-ntfy
-            - name: SYNTHETIC_SLACK_DIR
-              value: /synthetic-slack
             - name: SYNTHETIC_SLACK_FILES_DIR
               value: /synthetic-slack-files
             - name: PLANTMASTER_USER
@@ -3200,9 +3185,6 @@ spec:
               readOnly: true
             - mountPath: /synthetic-ntfy
               name: synthetic-ntfy
-              readOnly: true
-            - mountPath: /synthetic-slack
-              name: synthetic-slack
               readOnly: true
             - mountPath: /synthetic-slack-files
               name: synthetic-slack-files
@@ -3335,10 +3317,6 @@ spec:
             secret:
               optional: true
               secretName: synthetic-ntfy
-          - name: synthetic-slack
-            secret:
-              optional: true
-              secretName: synthetic-slack
           - name: synthetic-slack-files
             secret:
               optional: true
