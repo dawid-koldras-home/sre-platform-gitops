@@ -52,9 +52,9 @@ data:
       tls_disable     = 0
       tls_cert_file   = "/tls/tls.crt"
       tls_key_file    = "/tls/tls.key"
-    	  tls_disable_client_certs = true
-      address         = "[::]:8200"
-      cluster_address = "[::]:8201"
+      tls_disable_client_certs = true
+      address         = "0.0.0.0:8200"
+      cluster_address = "0.0.0.0:8201"
       telemetry {
         unauthenticated_metrics_access = false
       }
@@ -62,6 +62,11 @@ data:
     
     storage "raft" {
       path = "/openbao/data"
+      retry_join {
+        leader_api_addr = "https://bao-prod-openbao-0.bao-prod-openbao-internal.openbao-prod.svc.cluster.local:8200"
+        leader_tls_servername = "bao-prod-openbao-0.bao-prod-openbao-internal.openbao-prod.svc.cluster.local"
+        leader_ca_cert_file = "/tls/ca.crt"
+      }
     }
     
     service_registration "kubernetes" {}
