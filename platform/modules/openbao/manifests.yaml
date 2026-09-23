@@ -52,7 +52,7 @@ data:
       tls_disable     = 0
       tls_cert_file   = "/tls/tls.crt"
       tls_key_file    = "/tls/tls.key"
-      tls_disable_client_certs = true
+      tls_disable_client_certs = "true"
       address         = "0.0.0.0:8200"
       cluster_address = "0.0.0.0:8201"
       telemetry {
