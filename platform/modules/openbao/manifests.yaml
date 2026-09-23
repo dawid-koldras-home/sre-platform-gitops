@@ -62,11 +62,6 @@ data:
     
     storage "raft" {
       path = "/openbao/data"
-      retry_join {
-        leader_api_addr = "https://bao-prod-openbao-0.bao-prod-openbao-internal.openbao-prod.svc.cluster.local:8200"
-        leader_tls_servername = "bao-prod-openbao-0.bao-prod-openbao-internal.openbao-prod.svc.cluster.local"
-        leader_ca_cert_file = "/tls/ca.crt"
-      }
     }
     
     service_registration "kubernetes" {}
