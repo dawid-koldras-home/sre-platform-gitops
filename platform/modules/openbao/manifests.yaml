@@ -63,8 +63,6 @@ data:
     storage "raft" {
       path = "/openbao/data"
     }
-    
-    service_registration "kubernetes" {}
 ---
 # Source: openbao/templates/server-clusterrolebinding.yaml
 apiVersion: rbac.authorization.k8s.io/v1
