@@ -754,6 +754,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: bao-prod-active
+            name: bao-prod-openbao
             port:
               number: 8200
