@@ -20,7 +20,7 @@ spec:
     path: "platform/modules/openbao"
   destination:
     server: https://kubernetes.default.svc
-    namespace: "openbao-prod"
+    namespace: "openbao"
   syncPolicy:
     automated:
       prune: true
