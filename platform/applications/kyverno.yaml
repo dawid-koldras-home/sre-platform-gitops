@@ -9,7 +9,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: srectl
-    sre.platform.io/tenant: "sre-tools-stage"
+    sre.platform.io/tenant: "sre-tools"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

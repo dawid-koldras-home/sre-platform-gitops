@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: clickstack
+  name: authelia
   namespace: argocd
   annotations:
     argocd.argoproj.io/refresh: hard
@@ -9,7 +9,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: srectl
-    sre.platform.io/tenant: "sre-tools-stage"
+    sre.platform.io/tenant: "sre-tools"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -17,10 +17,10 @@ spec:
   source:
     repoURL: "https://github.com/dawid-koldras-home/sre-platform-gitops.git"
     targetRevision: "main"
-    path: "platform/modules/clickstack"
+    path: "platform/modules/authelia"
   destination:
     server: https://kubernetes.default.svc
-    namespace: "clickstack"
+    namespace: "authelia"
   syncPolicy:
     automated:
       prune: true
