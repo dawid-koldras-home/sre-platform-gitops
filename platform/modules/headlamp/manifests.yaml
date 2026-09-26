@@ -31,6 +31,121 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 ---
 # Source: headlamp/templates/extra-manifests.yaml
+apiVersion: v1
+data:
+  main.js: |+
+    (function(i,y){typeof exports=="object"&&typeof module<"u"?y(require("react/jsx-runtime"),require("@iconify/react"),require("@kinvolk/headlamp-plugin/lib"),require("@kinvolk/headlamp-plugin/lib/CommonComponents"),require("@kinvolk/headlamp-plugin/lib/components/common"),require("react-router-dom"),require("notistack"),require("react")):typeof define=="function"&&define.amd?define(["react/jsx-runtime","@iconify/react","@kinvolk/headlamp-plugin/lib","@kinvolk/headlamp-plugin/lib/CommonComponents","@kinvolk/headlamp-plugin/lib/components/common","react-router-dom","notistack","react"],y):(i=typeof globalThis<"u"?globalThis:i||self,y(i.pluginLib.ReactJSX,i.pluginLib.Iconify,i.pluginLib,i.pluginLib.CommonComponents,i.pluginLib.CommonComponents,i.pluginLib.ReactRouter,i.pluginLib.Notistack,i.pluginLib.React))})(this,(function(i,y,l,c,K,x,$,h){"use strict";const{KubeObject:O}=l.K8s.cluster,k="argoproj.io/v1alpha1",p=class p extends O{static get detailsRoute(){return"/argocd/applications/:namespace/:name"}get spec(){return this.jsonData.spec}get status(){return this.jsonData.status}get project(){return this.spec.project||"default"}get sources(){return this.spec.sources??(this.spec.source?[this.spec.source]:[])}get isMultiSource(){var t;return(((t=this.spec.sources)==null?void 0:t.length)??0)>1}get repoURL(){var t,e,a;return((t=this.spec.source)==null?void 0:t.repoURL)||((a=(e=this.spec.sources)==null?void 0:e[0])==null?void 0:a.repoURL)||""}get targetRevision(){var t,e,a;return((t=this.spec.source)==null?void 0:t.targetRevision)||((a=(e=this.spec.sources)==null?void 0:e[0])==null?void 0:a.targetRevision)||"HEAD"}get path(){var e;const t=this.spec.source||((e=this.spec.sources)==null?void 0:e[0]);return(t==null?void 0:t.path)||(t==null?void 0:t.chart)||""}get destinationServer(){var t,e;return((t=this.spec.destination)==null?void 0:t.server)||((e=this.spec.destination)==null?void 0:e.name)||"-"}get destinationNamespace(){var t;return((t=this.spec.destination)==null?void 0:t.namespace)||"default"}get healthStatus(){var t,e;return((e=(t=this.status)==null?void 0:t.health)==null?void 0:e.status)||"Unknown"}get syncStatus(){var t,e;return((e=(t=this.status)==null?void 0:t.sync)==null?void 0:e.status)||"Unknown"}get syncPolicy(){return this.spec.syncPolicy}get managedResources(){var t;return((t=this.status)==null?void 0:t.resources)??[]}get conditions(){var t;return((t=this.status)==null?void 0:t.conditions)??[]}};p.kind="Application",p.apiName="applications",p.apiVersion=k,p.isNamespaced=!0;let m=p;const q=l.ApiProxy.request,M=`/apis/${k}`;function H(s,t){return`${M}/namespaces/${t}/applications/${s}`}async function D(s,t,e){try{return await q(H(s,t),{method:"PATCH",headers:{"Content-Type":"application/merge-patch+json"},body:JSON.stringify(e)})}catch(a){const n=typeof a=="object"&&a!==null?a:{},o=n.status??n.statusCode,u=a instanceof Error?a.message:n.message?String(n.message):String(a);throw o===403||o===void 0&&u.includes("403")?new Error(`Permission denied: your Kubernetes RBAC role does not allow patching Application resources in the "${t}" namespace. Ask your cluster admin to grant you patch access to applications.argoproj.io.`):a instanceof Error?a:new Error(u)}}function P(s,t,e){const a={};return e!==void 0&&(a.revision=e),D(s,t,{operation:{initiatedBy:{username:"headlamp"},sync:a}})}function V(s,t,e="normal"){return D(s,t,{metadata:{annotations:{"argocd.argoproj.io/refresh":e}}})}function B(s){return s instanceof Error?s.message:typeof s=="object"&&s!==null&&"message"in s?String(s.message):typeof s=="string"?s:"Unknown error"}function A(s,t){const{enqueueSnackbar:e}=$.useSnackbar(),[a,n]=h.useState(!1),o=h.useRef(!1);return{execute:h.useCallback(async(r,d)=>{if(!a&&!o.current){o.current=!0,n(!0);try{await s(r,d),e(`${t} triggered for ${r}`,{variant:"success"})}catch(g){e(`Failed to ${t.toLowerCase()} ${r}: ${B(g)}`,{variant:"error"})}finally{o.current=!1,n(!1)}}},[a,s,t,e]),isLoading:a}}function T(s,t){const{enqueueSnackbar:e}=$.useSnackbar(),[a,n]=h.useState({}),o=h.useRef(new Set),u=h.useCallback(async(d,g)=>{const S=`${g}/${d}`;if(!a[S]&&!o.current.has(S)){o.current.add(S),n(b=>({...b,[S]:!0}));try{await s(d,g),e(`${t} triggered for ${d}`,{variant:"success"})}catch(b){e(`Failed to ${t.toLowerCase()} ${d}: ${B(b)}`,{variant:"error"})}finally{o.current.delete(S),n(b=>{const E={...b};return delete E[S],E})}}},[a,s,t,e]),r=h.useCallback((d,g)=>!!a[`${g}/${d}`],[a]);return{execute:u,isLoading:r}}function j(s){switch(s.toLowerCase()){case"healthy":return"success";case"suspended":return"warning";case"progressing":return"info";case"degraded":case"missing":return"error";default:return""}}function N(s){switch(s.toLowerCase()){case"synced":return"success";case"outofsync":return"warning";default:return""}}function I(s){const t=x.useParams(),{namespace:e=t.namespace,name:a=t.name}=s,n=A(P,"Sync"),o=A(V,"Refresh"),u=n.isLoading||o.isLoading;return i.jsx(c.DetailsGrid,{resourceType:m,name:a,namespace:e,withEvents:!0,actions:r=>r?[{id:"argocd-sync",action:i.jsx(c.AuthVisible,{item:r,authVerb:"patch",children:i.jsx(c.ActionButton,{description:n.isLoading?"Syncing…":"Sync",icon:n.isLoading?"mdi:loading":"mdi:sync",onClick:()=>n.execute(r.metadata.name,r.metadata.namespace),iconButtonProps:{disabled:u}})})},{id:"argocd-refresh",action:i.jsx(c.AuthVisible,{item:r,authVerb:"patch",children:i.jsx(c.ActionButton,{description:o.isLoading?"Refreshing…":"Refresh",icon:o.isLoading?"mdi:loading":"mdi:refresh",onClick:()=>o.execute(r.metadata.name,r.metadata.namespace),iconButtonProps:{disabled:u}})})}]:[],extraInfo:r=>r?[{name:"Project",value:r.project},...r.isMultiSource?r.sources.flatMap((d,g)=>[{name:`Source ${g+1} Repo`,value:d.repoURL},{name:`Source ${g+1} Revision`,value:d.targetRevision??"HEAD"},{name:`Source ${g+1} Path`,value:d.path??d.chart??"-"}]):[{name:"Source Repo",value:r.repoURL},{name:"Target Revision",value:r.targetRevision},{name:"Path",value:r.path||"-"}],{name:"Destination",value:`${r.destinationServer} / ${r.destinationNamespace}`},{name:"Sync Status",value:i.jsx(c.StatusLabel,{status:N(r.syncStatus),children:r.syncStatus})},{name:"Health Status",value:i.jsx(c.StatusLabel,{status:j(r.healthStatus),children:r.healthStatus})}]:[],extraSections:r=>r?[U(r),Z(r),F(r)].filter(Boolean):[]})}function U(s){const t=s.managedResources;return t.length?{id:"managed-resources",section:i.jsx(c.SectionBox,{title:"Managed Resources",children:i.jsx(c.SimpleTable,{data:t,columns:[{label:"Kind",getter:e=>e.kind,sort:!0},{label:"Name",getter:e=>e.name,sort:!0},{label:"Namespace",getter:e=>e.namespace??"-",sort:!0},{label:"Status",getter:e=>e.status??"-"},{label:"Health",getter:e=>{var a;return(a=e.health)!=null&&a.status?i.jsx(c.StatusLabel,{status:j(e.health.status),children:e.health.status}):"-"},sort:(e,a)=>{var n,o;return(((n=e.health)==null?void 0:n.status)??"").localeCompare(((o=a.health)==null?void 0:o.status)??"")}}]})})}:null}function Z(s){var a;const t=s.syncPolicy;if(!t)return null;const e=[{name:"Automated",value:t.automated?"Yes":"No"},...t.automated?[{name:"Self Heal",value:t.automated.selfHeal?"Yes":"No"},{name:"Prune",value:t.automated.prune?"Yes":"No"}]:[],...t.retry?[{name:"Retry Limit",value:String(t.retry.limit??"-")},{name:"Retry Backoff",value:t.retry.backoff?`${t.retry.backoff.duration??"-"} (max ${t.retry.backoff.maxDuration??"-"})`:"-"}]:[],...(a=t.syncOptions)!=null&&a.length?[{name:"Sync Options",value:t.syncOptions.join(", ")}]:[]];return{id:"sync-policy",section:i.jsx(c.SectionBox,{title:"Sync Policy",children:i.jsx(c.NameValueTable,{rows:e})})}}function F(s){return s.conditions.length?{id:"conditions",section:i.jsx(c.SectionBox,{title:"Conditions",children:i.jsx(K.ConditionsTable,{resource:s.jsonData})})}:null}function W(){const s=T(P,"Sync"),t=T(V,"Refresh");return i.jsx(c.ResourceListView,{title:"Argo CD Applications",resourceClass:m,actions:[{id:"argocd-sync",action:({item:e})=>{const{name:a,namespace:n}=e.metadata,o=s.isLoading(a,n),u=o||t.isLoading(a,n);return i.jsx(c.AuthVisible,{item:e,authVerb:"patch",children:i.jsx(c.ActionButton,{description:o?"Syncing…":"Sync",icon:o?"mdi:loading":"mdi:sync",onClick:()=>s.execute(a,n),iconButtonProps:{disabled:u}})})}},{id:"argocd-refresh",action:({item:e})=>{const{name:a,namespace:n}=e.metadata,o=t.isLoading(a,n),u=o||s.isLoading(a,n);return i.jsx(c.AuthVisible,{item:e,authVerb:"patch",children:i.jsx(c.ActionButton,{description:o?"Refreshing…":"Refresh",icon:o?"mdi:loading":"mdi:refresh",onClick:()=>t.execute(a,n),iconButtonProps:{disabled:u}})})}}],columns:["name","namespace",{id:"project",label:"Project",getValue:e=>e.project},{id:"source-repo",label:"Source Repo",getValue:e=>e.isMultiSource?`${e.sources.length} sources`:e.repoURL},{id:"target-revision",label:"Target Revision",getValue:e=>e.targetRevision},{id:"sync-status",label:"Sync Status",getValue:e=>e.syncStatus,render:e=>i.jsx(c.StatusLabel,{status:N(e.syncStatus),children:e.syncStatus})},{id:"health-status",label:"Health Status",getValue:e=>e.healthStatus,render:e=>i.jsx(c.StatusLabel,{status:j(e.healthStatus),children:e.healthStatus})},"age"]})}const{KubeObject:G}=l.K8s.cluster,f=class f extends G{static get detailsRoute(){return"/argocd/projects/:namespace/:name"}get spec(){return this.jsonData.spec}get description(){return this.spec.description||""}get sourceRepos(){return this.spec.sourceRepos||[]}get destinations(){return this.spec.destinations||[]}get roles(){return this.spec.roles||[]}get clusterResourceWhitelist(){return this.spec.clusterResourceWhitelist||[]}get namespaceResourceWhitelist(){return this.spec.namespaceResourceWhitelist||[]}};f.kind="AppProject",f.apiName="appprojects",f.apiVersion=k,f.isNamespaced=!0;let v=f;function Y(s){const t=x.useParams(),{namespace:e=t.namespace,name:a=t.name}=s;return i.jsx(c.DetailsGrid,{resourceType:v,name:a,namespace:e,withEvents:!0,extraInfo:n=>n?[{name:"Description",value:n.description||"-"},{name:"Source Repos",value:String(n.sourceRepos.length)},{name:"Destinations",value:String(n.destinations.length)}]:[],extraSections:n=>n?[J(n),X(n),z(n),Q(n)].filter(Boolean):[]})}function J(s){const t=s.sourceRepos;return t.length?{id:"source-repos",section:i.jsx(c.SectionBox,{title:"Source Repositories",children:i.jsx(c.NameValueTable,{rows:t.map((e,a)=>({name:`Repo ${a+1}`,value:e}))})})}:null}function X(s){const t=s.destinations;return t.length?{id:"destinations",section:i.jsx(c.SectionBox,{title:"Destinations",children:i.jsx(c.SimpleTable,{data:t,columns:[{label:"Server",getter:e=>e.server??e.name??"-"},{label:"Namespace",getter:e=>e.namespace??"*"}]})})}:null}function z(s){const t=s.clusterResourceWhitelist;return t.length?{id:"cluster-resource-whitelist",section:i.jsx(c.SectionBox,{title:"Cluster Resource Whitelist",children:i.jsx(c.SimpleTable,{data:t,columns:[{label:"Group",getter:e=>e.group||"*"},{label:"Kind",getter:e=>e.kind||"*"}]})})}:null}function Q(s){const t=s.roles;return t.length?{id:"roles",section:i.jsx(c.SectionBox,{title:"Roles",children:i.jsx(c.SimpleTable,{data:t,columns:[{label:"Name",getter:e=>e.name},{label:"Description",getter:e=>e.description??"-"},{label:"Groups",getter:e=>{var a;return((a=e.groups)==null?void 0:a.join(", "))??"-"}}]})})}:null}function _(){return i.jsx(c.ResourceListView,{title:"Argo CD Projects",resourceClass:v,columns:["name","namespace",{id:"description",label:"Description",getValue:s=>s.description||"-"},{id:"source-repos",label:"Source Repos",getValue:s=>String(s.sourceRepos.length)},{id:"destinations",label:"Destinations",getValue:s=>String(s.destinations.length)},"age"]})}const w={},R={},L={},C=30*1e3;function ee(s){const e=Date.now()-(R[s]??0)<C;if(L[s]||e)return;L[s]=!0,l.K8s.ResourceClasses.CustomResourceDefinition.apiList(n=>{w[s]=n.some(o=>{var u,r;return["applications.argoproj.io","appprojects.argoproj.io","applicationsets.argoproj.io"].includes((r=(u=o.jsonData)==null?void 0:u.metadata)==null?void 0:r.name)}),R[s]=Date.now(),L[s]=!1},()=>{w[s]=!1,R[s]=Date.now(),L[s]=!1},{cluster:s})()}l.registerSidebarEntryFilter(s=>{if(s.name!=="argocd"&&s.parent!=="argocd")return s;const t=l.Utils.getCluster()??"";return ee(t),w[t]===!1?null:s}),y.addIcon("simple-icons:argo",{body:'<path fill="currentColor" d="M12.581 0c.436.037.871.1 1.299.186 1.679.383 3.121 1.213 4.382 2.365 1.161 1.06 1.917 2.372 2.335 3.881.089.321.216.56.586.624.205.035.238.245.239.43.003.646.002 1.294.002 1.94l-.002 1.21c-.001.356-.116.479-.466.474-.211-.003-.293.119-.344.291-.146.489-.33.966-.552 1.426-.818 1.682-2.084 2.938-3.688 3.87-.077.045-.155.088-.233.131-.252.137-.258.146-.155.415.114.299.358.529.664.625.269.096.553.134.827.21a.672.672 0 0 1 .236.094c-.066.082-.156.067-.231.082-.36.073-.713.184-1.086.17a1.275 1.275 0 0 1-.438-.064c-.114-.045-.152-.006-.176.109a5.354 5.354 0 0 0-.084.92c-.015.617-.071 1.23-.112 1.844-.042.598-.018.651.558.842.281.094.563.187.842.286.069.024.15.038.192.117-.04.057-.098.035-.146.035-.493.003-.985.005-1.478.001-.524-.005-.806-.282-.845-.803-.055-.762-.12-1.524-.182-2.286a.947.947 0 0 0-.026-.12c-.079.455-.065.879-.084 1.298-.023.528-.008 1.057-.007 1.584 0 .27.086.388.335.483.359.135.711.295 1.114.262.141-.012.276.062.402.129.032.017.073.033.069.073-.004.043-.049.047-.084.045-.657-.019-1.317.065-1.972-.028-.323-.046-.533-.236-.631-.552-.094-.303-.114-.617-.137-.93-.046-.626-.078-1.253-.116-1.88a.222.222 0 0 0-.061-.171.282.282 0 0 0-.031.193c-.002.956-.002 1.911-.001 2.866 0 .388.123.575.494.708.481.172.976.298 1.47.423.11.028.225.047.242.192h-1.852c-.051-.01-.103-.022-.155-.03-.701-.1-1.001-.372-1.143-1.042l-.067-.331-.226-1.103c-.069.12-.118.25-.144.386-.083.399-.151.802-.243 1.2-.113.493-.444.763-.932.857l-.33.063H8.558c.057-.171.216-.185.355-.221.476-.127.96-.223 1.417-.409a.603.603 0 0 0 .397-.521c.058-.435.002-.865-.013-1.296a1.528 1.528 0 0 0-.078-.315.405.405 0 0 0-.071.207c-.026.296-.049.591-.075.886-.038.432-.273.716-.679.81a1.702 1.702 0 0 1-.37.045c-.557.003-1.115-.001-1.673-.005-.048 0-.109.019-.148-.065.178-.103.377-.168.582-.187a5.67 5.67 0 0 0 .939-.193c.42-.114.522-.249.512-.687-.023-.931-.091-1.86-.069-2.791.004-.184.001-.368.001-.551a2.387 2.387 0 0 0-.05.385 40.299 40.299 0 0 1-.186 2.623c-.052.513-.296.748-.804.805-.446.051-.889.002-1.332-.02-.108-.006-.234.012-.339-.064.043-.066.106-.07.16-.087.362-.115.725-.224 1.086-.344.246-.081.35-.235.355-.492a2.241 2.241 0 0 0-.003-.232 45.315 45.315 0 0 1-.105-2.149 5.487 5.487 0 0 0-.035-.478c-.024-.188-.131-.287-.295-.258-.505.092-.99-.006-1.473-.139-.059-.016-.134-.007-.178-.088a.986.986 0 0 1 .285-.09c.255-.052.507-.121.753-.208.312-.112.564-.347.695-.651.089-.203.056-.317-.112-.398-1.418-.683-2.512-1.73-3.391-3.017a8.152 8.152 0 0 1-1.123-2.447c-.067-.246-.156-.3-.383-.26-.306.053-.401.006-.535-.273v-3.49c.144-.303.205-.341.534-.329.235.01.247-.004.309-.242.396-1.508 1.082-2.861 2.171-3.988C6.9 1.42 8.523.631 10.34.203c.456-.108.922-.15 1.387-.203h.854Zm7.974 8.948a7.34 7.34 0 0 0-.048-.938 8.353 8.353 0 0 0-.099-.65c-.598-2.964-2.344-5.02-5.051-6.268-1.553-.715-3.21-.835-4.878-.511-3.248.633-5.396 2.583-6.539 5.652-.436 1.173-.495 2.406-.37 3.65.087.935.339 1.846.745 2.694.585 1.213 1.444 2.207 2.477 3.058.343.286.719.528 1.121.719.235.111.247.105.245-.146.006-.16.003-.32-.009-.48-.125-1.02-.142-2.045-.169-3.069a.392.392 0 0 0-.184-.353c-.385-.268-.713-.592-.921-1.019-.474-.97-.372-2.361.813-3.215.136-.097.217-.19.198-.373a1.724 1.724 0 0 1 .031-.442c.177-1.187.748-2.138 1.722-2.84.68-.492 1.442-.772 2.286-.782.483-.007.953.11 1.414.244 1.609.467 2.846 2.07 2.845 3.697a.64.64 0 0 0 .268.565c.463.371.821.83.943 1.426.22 1.077-.083 1.982-.979 2.634-.266.194-.347.406-.333.698.002.047 0 .095-.002.142l-.062 1.439c-.025.586-.138 1.165-.117 1.754.008.223.006.226.201.128a7.46 7.46 0 0 0 2.393-1.903c1.32-1.577 2.074-3.372 2.059-5.511ZM9.117 12.102c1.489.021 2.443-1.578 1.716-2.879a1.937 1.937 0 0 0-1.699-.991c-1.094-.004-1.954.822-1.958 1.881-.005 1.148.813 1.985 1.941 1.989Zm5.794 0c1.101.002 1.935-.823 1.935-1.917 0-1.091-.846-1.949-1.92-1.947-1.064.003-1.94.866-1.943 1.915-.003 1.105.831 1.948 1.928 1.949Zm-1.472 1.937c-.208.128-.407.277-.63.384-.536.257-1.063.257-1.579-.048-.158-.094-.308-.201-.464-.298-.047-.028-.092-.103-.15-.062-.044.03-.01.1-.001.151.037.179.064.362.082.544.027.565.293.992.742 1.31a.984.984 0 0 0 .791.186c.565-.119 1.025-.614 1.124-1.218.043-.266.005-.544.109-.803a.133.133 0 0 0-.024-.146Zm-8.78-4.92c-.012-1.102.143-2.055.54-2.961.633-1.443 1.642-2.553 2.98-3.374a.378.378 0 0 1 .459.067c.06.06.036.118.01.178a1.09 1.09 0 0 1-.48.51c-1.079.639-1.829 1.571-2.357 2.688a6.325 6.325 0 0 0-.618 2.986c.055 1.309.439 2.516 1.213 3.588.088.104.148.23.173.365.01.08.059.168-.031.228a.312.312 0 0 1-.288.041.502.502 0 0 1-.234-.185c-.72-.979-1.193-2.056-1.331-3.273-.036-.326-.004-.653-.036-.858ZM8.94 2.34a.373.373 0 0 1 .378-.382c.211.001.409.226.416.473.004.138-.309.39-.476.386-.189-.005-.318-.2-.318-.477Zm-.465 7.48a.609.609 0 0 1 .586-.631c.38-.003.671.271.675.633.004.356-.27.622-.639.621-.38-.002-.621-.241-.622-.623Zm6.496.623c-.381-.002-.625-.255-.621-.646a.635.635 0 0 1 .596-.613.656.656 0 0 1 .669.643c.001.354-.275.618-.644.616Z"/>',width:24,height:24}),l.registerRoute({path:"/argocd/applications",sidebar:"argocd-applications",name:"argocd-applications-list",exact:!0,component:()=>i.jsx(W,{})}),l.registerRoute({path:"/argocd/applications/:namespace/:name",sidebar:"argocd-applications",name:"argocd-application-detail",exact:!0,component:()=>i.jsx(I,{})}),l.registerSidebarEntry({parent:null,name:"argocd",label:"Argo CD",url:"/argocd/applications",icon:"simple-icons:argo"}),l.registerSidebarEntry({parent:"argocd",name:"argocd-applications",label:"Applications",url:"/argocd/applications"}),l.registerRoute({path:"/argocd/projects",sidebar:"argocd-projects",name:"argocd-projects-list",exact:!0,component:()=>i.jsx(_,{})}),l.registerRoute({path:"/argocd/projects/:namespace/:name",sidebar:"argocd-projects",name:"argocd-project-detail",exact:!0,component:()=>i.jsx(Y,{})}),l.registerSidebarEntry({parent:"argocd",name:"argocd-projects",label:"Projects",url:"/argocd/projects"})}));
+
+  package.json: |+
+    {
+      "name": "@headlamp-k8s/argocd",
+      "version": "0.1.0-alpha",
+      "description": "Headlamp plugin for Argo CD GitOps Application Management",
+      "author": "Joshna Waikar",
+      "scripts": {
+        "start": "headlamp-plugin start",
+        "build": "headlamp-plugin build",
+        "format": "headlamp-plugin format",
+        "lint": "headlamp-plugin lint",
+        "lint-fix": "headlamp-plugin lint --fix",
+        "package": "headlamp-plugin package",
+        "tsc": "headlamp-plugin tsc",
+        "storybook": "headlamp-plugin storybook",
+        "storybook-build": "headlamp-plugin storybook-build",
+        "test": "headlamp-plugin test",
+        "i18n": "headlamp-plugin i18n"
+      },
+      "keywords": [
+        "headlamp",
+        "headlamp-plugin",
+        "kubernetes",
+        "kubernetes-ui",
+        "kubernetes-debugging",
+        "plugins"
+      ],
+      "prettier": "@headlamp-k8s/eslint-config/prettier-config",
+      "eslintConfig": {
+        "extends": [
+          "@headlamp-k8s",
+          "prettier",
+          "plugin:jsx-a11y/recommended"
+        ]
+      },
+      "overrides": {
+        "typescript": "5.6.2"
+      },
+      "devDependencies": {
+        "@kinvolk/headlamp-plugin": "^0.14.0"
+      }
+    }
+
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: plugin
+    app.kubernetes.io/name: headlamp
+    app.kubernetes.io/part-of: sre-platform
+    sre.platform.io/plugin-name: argocd
+  name: headlamp-plugin-argocd
+  namespace: headlamp
+---
+# Source: headlamp/templates/extra-manifests.yaml
+apiVersion: v1
+data:
+  main.js: |
+    (function(){"use strict";try{if(typeof document<"u"){var e=document.createElement("style");e.appendChild(document.createTextNode(".loader-parent{display:flex;justify-content:center;align-items:center;height:100%}.loader{width:7px;aspect-ratio:1;border-radius:50%;animation:l5 1s infinite linear alternate}@keyframes l5{0%{box-shadow:10px 0 #000,-10px 0 #0002;background:#000}33%{box-shadow:10px 0 #000,-10px 0 #0002;background:#0002}66%{box-shadow:10px 0 #0002,-10px 0 #000;background:#0002}to{box-shadow:10px 0 #0002,-10px 0 #000;background:#000}}")),document.head.appendChild(e)}}catch(t){console.error("vite-plugin-css-injected-by-js",t)}})();
+    (function(a,N){typeof exports=="object"&&typeof module<"u"?N(require("react/jsx-runtime"),require("@iconify/react"),require("@kinvolk/headlamp-plugin/lib"),require("@mui/material/IconButton"),require("@mui/material/Tooltip"),require("react"),require("@kinvolk/headlamp-plugin/lib/components/common"),require("@mui/material"),require("@mui/material/MenuItem"),require("@mui/material/Select"),require("recharts"),require("@mui/material/Box"),require("@mui/material/Switch"),require("@mui/material/TextField")):typeof define=="function"&&define.amd?define(["react/jsx-runtime","@iconify/react","@kinvolk/headlamp-plugin/lib","@mui/material/IconButton","@mui/material/Tooltip","react","@kinvolk/headlamp-plugin/lib/components/common","@mui/material","@mui/material/MenuItem","@mui/material/Select","recharts","@mui/material/Box","@mui/material/Switch","@mui/material/TextField"],N):(a=typeof globalThis<"u"?globalThis:a||self,N(a.pluginLib.ReactJSX,a.pluginLib.Iconify,a.pluginLib,a.pluginLib.MuiMaterial.IconButton,a.pluginLib.MuiMaterial.Tooltip,a.pluginLib.React,a.pluginLib.CommonComponents,a.pluginLib.MuiMaterial,a.pluginLib.MuiMaterial.MenuItem,a.pluginLib.MuiMaterial.Select,a.pluginLib.Recharts,a.pluginLib.MuiMaterial.Box,a.pluginLib.MuiMaterial.Switch,a.pluginLib.MuiMaterial.TextField))})(this,(function(a,N,E,ie,oe,C,M,b,re,le,k,ce,de,ue){"use strict";const $=t=>t&&typeof t=="object"&&"default"in t?t:{default:t};function pe(t){if(t&&typeof t=="object"&&"default"in t)return t;const e=Object.create(null,{[Symbol.toStringTag]:{value:"Module"}});if(t){for(const n in t)if(n!=="default"){const i=Object.getOwnPropertyDescriptor(t,n);Object.defineProperty(e,n,i.get?i:{enumerable:!0,get:()=>t[n]})}}return e.default=t,Object.freeze(e)}const fe=$(ie),he=$(oe),ge=pe(C),m=$(re),X=$(le),ye=$(ce),me=$(de),K=$(ue),V=ge.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED.ReactCurrentDispatcher,ve=()=>C.useReducer(()=>({}))[1],Ce=t=>()=>{const e=`Hook "${t}" no possible to using inside useBetween scope.`;throw console.error(e),new Error(e)},G=(t,e)=>Object.is(t,e),A=(t,e)=>!t||!e||t.length!==e.length||t.some((n,i)=>!G(n,e[i])),we=()=>typeof window>"u",J=new Map;let B=[],q=0,O=[],L=[],U=()=>{},W=we(),be;const x=()=>{const t=q++;return B[t]=B[t]||{}},Z={useState(t){const e=x(),n=U;return e.initialized||(e.state=typeof t=="function"?t():t,e.set=i=>{if(typeof i=="function")return e.set(i(e.state));G(i,e.state)||(e.state=i,n())},e.initialized=!0),[e.state,e.set]},useReducer(t,e,n){const i=x(),s=U;return i.initialized||(i.state=n?n(e):e,i.dispatch=c=>{const l=t(i.state,c);G(l,i.state)||(i.state=l,s())},i.initialized=!0),[i.state,i.dispatch]},useEffect(t,e){if(W)return;const n=x();n.initialized?A(n.deps,e)&&(n.deps=e,O.push([n,e,t])):(n.deps=e,n.initialized=!0,O.push([n,e,t]))},useLayoutEffect(t,e){if(W)return;const n=x();n.initialized?A(n.deps,e)&&(n.deps=e,L.push([n,e,t])):(n.deps=e,n.initialized=!0,L.push([n,e,t]))},useCallback(t,e){const n=x();return n.initialized?A(n.deps,e)&&(n.deps=e,n.fn=t):(n.fn=t,n.deps=e,n.initialized=!0),n.fn},useMemo(t,e){const n=x();return n.initialized?A(n.deps,e)&&(n.deps=e,n.state=t()):(n.deps=e,n.state=t(),n.initialized=!0),n.state},useRef(t){const e=x();return e.initialized||(e.state={current:t},e.initialized=!0),e.state},useImperativeHandle(t,e,n){if(W)return;const i=x();i.initialized?A(i.deps,n)&&(i.deps=n,L.push([i,n,()=>{typeof t=="function"?t(e()):t.current=e()}])):(i.deps=n,i.initialized=!0,L.push([i,n,()=>{typeof t=="function"?t(e()):t.current=e()}]))}};["readContext","useContext","useDebugValue","useResponder","useDeferredValue","useTransition"].forEach(t=>Z[t]=Ce(t));const ke=(t,e)=>{const n=[];let i=[],s,c=[],l=!1;const r=()=>{i.slice().forEach(d=>d())},o=()=>{if(l)return;const d=V.current,p=[q,O,L,B,U];let f=!1,v=!0;if(q=0,O=[],L=[],B=n,U=()=>{v?f=!0:o()},V.current=Z,s=t(be),[L,O].forEach(I=>I.forEach(([w,S,F])=>{if(w.deps=S,w.unsub){const T=w.unsub;c=c.filter(ze=>ze!==T),T()}const P=F();typeof P=="function"?(c.push(P),w.unsub=P):w.unsub=null})),[q,O,L,B,U]=p,V.current=d,v=!1,!f){r();return}o()};return{init:()=>o(),get:()=>s,sub:d=>{i.indexOf(d)===-1&&i.push(d)},unsub:d=>{i=i.filter(p=>p!==d)},unsubs:()=>c,mock:d=>{l=!0,s=d,r()},unmock:()=>{l=!1,o()}}},Se=t=>{let e=J.get(t);return e||(e=ke(t),J.set(t,e),e.init()),e},Te=t=>{const e=ve();let n=Se(t);return n.sub(e),C.useEffect(()=>(n.sub(e),()=>n.unsub(e)),[n,e]),n.get()},_=E.ApiProxy.request,R=["cpuCost","ramCost","pvCost","gpuCost","networkCost","loadBalancerCost","externalCost","sharedCost","totalCost"];async function ee(){var n,i;const t=new URLSearchParams;t.append("labelSelector","app.kubernetes.io/name=opencost");const e=await _(`/api/v1/services?${t.toString()}`,{method:"GET"});if(e.items&&e.items.length>0){const s=e.items.find(l=>{var r,o;return(o=(r=l.spec)==null?void 0:r.ports)==null?void 0:o.some(u=>u.name==="http")}),c=(i=(n=s==null?void 0:s.spec)==null?void 0:n.ports)==null?void 0:i.find(l=>l.name==="http");if(s&&c)return[!0,`${s.metadata.name}:${c.name}`,s.metadata.namespace]}return[!1,null,null]}function z(t,e){var s,c,l,r;const n=((c=(s=t==null?void 0:t.jsonData)==null?void 0:s.metadata)==null?void 0:c.name)??"",i=((r=(l=t==null?void 0:t.jsonData)==null?void 0:l.metadata)==null?void 0:r.namespace)??"";return["pod","service","deployment"].includes(e)?`${i}/${n}`:n}function Le(t){return t==="deployment"||t==="service"?"namespace,pod":t==="pod"?`namespace,${t}`:t}async function xe(){var c,l,r,o,u,h,y;const[t,e]=await Promise.all([_("/api/v1/pods"),_("/apis/apps/v1/replicasets")]),n=new Map,i=[];for(const g of(e==null?void 0:e.items)??[]){const d=(l=(c=g.metadata)==null?void 0:c.ownerReferences)==null?void 0:l.find(p=>p.controller===!0&&p.kind==="Deployment");if(d){const p=`${g.metadata.namespace}/${g.metadata.name}`,f=`${g.metadata.namespace}/${d.name}`;n.set(p,f),i.push([`${p}-`,f])}}const s=new Map;for(const g of(t==null?void 0:t.items)??[]){const d=(r=g.metadata)==null?void 0:r.namespace,p=(o=g.metadata)==null?void 0:o.name,f=(h=(u=g.metadata)==null?void 0:u.ownerReferences)==null?void 0:h.find(I=>I.controller===!0);if(!d||!p||!f)continue;let v="";f.kind==="Deployment"?v=f.name:f.kind==="ReplicaSet"&&(v=((y=n.get(`${d}/${f.name}`))==null?void 0:y.split("/")[1])??""),v&&s.set(`${d}/${p}`,`${d}/${v}`)}return i.sort((g,d)=>d[0].length-g[0].length),{byPod:s,byReplicaSetPrefix:i}}function $e(t,e){var i;const n=e.byPod.get(t);return n||(((i=e.byReplicaSetPrefix.find(([s])=>t.startsWith(s)))==null?void 0:i[1])??"")}async function De(){var i,s,c,l,r;const[t,e]=await Promise.all([_("/api/v1/pods"),_("/api/v1/services")]),n=new Map;for(const o of(e==null?void 0:e.items)??[]){const u=(i=o.metadata)==null?void 0:i.namespace,h=(s=o.metadata)==null?void 0:s.name,y=((c=o.spec)==null?void 0:c.selector)??{},g=Object.entries(y);if(!(!u||!h||g.length===0))for(const d of(t==null?void 0:t.items)??[]){if(((l=d.metadata)==null?void 0:l.namespace)!==u)continue;const p=((r=d.metadata)==null?void 0:r.labels)??{};if(g.every(([f,v])=>p[f]===v)){const f=`${u}/${d.metadata.name}`,v=n.get(f)??[];v.push(`${u}/${h}`),n.set(f,v)}}}return n}function te(t,e,n){return((t==null?void 0:t.data)??[]).map(i=>{const s={},c={};for(const[l,r]of Object.entries(i??{})){const o=e(l);if(o.length===0||!r)continue;const u=r;for(const h of o){if(!s[h]){const[d,p]=h.split("/",2);s[h]={...u,name:h,properties:{...u.properties,namespace:d,...n==="deployment"?{controller:p,controllerKind:"deployment"}:{service:p}}};for(const f of R)s[h][f]=0;c[h]={weighted:0,total:0}}for(const d of R){const p=typeof u[d]=="number"?u[d]:0;s[h][d]+=p}const y=typeof u.totalCost=="number"?u.totalCost:0,g=typeof u.totalEfficiency=="number"?u.totalEfficiency:0;c[h].weighted+=g*y,c[h].total+=y}}for(const[l,r]of Object.entries(c)){const o=r;s[l].totalEfficiency=o.total>0?o.weighted/o.total:0}return s})}async function H(t,e,n,i,s){const c=Le(i),l=`/api/v1/namespaces/${t}/services/${e}/proxy/allocation?window=${encodeURIComponent(n)}&aggregate=${encodeURIComponent(c)}&step=1d&accumulate=${s.toString()}`,r=await _(l);if(i!=="deployment"&&i!=="service")return r;if(i==="deployment"){const u=await xe();return{...r,data:te(r,h=>{const y=$e(h,u);return y?[y]:[]},"deployment")}}const o=await De();return{...r,data:te(r,u=>o.get(u)??[],"service")}}function j(){return new E.ConfigStore("@headlamp-k8s/opencost")}async function ne(){const e=j().get();if(e!=null&&e.serviceURL)return[e==null?void 0:e.namespace,e==null?void 0:e.serviceURL];const[n,i,s]=await ee();return n?[s,i]:["",""]}function se(){const e=j().get();return(e==null?void 0:e.displayCurrency)??"$"}function Y(){const e=j().get();return(e==null?void 0:e.defaultTimespan)??"14d"}function Ie(t){const{data:e}=t;return a.jsx(k.ResponsiveContainer,{width:"100%",height:300,children:a.jsxs(k.AreaChart,{data:e,margin:{top:10,right:30,left:0,bottom:0},children:[a.jsx(k.CartesianGrid,{strokeDasharray:"3 3"}),a.jsx(k.XAxis,{dataKey:"date",tickFormatter:n=>new Date(n).toLocaleDateString()}),a.jsx(k.YAxis,{}),a.jsx(k.Tooltip,{}),a.jsx(k.Area,{type:"monotone",dataKey:"cpuCost",stackId:"1",stroke:"#8884d8",fill:"#8884d8"}),a.jsx(k.Area,{type:"monotone",dataKey:"ramCost",stackId:"1",stroke:"#82ca9d",fill:"#82ca9d"}),a.jsx(k.Area,{type:"monotone",dataKey:"pvCost",stackId:"1",stroke:"#ffc658",fill:"#ffc658"}),a.jsx(k.Area,{type:"monotone",dataKey:"gpuCost",stackId:"1",stroke:"#ff0000",fill:"#ff0000"})]})})}function Ee(t){return a.jsxs(X.default,{value:t.default,onChange:e=>t.onChange(e),children:[a.jsx(m.default,{value:"today",children:"Today"}),a.jsx(m.default,{value:"yesterday",children:"Yesterday"}),a.jsx(m.default,{value:"24h",children:"24 hours"}),a.jsx(m.default,{value:"48h",children:"48 hours"}),a.jsx(m.default,{value:"week",children:"Week"}),a.jsx(m.default,{value:"lastweek",children:"Last week"}),a.jsx(m.default,{value:"7d",children:"7 days"}),a.jsx(m.default,{value:"14d",children:"14 days"})]})}const Me="https://github.com/headlamp-k8s/plugins/tree/main/opencost#readme";function Oe({resource:t,type:e}){const[n,i]=C.useState(null),[s,c]=C.useState(null),[l,r]=C.useState(!0),[o,u]=C.useState(Y());C.useEffect(()=>{(async()=>{const[g]=await ee();r(g)})()},[]),C.useEffect(()=>{if(!l)return;(async()=>{var F,P;const[g,d]=await ne(),p=await H(g,d,o,e,!0),f=z(t,e);(F=p==null?void 0:p.data[0])!=null&&F[f]?i((P=p==null?void 0:p.data[0])==null?void 0:P[f]):i({});const v=await H(g,d,o,e,!1),I=[],w=new Date;let S=new Date(w);o==="yesterday"?S=new Date(w.setDate(w.getDate()-1)):o==="lastweek"&&(S=new Date(w.setDate(w.getDate()-w.getDay()-1))),S.setDate(w.getDate()-v.data.length+1),v.data.forEach(T=>{T.hasOwnProperty(f)?I.push({date:new Date(S.getTime()),cpuCost:T[f].cpuCost,ramCost:T[f].ramCost,pvCost:T[f].pvCost,gpuCost:T[f].gpuCost}):Object.keys(T).length===0&&I.push({date:new Date(S.getTime()),cpuCost:0,ramCost:0,pvCost:0,gpuCost:0}),S.setDate(S.getDate()+1)}),c(I)})()},[o]);const h=y=>{u(y),c(null),i(null)};return a.jsx(_e,{installed:l,displayTimespan:o,tsData:s,accumulatedData:n,learnMoreLink:Me,displayCurrency:se(),handleDisplayTimespanChange:h})}function _e(t){const{installed:e,displayTimespan:n,tsData:i,accumulatedData:s,learnMoreLink:c,displayCurrency:l,handleDisplayTimespanChange:r}=t;let o=null;return e?(s===null||Object.keys(s).length===0)&&(i==null?void 0:i.length)===0?o=a.jsx(b.Paper,{variant:"outlined",children:a.jsx(M.EmptyContent,{children:"No data to be shown."})}):s&&i?o=a.jsxs(b.Box,{sx:{paddingRight:"16px",paddingLeft:"16px"},children:[a.jsx(Ie,{data:i}),a.jsx(M.NameValueTable,{rows:[{name:"CPU",value:s!=null&&s.cpuCost?`${l} ${s==null?void 0:s.cpuCost}`:"N/A"},{name:"RAM",value:s!=null&&s.ramCost?`${l} ${s==null?void 0:s.ramCost}`:"N/A"},{name:"PV",value:s!=null&&s.pvCost?`${l} ${s==null?void 0:s.pvCost}`:"N/A"},{name:"GPU",value:s!=null&&s.gpuCost?`${l} ${s==null?void 0:s.gpuCost}`:"N/A"},{name:"Total",value:s!=null&&s.totalCost?`${l} ${s==null?void 0:s.totalCost}`:"N/A"},{name:"Efficiency (%)",value:s!=null&&s.totalEfficiency?`${(s==null?void 0:s.totalEfficiency)*100}`:"N/A"}]})]}):o=a.jsx(b.Box,{sx:{width:"100%"},children:a.jsx(M.Loader,{title:"Fetching Data"})}):o=a.jsxs(b.Grid,{container:!0,spacing:2,direction:"column",justifyContent:"center",alignItems:"center",children:[a.jsx(b.Grid,{item:!0,children:a.jsx(b.Typography,{variant:"h5",children:" Install Opencost for accessing cost info"})}),a.jsx(b.Typography,{children:a.jsx(b.Link,{href:c,target:"_blank",children:"Learn more about enabling Opencost."})})]}),a.jsxs(b.Grid,{spacing:2,children:[a.jsx(M.SectionBox,{title:a.jsx("div",{id:"opencost-plugin-cost-section",children:a.jsx(M.SectionHeader,{title:"Cost",actions:[e&&a.jsx(Ee,{default:n,onChange:u=>r(u.target.value)})]})})}),a.jsx(b.Box,{sx:{paddingLeft:"16px",paddingRight:"16px"},children:o})]})}function Pe(t){const{data:e,onDataChange:n}=t,i=[{name:"Enable in list view",value:a.jsx(me.default,{checked:(e==null?void 0:e.isEnabledInListView)??!0,onChange:s=>n({...e,isEnabledInListView:s.target.checked})})},{name:"Namespace",value:a.jsx(K.default,{helperText:"Please enter the namespace where Opencost is Installed",defaultValue:e!=null&&e.namespace?e.namespace:"",onChange:s=>n({...e,namespace:s.target.value}),variant:"standard"})},{name:"Service URL",value:a.jsx(K.default,{fullWidth:!0,helperText:"Please enter the service URL of Opencost web UI service",defaultValue:e!=null&&e.serviceURL?e.serviceURL:"",onChange:s=>n({...e,serviceURL:s.target.value}),variant:"standard"})},{name:"Default timespan",value:a.jsx(a.Fragment,{children:a.jsxs(X.default,{value:(e==null?void 0:e.defaultTimespan)??"14d",onChange:s=>n({...e,defaultTimespan:s.target.value}),children:[a.jsx(m.default,{value:"today",children:"Today"}),a.jsx(m.default,{value:"yesterday",children:"Yesterday"}),a.jsx(m.default,{value:"24h",children:"24 hours"}),a.jsx(m.default,{value:"48h",children:"48 hours"}),a.jsx(m.default,{value:"week",children:"Week"}),a.jsx(m.default,{value:"lastweek",children:"Last week"}),a.jsx(m.default,{value:"7d",children:"7 days"}),a.jsx(m.default,{value:"14d",children:"14 days"})]})})},{name:"Display currency",value:a.jsx(K.default,{helperText:"Enter the currency symbol to display",defaultValue:e!=null&&e.displayCurrency?e.displayCurrency:"$",onChange:s=>n({...e,displayCurrency:s.target.value}),variant:"standard"})}];return a.jsx(ye.default,{width:"80%",children:a.jsx(M.NameValueTable,{rows:i})})}function Ne(){const t=e=>{e.preventDefault();const n=document.getElementById("opencost-plugin-cost-section");n&&n.scrollIntoView({behavior:"auto"})};return a.jsx(he.default,{title:"Cost",children:a.jsx(fe.default,{onClick:t,"aria-label":"Cost","aria-haspopup":"true",children:a.jsx(N.Icon,{icon:"mdi:cash-register"})})})}E.registerDetailsViewHeaderAction(Ne),E.registerPluginSettings("@headlamp-k8s/opencost",Pe,!0),E.registerDetailsViewSectionsProcessor(function(e,n){return((e==null?void 0:e.kind)==="Pod"||(e==null?void 0:e.kind)==="Node"||(e==null?void 0:e.kind)==="Namespace"||(e==null?void 0:e.kind)==="Service"||(e==null?void 0:e.kind)==="Deployment")&&n.push({id:"Opencost-"+e.kind,section:a.jsx(Oe,{resource:e,type:e==null?void 0:e.kind.toLowerCase()})}),n});const Ae=["headlamp-pods","headlamp-nodes","headlamp-namespaces","headlamp-services","headlamp-deployments"];function Q(t){switch(t){case"headlamp-pods":return"pod";case"headlamp-nodes":return"node";case"headlamp-namespaces":return"namespace";case"headlamp-services":return"service";case"headlamp-deployments":return"deployment";default:return""}}let D=null;const Be=()=>{const[t,e]=C.useState(null),[n,i]=C.useState(null),[s,c]=C.useState("");return C.useEffect(()=>{if(s==="")return;i(!0),(async()=>{const[r,o]=await ne(),u=await H(r,o,Y(),s,!0);D=u,e(u),i(!1)})()},[s]),{data:t,isLoading:n,sharedResourceType:s,setResourceType:c}},Ue=()=>Te(Be);function qe(t){var r,o;const{resource:e,resourceType:n}=t,{data:i,isLoading:s,sharedResourceType:c,setResourceType:l}=Ue();if(n!==c&&(s===null||s===!1))l(n);else{if(s)return a.jsx(a.Fragment,{children:"..."});{const u=z(e,n),h=((o=(r=i==null?void 0:i.data[0])==null?void 0:r[u])==null?void 0:o.totalCost)??0;return a.jsx(a.Fragment,{children:h?`${se()} ${h.toFixed(4)}`:"N/A"})}}}function ae(t){return typeof t=="number"&&!isNaN(t)?t:0}E.registerResourceTableColumnsProcessor(function({id:e,columns:n}){const s=j().get();if(((s==null?void 0:s.isEnabledInListView)??!0)&&Ae.includes(e)){const c=n.filter(r=>r.id!=="opencost"),l={id:"opencost",label:`Cost (${Y()})`,render:r=>a.jsx(qe,{resource:r,resourceType:Q(e)}),sort:(r,o)=>{var y,g,d,p;const u=ae((g=(y=D==null?void 0:D.data[0])==null?void 0:y[z(r,Q(e))])==null?void 0:g.totalCost),h=ae((p=(d=D==null?void 0:D.data[0])==null?void 0:d[z(o,Q(e))])==null?void 0:p.totalCost);return u-h},disableFiltering:!0,show:!0};return c.splice(c.length-1,0,l),c}return n})}));
+  package.json: |
+    {
+      "name": "@headlamp-k8s/opencost",
+      "version": "0.1.3-sre.3",
+      "description": "OpenCost plugin for Headlamp",
+      "scripts": {
+        "start": "headlamp-plugin start",
+        "build": "headlamp-plugin build",
+        "format": "headlamp-plugin format",
+        "lint": "headlamp-plugin lint",
+        "lint-fix": "headlamp-plugin lint --fix",
+        "package": "headlamp-plugin package",
+        "tsc": "headlamp-plugin tsc",
+        "storybook": "headlamp-plugin storybook",
+        "storybook-build": "headlamp-plugin storybook-build",
+        "test": "headlamp-plugin test"
+      },
+      "keywords": [
+        "headlamp",
+        "headlamp-plugin",
+        "kubernetes",
+        "kubernetes-ui",
+        "kubernetes-debugging",
+        "plugins"
+      ],
+      "prettier": "@kinvolk/eslint-config/prettier-config",
+      "eslintConfig": {
+        "extends": [
+          "@kinvolk",
+          "prettier",
+          "plugin:jsx-a11y/recommended"
+        ]
+      },
+      "devDependencies": {
+        "@kinvolk/headlamp-plugin": "^0.9.2"
+      },
+      "dependencies": {
+        "use-between": "^1.3.5"
+      }
+    }
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: plugin
+    app.kubernetes.io/name: headlamp
+    app.kubernetes.io/part-of: sre-platform
+    sre.platform.io/plugin-name: opencost
+  name: headlamp-plugin-opencost
+  namespace: headlamp
+---
+# Source: headlamp/templates/extra-manifests.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -190,6 +305,41 @@ subjects:
   name: headlamp
   namespace: headlamp
 ---
+# Source: headlamp/templates/extra-manifests.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: headlamp-opencost-proxy
+  namespace: opencost
+  labels:
+    app.kubernetes.io/name: headlamp
+    app.kubernetes.io/component: plugin
+    app.kubernetes.io/part-of: sre-platform
+rules:
+- apiGroups: [""]
+  resources: ["services/proxy"]
+  resourceNames: ["opencost:http"]
+  verbs: ["get"]
+---
+# Source: headlamp/templates/extra-manifests.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: headlamp-opencost-proxy
+  namespace: opencost
+  labels:
+    app.kubernetes.io/name: headlamp
+    app.kubernetes.io/component: plugin
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: headlamp-opencost-proxy
+subjects:
+- kind: ServiceAccount
+  name: headlamp
+  namespace: headlamp
+---
 # Source: headlamp/templates/service.yaml
 apiVersion: v1
 kind: Service
@@ -237,6 +387,8 @@ spec:
       app.kubernetes.io/instance: headlamp
   template:
     metadata:
+      annotations:
+        sre.platform.io/headlamp-plugins-sha256: 67f724fe767a438df76d60bcb23599df5f0a33ec3c9053890f29037070bffa26
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
@@ -312,11 +464,47 @@ spec:
               cpu: 100m
               memory: 128Mi
           volumeMounts:
+            - mountPath: /headlamp/plugins/argocd
+              name: plugin-argocd
+              readOnly: true
+            - mountPath: /headlamp/plugins/opencost
+              name: plugin-opencost
+              readOnly: true
+            - mountPath: /headlamp/plugins/cost-explorer
+              name: cost-explorer-plugin
+              readOnly: true
             - name: headlamp-tmp
               mountPath: /tmp
       volumes:
         - name: headlamp-tmp
           emptyDir: {}
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: main.js
+              path: main.js
+            - key: package.json
+              path: package.json
+            name: headlamp-plugin-argocd
+          name: plugin-argocd
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: main.js
+              path: main.js
+            - key: package.json
+              path: package.json
+            name: headlamp-plugin-opencost
+          name: plugin-opencost
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: main.js
+              path: main.js
+            - key: package.json
+              path: package.json
+            name: cost-explorer-plugin
+          name: cost-explorer-plugin
 
 ---
 apiVersion: networking.k8s.io/v1
