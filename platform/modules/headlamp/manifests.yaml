@@ -322,7 +322,7 @@ rules:
   verbs: ["get"]
 ---
 # Source: headlamp/templates/extra-manifests.yaml
-apiVersion: rbac.authorization.k8s/v1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: headlamp-prometheus-proxy
@@ -499,20 +499,29 @@ spec:
               cpu: 100m
               memory: 128Mi
           volumeMounts:
+            - mountPath: /headlamp/plugins/cost-explorer
+              name: cost-explorer-plugin
+              readOnly: true
             - mountPath: /headlamp/plugins/argocd
               name: plugin-argocd
               readOnly: true
             - mountPath: /headlamp/plugins/opencost
               name: plugin-opencost
               readOnly: true
-            - mountPath: /headlamp/plugins/cost-explorer
-              name: cost-explorer-plugin
-              readOnly: true
             - name: headlamp-tmp
               mountPath: /tmp
       volumes:
         - name: headlamp-tmp
           emptyDir: {}
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: main.js
+              path: main.js
+            - key: package.json
+              path: package.json
+            name: cost-explorer-plugin
+          name: cost-explorer-plugin
         - configMap:
             defaultMode: 420
             items:
@@ -531,15 +540,6 @@ spec:
               path: package.json
             name: headlamp-plugin-opencost
           name: plugin-opencost
-        - configMap:
-            defaultMode: 420
-            items:
-            - key: main.js
-              path: main.js
-            - key: package.json
-              path: package.json
-            name: cost-explorer-plugin
-          name: cost-explorer-plugin
 
 ---
 apiVersion: networking.k8s.io/v1
