@@ -322,6 +322,22 @@ rules:
   verbs: ["get"]
 ---
 # Source: headlamp/templates/extra-manifests.yaml
+apiVersion: rbac.authorization.k8s/v1
+kind: Role
+metadata:
+  name: headlamp-prometheus-proxy
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: headlamp
+    app.kubernetes.io/component: plugin
+    app.kubernetes.io/part-of: sre-platform
+rules:
+- apiGroups: [""]
+  resources: ["services/proxy"]
+  resourceNames: ["prometheus-server:80"]
+  verbs: ["get"]
+---
+# Source: headlamp/templates/extra-manifests.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -335,6 +351,25 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: headlamp-opencost-proxy
+subjects:
+- kind: ServiceAccount
+  name: headlamp
+  namespace: headlamp
+---
+# Source: headlamp/templates/extra-manifests.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: headlamp-prometheus-proxy
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: headlamp
+    app.kubernetes.io/component: plugin
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: headlamp-prometheus-proxy
 subjects:
 - kind: ServiceAccount
   name: headlamp

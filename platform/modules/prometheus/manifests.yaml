@@ -703,6 +703,7 @@ metadata:
     app.kubernetes.io/version: v3.13.1
     helm.sh/chart: prometheus-29.18.0
     app.kubernetes.io/part-of: prometheus
+    headlamp-prometheus: "true"
   name: prometheus-server
   namespace: prometheus
 spec:
