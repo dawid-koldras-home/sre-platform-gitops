@@ -171,7 +171,7 @@ data:
         disable: false
       refresh_interval: '5 minutes'
       file:
-        path: '/config/users_database.yml'
+        path: '/config/authelia/users/users_database.yml'
         watch: true
         search:
           email: false
@@ -323,7 +323,7 @@ spec:
         app.kubernetes.io/managed-by: Helm
         helm.sh/chart: authelia-0.11.22
       annotations:
-        authelia.com/checksum-config: c42fa6bc6908554967e7d32244038c83e1410ae785eb98cf1adcc0761600bdf2
+        authelia.com/checksum-config: 33f05cd330d4f962d5b5144de9a8eeb887b14c4c5f4565270caa9fa70b87e783
         
     spec:
       hostNetwork: false
@@ -412,10 +412,9 @@ spec:
         - name: secrets
           mountPath: /secrets/internal
           readOnly: true
-        - mountPath: /config/users_database.yml
+        - mountPath: /config/authelia/users
           name: users-database
           readOnly: true
-          subPath: users_database.yml
         securityContext: 
           allowPrivilegeEscalation: false
           capabilities:
