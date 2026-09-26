@@ -423,7 +423,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: 5566b3d4a5225c05c5666e3a1599ae11ed12068eab49502e19955eae4d253918
+        sre.platform.io/headlamp-plugins-sha256: 6aa3b347b7c0268536726c5dc51af8a2a43003458a11a3182e9bc815cdc75b42
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
@@ -446,7 +446,7 @@ spec:
           - -r
           - /plugins/ai-assistant/.
           - /out/ai-assistant/
-          image: ghcr.io/dawid-koldras-home/headlamp-plugin-ai-assistant-runtime@sha256:98a3f2e4470b010a6c3f3b3165a4274e5fb60334ea38fae9de22cae4cf169c42
+          image: ghcr.io/dawid-koldras-home/headlamp-plugin-ai-assistant-runtime@sha256:c680ac6135e2e0cc759de18371ca2d66aba197fbc05bacc0ac4b9b4d215c6b86
           imagePullPolicy: IfNotPresent
           name: plugin-ai-assistant
           resources:
