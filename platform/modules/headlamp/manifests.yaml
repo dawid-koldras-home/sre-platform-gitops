@@ -423,11 +423,13 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: 67f724fe767a438df76d60bcb23599df5f0a33ec3c9053890f29037070bffa26
+        sre.platform.io/headlamp-plugins-sha256: 5566b3d4a5225c05c5666e3a1599ae11ed12068eab49502e19955eae4d253918
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
     spec:
+      imagePullSecrets:
+        - name: headlamp-registry-pull
       serviceAccountName: headlamp
       automountServiceAccountToken: true
       hostUsers: true
@@ -437,6 +439,33 @@ spec:
         runAsUser: 100
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        
+        - command:
+          - /bin/cp
+          - -r
+          - /plugins/ai-assistant/.
+          - /out/ai-assistant/
+          image: ghcr.io/dawid-koldras-home/headlamp-plugin-ai-assistant-runtime@sha256:98a3f2e4470b010a6c3f3b3165a4274e5fb60334ea38fae9de22cae4cf169c42
+          imagePullPolicy: IfNotPresent
+          name: plugin-ai-assistant
+          resources:
+            limits:
+              cpu: 50m
+              memory: 64Mi
+            requests:
+              cpu: 5m
+              memory: 16Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          volumeMounts:
+          - mountPath: /out/ai-assistant
+            name: plugin-ai-assistant
       containers:
         - name: headlamp
           securityContext:
@@ -499,29 +528,23 @@ spec:
               cpu: 100m
               memory: 128Mi
           volumeMounts:
-            - mountPath: /headlamp/plugins/cost-explorer
-              name: cost-explorer-plugin
-              readOnly: true
             - mountPath: /headlamp/plugins/argocd
               name: plugin-argocd
               readOnly: true
             - mountPath: /headlamp/plugins/opencost
               name: plugin-opencost
               readOnly: true
+            - mountPath: /headlamp/plugins/ai-assistant
+              name: plugin-ai-assistant
+              readOnly: true
+            - mountPath: /headlamp/plugins/cost-explorer
+              name: cost-explorer-plugin
+              readOnly: true
             - name: headlamp-tmp
               mountPath: /tmp
       volumes:
         - name: headlamp-tmp
           emptyDir: {}
-        - configMap:
-            defaultMode: 420
-            items:
-            - key: main.js
-              path: main.js
-            - key: package.json
-              path: package.json
-            name: cost-explorer-plugin
-          name: cost-explorer-plugin
         - configMap:
             defaultMode: 420
             items:
@@ -540,6 +563,17 @@ spec:
               path: package.json
             name: headlamp-plugin-opencost
           name: plugin-opencost
+        - emptyDir: {}
+          name: plugin-ai-assistant
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: main.js
+              path: main.js
+            - key: package.json
+              path: package.json
+            name: cost-explorer-plugin
+          name: cost-explorer-plugin
 
 ---
 apiVersion: networking.k8s.io/v1
