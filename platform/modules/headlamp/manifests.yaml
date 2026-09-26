@@ -273,7 +273,13 @@ spec:
             - "-in-cluster-context-name=main"
             - "-plugins-dir=/headlamp/plugins"
             - "-session-ttl=86400"
+            - "-unsafe-use-service-account-token"
             # Check if externalSecret is disabled
+            - -proxy-auth=true
+            - -proxy-auth-username-header=Remote-User
+            - -proxy-auth-group-header=Remote-Groups
+            - -proxy-auth-email-header=Remote-Email
+            - -proxy-auth-token-header=Remote-Id-Token
           ports:
             - name: http
               containerPort: 4466
@@ -324,6 +330,13 @@ metadata:
     sre.platform.io/component: headlamp
   annotations:
     sre-platform.io/ingress-type: headlamp-ui
+    cert-manager.io/cluster-issuer: sre-tools-letsencrypt
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-method: GET
+    nginx.ingress.kubernetes.io/auth-url: http://authelia.authelia.svc.cluster.local/api/authz/auth-request
+    nginx.ingress.kubernetes.io/auth-signin: https://auth.139.162.145.158.nip.io?rm=$request_method
+    nginx.ingress.kubernetes.io/auth-response-headers: Remote-User,Remote-Groups,Remote-Email,Remote-Id-Token
 spec:
 
   ingressClassName: nginx
