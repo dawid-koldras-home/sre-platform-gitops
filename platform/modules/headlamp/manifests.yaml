@@ -446,7 +446,7 @@ spec:
           - -r
           - /plugins/ai-assistant/.
           - /out/ai-assistant/
-          image: ghcr.io/dawid-koldras-home/headlamp-plugin-ai-assistant-runtime@sha256:c680ac6135e2e0cc759de18371ca2d66aba197fbc05bacc0ac4b9b4d215c6b86
+          image: ghcr.io/dawid-koldras-home/headlamp-plugin-ai-assistant-runtime@sha256:566b54a117431431e9d5906df1dd362dc35314176d2eb39b57a95ef74950aad0
           imagePullPolicy: IfNotPresent
           name: plugin-ai-assistant
           resources:
