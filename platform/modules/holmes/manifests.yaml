@@ -707,7 +707,7 @@ data:
   model_list.yaml: |-
     primary:
       api_key: "{{ env.GEMINI_API_KEY }}"
-      model: gemini/gemini-3.8-flash
+      model: gemini/gemini-2.5-flash
 ---
 # Source: holmes/templates/holmes.yaml
 apiVersion: v1
@@ -755,7 +755,7 @@ spec:
         
       annotations:
         # checksum annotation triggering pod reload when .Values.toolsets changes by helm upgrade
-        checksum/toolset-config: cd4bc1d9d8abf53220c42afaab70e5df057fde80dc39057ce1a402753620aaf7
+        checksum/toolset-config: 1ff4eb300c0cc91e470959e67441792fe4692219419b01a8f18774d8f6e96333
     spec:
       serviceAccountName: holmes
       securityContext:
