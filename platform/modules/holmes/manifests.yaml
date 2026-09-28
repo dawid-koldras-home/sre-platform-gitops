@@ -1004,3 +1004,7 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+        # Managed Kubernetes Services can DNAT the kubernetes Service port 443
+        # to an external control-plane endpoint on 6443 (for example LKE).
+        - protocol: TCP
+          port: 6443
