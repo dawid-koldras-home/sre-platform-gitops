@@ -785,16 +785,14 @@ spec:
         - containerPort: 5050
           name: http
         livenessProbe:
-          httpGet:
-            path: /api/agui/chat/health
+          tcpSocket:
             port: http
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 10
         readinessProbe:
-          httpGet:
-            path: /api/agui/chat/health
+          tcpSocket:
             port: http
           initialDelaySeconds: 15
           periodSeconds: 5
