@@ -20,6 +20,12 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: "holmes"
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: holmesgpt-holmes
+      jsonPointers:
+        - /status/terminatingReplicas
   syncPolicy:
     automated:
       prune: true
