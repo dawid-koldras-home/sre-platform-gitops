@@ -811,6 +811,12 @@ spec:
           
           - name: HOME
             value: /tmp
+          - name: KUBECONFIG
+            value: /etc/holmes/kubeconfig/config
+          - name: TOOL_MEMORY_LIMIT_MB
+            value: "1500"
+          - name: TEMPERATURE
+            value: "1"
         envFrom:
         - secretRef:
             name: holmes-provider
@@ -825,6 +831,9 @@ spec:
             mountPath: /etc/robusta/config
           - name: custom-toolsets-configmap
             mountPath: /etc/holmes/config
+          - mountPath: /etc/holmes/kubeconfig
+            name: in-cluster-kubeconfig
+            readOnly: true
         resources:
           requests:
             cpu: 100m
@@ -844,7 +853,38 @@ spec:
           configMap:
             name: custom-toolsets-configmap
             optional: true
+        - configMap:
+            name: holmes-kubeconfig
+          name: in-cluster-kubeconfig
 
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: holmes-kubeconfig
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes
+    app.kubernetes.io/part-of: sre-platform
+data:
+  config: |
+    apiVersion: v1
+    kind: Config
+    clusters:
+      - name: in-cluster
+        cluster:
+          server: https://kubernetes.default.svc
+          certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    contexts:
+      - name: in-cluster
+        context:
+          cluster: in-cluster
+          user: holmes
+    current-context: in-cluster
+    users:
+      - name: holmes
+        user:
+          tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
 ---
 apiVersion: v1
 kind: ServiceAccount
