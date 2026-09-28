@@ -1,0 +1,882 @@
+---
+# Source: holmes\crds\healthcheck.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: healthchecks.holmesgpt.dev
+spec:
+  group: holmesgpt.dev
+  names:
+    kind: HealthCheck
+    listKind: HealthCheckList
+    plural: healthchecks
+    singular: healthcheck
+    shortNames:
+      - hc
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: "Natural language question about system health"
+                  minLength: 1
+                  maxLength: 5000
+                timeout:
+                  type: integer
+                  description: "Execution timeout in seconds"
+                  default: 30
+                  minimum: 1
+                  maximum: 300
+                mode:
+                  type: string
+                  description: "Execution mode: 'alert' sends notifications on failure, 'monitor' logs only"
+                  default: monitor
+                  enum:
+                    - alert
+                    - monitor
+                model:
+                  type: string
+                  description: "Override default LLM model for this check"
+                destinations:
+                  type: array
+                  description: "Alert destinations for failed checks (only used in alert mode)"
+                  items:
+                    type: object
+                    required:
+                      - type
+                    properties:
+                      type:
+                        type: string
+                        description: "Destination type (e.g., 'slack', 'pagerduty')"
+                      config:
+                        type: object
+                        description: "Destination-specific configuration"
+                        x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  description: "Execution phase: Pending, Running, Completed, Failed"
+                  enum:
+                    - Pending
+                    - Running
+                    - Completed
+                    - Failed
+                startTime:
+                  type: string
+                  format: date-time
+                  description: "When the check execution started"
+                completionTime:
+                  type: string
+                  format: date-time
+                  description: "When the check execution completed"
+                result:
+                  type: string
+                  description: "Check result: pass, fail, or error"
+                  enum:
+                    - pass
+                    - fail
+                    - error
+                message:
+                  type: string
+                  description: "Human-readable summary of the result"
+                rationale:
+                  type: string
+                  description: "Detailed explanation from the LLM about the decision"
+                duration:
+                  type: number
+                  description: "Execution duration in seconds"
+                error:
+                  type: string
+                  description: "Error details if execution failed"
+                modelUsed:
+                  type: string
+                  description: "The actual LLM model used for execution"
+                conditions:
+                  type: array
+                  description: "Standard Kubernetes conditions"
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                        description: "Condition type (e.g., 'Complete', 'Failed')"
+                      status:
+                        type: string
+                        description: "Condition status: True, False, or Unknown"
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                        description: "Last time the condition transitioned"
+                      reason:
+                        type: string
+                        description: "Machine-readable reason for the condition"
+                      message:
+                        type: string
+                        description: "Human-readable message about the condition"
+                notifications:
+                  type: array
+                  description: "Status of notification delivery attempts"
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        description: "Notification type (e.g., 'slack', 'pagerduty')"
+                      channel:
+                        type: string
+                        description: "Target channel or destination"
+                      status:
+                        type: string
+                        description: "Delivery status: sent, failed, skipped"
+                        enum:
+                          - sent
+                          - failed
+                          - skipped
+                      error:
+                        type: string
+                        description: "Error message if delivery failed"
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          description: Execution phase
+          jsonPath: .status.phase
+        - name: Result
+          type: string
+          description: Check result
+          jsonPath: .status.result
+        - name: Message
+          type: string
+          description: Result message
+          jsonPath: .status.message
+          priority: 1
+        - name: Duration
+          type: number
+          description: Execution duration in seconds
+          jsonPath: .status.duration
+          priority: 1
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+---
+# Source: holmes\crds\scheduledhealthcheck.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: scheduledhealthchecks.holmesgpt.dev
+spec:
+  group: holmesgpt.dev
+  names:
+    kind: ScheduledHealthCheck
+    listKind: ScheduledHealthCheckList
+    plural: scheduledhealthchecks
+    singular: scheduledhealthcheck
+    shortNames:
+      - shc
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - schedule
+                - query
+              properties:
+                schedule:
+                  type: string
+                  description: "Cron expression for recurring execution (e.g., '*/5 * * * *')"
+                  pattern: '^.+$'
+                  minLength: 1
+                enabled:
+                  type: boolean
+                  description: "Whether the schedule is enabled"
+                  default: true
+                query:
+                  type: string
+                  description: "Natural language question about system health"
+                  minLength: 1
+                  maxLength: 5000
+                timeout:
+                  type: integer
+                  description: "Execution timeout in seconds"
+                  default: 30
+                  minimum: 1
+                  maximum: 300
+                mode:
+                  type: string
+                  description: "Execution mode: 'alert' sends notifications on failure, 'monitor' logs only"
+                  default: monitor
+                  enum:
+                    - alert
+                    - monitor
+                model:
+                  type: string
+                  description: "Override default LLM model for this check"
+                destinations:
+                  type: array
+                  description: "Alert destinations for failed checks (only used in alert mode)"
+                  items:
+                    type: object
+                    required:
+                      - type
+                    properties:
+                      type:
+                        type: string
+                        description: "Destination type (e.g., 'slack', 'pagerduty')"
+                      config:
+                        type: object
+                        description: "Destination-specific configuration"
+                        x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              properties:
+                lastScheduleTime:
+                  type: string
+                  format: date-time
+                  description: "Last time a check was scheduled"
+                lastSuccessfulTime:
+                  type: string
+                  format: date-time
+                  description: "Last time a check passed"
+                lastResult:
+                  type: string
+                  description: "Result of the last execution: pass, fail, or error"
+                  enum:
+                    - pass
+                    - fail
+                    - error
+                message:
+                  type: string
+                  description: "Message from the last execution"
+                active:
+                  type: array
+                  description: "Currently running health checks"
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - namespace
+                      - uid
+                      - startTime
+                    properties:
+                      name:
+                        type: string
+                        description: "Name of the HealthCheck resource"
+                      namespace:
+                        type: string
+                        description: "Namespace of the HealthCheck resource"
+                      uid:
+                        type: string
+                        description: "UID of the HealthCheck resource"
+                      startTime:
+                        type: string
+                        format: date-time
+                        description: "When the check started"
+                history:
+                  type: array
+                  description: "Recent execution history (last N executions)"
+                  items:
+                    type: object
+                    required:
+                      - executionTime
+                      - result
+                      - checkName
+                    properties:
+                      executionTime:
+                        type: string
+                        format: date-time
+                        description: "When the check was executed"
+                      result:
+                        type: string
+                        description: "Check result: pass, fail, or error"
+                        enum:
+                          - pass
+                          - fail
+                          - error
+                      duration:
+                        type: number
+                        description: "Execution duration in seconds"
+                      checkName:
+                        type: string
+                        description: "Name of the HealthCheck resource"
+                      message:
+                        type: string
+                        description: "Result message"
+                conditions:
+                  type: array
+                  description: "Standard Kubernetes conditions"
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                        description: "Condition type (e.g., 'ScheduleRegistered', 'ExecutionFailed')"
+                      status:
+                        type: string
+                        description: "Condition status: True, False, or Unknown"
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                        description: "Last time the condition transitioned"
+                      reason:
+                        type: string
+                        description: "Machine-readable reason for the condition"
+                      message:
+                        type: string
+                        description: "Human-readable message about the condition"
+      additionalPrinterColumns:
+        - name: Schedule
+          type: string
+          description: Cron schedule
+          jsonPath: .spec.schedule
+        - name: Enabled
+          type: boolean
+          description: Whether the schedule is enabled
+          jsonPath: .spec.enabled
+        - name: Last Run
+          type: date
+          description: Last execution time
+          jsonPath: .status.lastScheduleTime
+        - name: Last Result
+          type: string
+          description: Result of last execution
+          jsonPath: .status.lastResult
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+---
+# Source: holmes\crds\triggeredhealthcheck.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: triggeredhealthchecks.holmesgpt.dev
+spec:
+  group: holmesgpt.dev
+  names:
+    kind: TriggeredHealthCheck
+    listKind: TriggeredHealthCheckList
+    plural: triggeredhealthchecks
+    singular: triggeredhealthcheck
+    shortNames:
+      - thc
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - deploymentRollout
+                - query
+              properties:
+                enabled:
+                  type: boolean
+                  description: "Whether the trigger is active"
+                  default: true
+                deploymentRollout:
+                  type: object
+                  description: "Fire when a matching Deployment rolls out a new pod template"
+                  properties:
+                    selector:
+                      type: object
+                      description: "Select which Deployments to watch (empty matches all in the namespace)"
+                      properties:
+                        matchLabels:
+                          type: object
+                          description: "Deployment labels that must all match"
+                          additionalProperties:
+                            type: string
+                delaySeconds:
+                  type: integer
+                  description: "How long to wait after a rollout before running the check (seconds). Gives the rollout time to finish and problems time to surface. Default 300 (5 min); 0 = check immediately; up to 604800 (7 days). The wait is saved on the resource and survives operator restarts."
+                  default: 300
+                  minimum: 0
+                  maximum: 604800
+                cooldownSeconds:
+                  type: integer
+                  description: "Suppress re-firing for the same Deployment within this many seconds (0 = disabled)"
+                  default: 0
+                  minimum: 0
+                query:
+                  type: string
+                  description: "Natural language question. Supports tokens {{ .deployment }}, {{ .namespace }}, {{ .old.image }}, {{ .new.image }}"
+                  minLength: 1
+                  maxLength: 5000
+                timeout:
+                  type: integer
+                  description: "Execution timeout in seconds"
+                  default: 120
+                  minimum: 1
+                  maximum: 300
+                mode:
+                  type: string
+                  description: "Execution mode: 'alert' sends notifications on failure, 'monitor' logs only"
+                  default: monitor
+                  enum:
+                    - alert
+                    - monitor
+                model:
+                  type: string
+                  description: "Override default LLM model for this check"
+                destinations:
+                  type: array
+                  description: "Alert destinations for failed checks (only used in alert mode)"
+                  items:
+                    type: object
+                    required:
+                      - type
+                    properties:
+                      type:
+                        type: string
+                        description: "Destination type (e.g., 'slack', 'pagerduty')"
+                      config:
+                        type: object
+                        description: "Destination-specific configuration"
+                        x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              properties:
+                lastTriggerTime:
+                  type: string
+                  format: date-time
+                  description: "Last time the trigger fired"
+                lastTriggerDeployment:
+                  type: string
+                  description: "Deployment whose rollout last fired the trigger"
+                triggerCount:
+                  type: integer
+                  description: "Total number of times the trigger has fired"
+                cooldowns:
+                  type: array
+                  description: "Per-Deployment last-fire times used to enforce cooldownSeconds"
+                  items:
+                    type: object
+                    required:
+                      - deployment
+                      - lastTriggerTime
+                    properties:
+                      deployment:
+                        type: string
+                      lastTriggerTime:
+                        type: string
+                        format: date-time
+                pending:
+                  type: array
+                  description: "Delayed checks scheduled to run later (delaySeconds), persisted to survive operator restarts"
+                  items:
+                    type: object
+                    required:
+                      - deployment
+                      - fireAt
+                    properties:
+                      deployment:
+                        type: string
+                      fireAt:
+                        type: string
+                        format: date-time
+                      scheduledAt:
+                        type: string
+                        format: date-time
+                      oldImage:
+                        type: string
+                      newImage:
+                        type: string
+                history:
+                  type: array
+                  description: "Recent triggered executions (last N)"
+                  items:
+                    type: object
+                    required:
+                      - triggerTime
+                      - deployment
+                      - checkName
+                    properties:
+                      triggerTime:
+                        type: string
+                        format: date-time
+                      deployment:
+                        type: string
+                      checkName:
+                        type: string
+                      oldImage:
+                        type: string
+                      newImage:
+                        type: string
+                conditions:
+                  type: array
+                  description: "Standard Kubernetes conditions"
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                        description: "Condition type (e.g., 'Ready', 'TriggerFailed')"
+                      status:
+                        type: string
+                        description: "Condition status: True, False, or Unknown"
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+      additionalPrinterColumns:
+        - name: Enabled
+          type: boolean
+          description: Whether the trigger is enabled
+          jsonPath: .spec.enabled
+        - name: Triggers
+          type: integer
+          description: Number of times fired
+          jsonPath: .status.triggerCount
+        - name: Last Fired
+          type: date
+          description: Last time the trigger fired
+          jsonPath: .status.lastTriggerTime
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+---
+# Source: holmes/templates/toolset-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-toolsets-configmap
+  namespace: holmes
+data:
+  custom_toolset.yaml: |-
+    toolsets: 
+      bash:
+        config:
+          builtin_allowlist: extended
+        enabled: false
+      connectivity_check:
+        enabled: false
+      internet:
+        enabled: false
+      kubernetes/core:
+        enabled: false
+      kubernetes/logs:
+        enabled: false
+      prometheus/metrics:
+        enabled: false
+      robusta:
+        enabled: false
+      skills:
+        enabled: false
+    mcp_servers: 
+      {}
+  model_list.yaml: |-
+    primary:
+      api_key: "{{ env.GEMINI_API_KEY }}"
+      model: gemini/gemini-3.8-flash
+---
+# Source: holmes/templates/holmes.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: holmesgpt-holmes
+  namespace: holmes
+  labels:
+    app: holmes
+    
+spec:
+  selector:
+    app: holmes
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 5050
+      appProtocol: http
+---
+# Source: holmes/templates/holmes.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: holmesgpt-holmes
+  namespace: holmes
+  labels:
+    app: holmes
+    
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: holmes
+  template:
+    metadata:
+      labels:
+        app: holmes
+        
+      annotations:
+        # checksum annotation triggering pod reload when .Values.toolsets changes by helm upgrade
+        checksum/toolset-config: 862e1280fef60f71ff83b30feae6731604ff7b9089ca4c6686c50ae53cd4f82b
+    spec:
+      serviceAccountName: holmes
+      securityContext:
+        fsGroup: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      dnsPolicy: ClusterFirst
+      containers:
+      - name: holmes
+        image: "robustadev/holmes@sha256:7ae20e4012a870fb7a1ce2b4f4e61c9f8adb08283fa3c9a5f7b9438abe351294"
+        imagePullPolicy: IfNotPresent
+        # Read-only root filesystem for security hardening.
+        # /tmp is mounted as a writable emptyDir for ephemeral tool result files.
+        # Required for OpenShift restricted SCC and other security-hardened
+        # environments that enforce read-only root filesystems.
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        command: ["python3", "-u", "/app/experimental/ag-ui/server-agui.py"]
+        ports:
+        - containerPort: 5050
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /api/agui/chat/health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 10
+        readinessProbe:
+          httpGet:
+            path: /api/agui/chat/health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        env:
+          - name: LOG_LEVEL
+            value: INFO
+          - name: ENABLE_JSON_LOGS_FORMAT
+            value: "false"
+          - name: ENABLE_TELEMETRY
+            value: "false"
+          - name: SENTRY_DSN
+            value: 
+          
+          
+        envFrom:
+        - secretRef:
+            name: holmes-provider
+        lifecycle:
+          preStop:
+            exec:
+              command: ["bash", "-c", "kill -SIGINT 1"]
+        volumeMounts:
+          - name: tmp-volume
+            mountPath: /tmp
+          - name: playbooks-config-secret
+            mountPath: /etc/robusta/config
+          - name: custom-toolsets-configmap
+            mountPath: /etc/holmes/config
+        resources:
+          requests:
+            cpu: 100m
+            memory: 1Gi
+          limits:
+            memory: 2Gi
+            cpu: "500m"
+      volumes:
+        - name: tmp-volume
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: playbooks-config-secret
+          secret:
+            secretName: robusta-playbooks-config-secret
+            optional: true
+        - name: custom-toolsets-configmap
+          configMap:
+            name: custom-toolsets-configmap
+            optional: true
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: holmes
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes
+    app.kubernetes.io/part-of: sre-platform
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: holmes-read-only
+  labels:
+    app.kubernetes.io/name: holmes
+    app.kubernetes.io/part-of: sre-platform
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - nodes
+      - pods
+      - pods/status
+      - pods/log
+      - events
+      - services
+      - endpoints
+      - persistentvolumes
+      - persistentvolumeclaims
+      - resourcequotas
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications", "applicationsets", "appprojects"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: holmes-read-only
+  labels:
+    app.kubernetes.io/name: holmes
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: holmes-read-only
+subjects:
+  - kind: ServiceAccount
+    name: holmes
+    namespace: holmes
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: holmes-default-deny
+  namespace: holmes
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: holmes-required-traffic
+  namespace: holmes
+spec:
+  podSelector:
+    matchLabels:
+      app: holmes
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 5050
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
