@@ -600,23 +600,107 @@ metadata:
 data:
   custom_toolset.yaml: |-
     toolsets: 
+      MongoDBAtlas:
+        enabled: false
+      aks/core:
+        enabled: false
+      aks/node-health:
+        enabled: false
+      argocd/core:
+        enabled: false
       bash:
         config:
           builtin_allowlist: extended
         enabled: false
+      cilium/core:
+        enabled: false
+      confluence:
+        enabled: false
       connectivity_check:
+        enabled: false
+      coralogix:
+        enabled: false
+      core_investigation:
+        enabled: false
+      crossplane/core:
+        enabled: false
+      database/sql:
+        enabled: false
+      datadog/general:
+        enabled: false
+      datadog/logs:
+        enabled: false
+      datadog/metrics:
+        enabled: false
+      datadog/traces:
+        enabled: false
+      docker/core:
+        enabled: false
+      elasticsearch/cluster:
+        enabled: false
+      elasticsearch/data:
+        enabled: false
+      grafana/dashboards:
+        enabled: false
+      grafana/loki:
+        enabled: false
+      grafana/tempo:
+        enabled: false
+      helm/core:
+        enabled: false
+      hubble/observability:
+        enabled: false
+      inspektor-gadget/node:
+        enabled: false
+      inspektor-gadget/tcpdump:
         enabled: false
       internet:
         enabled: false
+      kafka/admin:
+        enabled: false
+      kubectl-run:
+        enabled: false
       kubernetes/core:
+        enabled: true
+      kubernetes/krew-extras:
+        enabled: false
+      kubernetes/kube-lineage-extras:
+        enabled: false
+      kubernetes/kube-prometheus-stack:
+        enabled: false
+      kubernetes/live-metrics:
         enabled: false
       kubernetes/logs:
+        enabled: true
+      kubevela/core:
+        enabled: false
+      newrelic:
+        enabled: false
+      notion:
+        enabled: false
+      opensearch/query_assist:
+        enabled: false
+      openshift/core:
+        enabled: false
+      openshift/live-metrics:
+        enabled: false
+      openshift/logs:
+        enabled: false
+      openshift/security:
         enabled: false
       prometheus/metrics:
         enabled: false
+      rabbitmq/core:
+        enabled: false
       robusta:
         enabled: false
+      servicenow/tables:
+        enabled: false
       skills:
+        enabled: false
+      slab:
+        enabled: false
+      victorialogs:
         enabled: false
     mcp_servers: 
       {}
@@ -671,7 +755,7 @@ spec:
         
       annotations:
         # checksum annotation triggering pod reload when .Values.toolsets changes by helm upgrade
-        checksum/toolset-config: 862e1280fef60f71ff83b30feae6731604ff7b9089ca4c6686c50ae53cd4f82b
+        checksum/toolset-config: cd4bc1d9d8abf53220c42afaab70e5df057fde80dc39057ce1a402753620aaf7
     spec:
       serviceAccountName: holmes
       securityContext:
@@ -727,6 +811,8 @@ spec:
             value: 
           
           
+          - name: HOME
+            value: /tmp
         envFrom:
         - secretRef:
             name: holmes-provider
