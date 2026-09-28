@@ -666,9 +666,6 @@ spec:
               cpu: 100m
               memory: 128Mi
           volumeMounts:
-            - mountPath: /headlamp/plugins/cost-explorer
-              name: cost-explorer-plugin
-              readOnly: true
             - mountPath: /headlamp/plugins/argocd
               name: plugin-argocd
               readOnly: true
@@ -684,20 +681,14 @@ spec:
             - mountPath: /headlamp/plugins/maxima-branding
               name: plugin-maxima-branding
               readOnly: true
+            - mountPath: /headlamp/plugins/cost-explorer
+              name: cost-explorer-plugin
+              readOnly: true
             - name: headlamp-tmp
               mountPath: /tmp
       volumes:
         - name: headlamp-tmp
           emptyDir: {}
-        - configMap:
-            defaultMode: 420
-            items:
-            - key: main.js
-              path: main.js
-            - key: package.json
-              path: package.json
-            name: cost-explorer-plugin
-          name: cost-explorer-plugin
         - configMap:
             defaultMode: 420
             items:
@@ -736,6 +727,15 @@ spec:
               path: package.json
             name: headlamp-plugin-maxima-branding
           name: plugin-maxima-branding
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: main.js
+              path: main.js
+            - key: package.json
+              path: package.json
+            name: cost-explorer-plugin
+          name: cost-explorer-plugin
 
 ---
 apiVersion: networking.k8s.io/v1
