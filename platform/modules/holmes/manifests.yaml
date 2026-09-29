@@ -706,9 +706,8 @@ data:
       {}
   model_list.yaml: |-
     primary:
-      api_base: "{{ env.OPENAI_API_BASE }}"
-      api_key: "{{ env.OPENAI_API_KEY }}"
-      model: openai/big-pickle
+      api_key: "{{ env.GEMINI_API_KEY }}"
+      model: gemini/gemini-3.6-flash
 ---
 # Source: holmes/templates/holmes.yaml
 apiVersion: v1
@@ -756,7 +755,7 @@ spec:
         
       annotations:
         # checksum annotation triggering pod reload when .Values.toolsets changes by helm upgrade
-        checksum/toolset-config: 75e70921d7a38fb9ae1cf73e701f4a32087ca64315ce00cbeb3dfe61db4c0057
+        checksum/toolset-config: b07cd38a9940bb36ce77985ba22616ffc76c0c2ad26afc37ed59c84b87bc13ad
     spec:
       serviceAccountName: holmes
       securityContext:
@@ -818,11 +817,9 @@ spec:
             value: "1500"
           - name: TEMPERATURE
             value: "1"
-          - name: OPENAI_API_BASE
-            value: https://opencode.ai/zen/v1
         envFrom:
         - secretRef:
-            name: holmes-opencode
+            name: holmes-provider
         lifecycle:
           preStop:
             exec:
