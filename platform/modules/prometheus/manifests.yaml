@@ -360,6 +360,15 @@ data:
         regex: pushgateway
         source_labels:
         - __meta_kubernetes_service_annotation_prometheus_io_probe
+    - job_name: gatus
+      metrics_path: /metrics
+      scheme: http
+      scrape_interval: 60s
+      scrape_timeout: 10s
+      static_configs:
+        - targets:
+            - gatus.gatus.svc.cluster.local:80
+    
     rule_files:
     - /etc/config/recording_rules.yml
     - /etc/config/alerting_rules.yml
