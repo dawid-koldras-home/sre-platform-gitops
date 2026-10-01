@@ -56,7 +56,7 @@ data:
       client:
         ignore-redirect: true
       conditions:
-      - '[STATUS] == 200 || [STATUS] == 302'
+      - '[STATUS] == any(200, 302)'
       group: Platform
       interval: 1m
       method: GET
@@ -64,7 +64,7 @@ data:
       url: https://headlamp.139.162.145.158.nip.io/
     - alerts: []
       conditions:
-      - '[STATUS] == 200 || [STATUS] == 429'
+      - '[STATUS] == any(200, 429)'
       group: Secrets
       interval: 1m
       method: GET
@@ -132,7 +132,7 @@ spec:
         app.kubernetes.io/name: gatus
         app.kubernetes.io/instance: gatus
       annotations:
-        checksum/config: ba82fe98d33ec106a9f2875e7ff6329cec7248186f34d7af7b977c53b86edfcb
+        checksum/config: ee599d005203494df6df0619d7a088fc88dbe8ed363fc77e09693ee21e60bcd2
     spec:
       
       serviceAccountName: gatus
