@@ -1210,6 +1210,9 @@ data:
       "scripts": {
         "build": "node build.mjs",
         "test": "node --test test/status.test.mjs test/payload.test.mjs"
+      },
+      "devDependencies": {
+        "@kinvolk/headlamp-plugin": "0.13.1"
       }
     }
 kind: ConfigMap
@@ -1573,7 +1576,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: a7ce6dd54b961c015c1844ef0df29c85eea1d0c8b1ccdf90d1a733a0691a0a3c
+        sre.platform.io/headlamp-plugins-sha256: c3881d68826a6f0de9d6b69ed3e70ba6453535560c770db56321dc9f4d2017e4
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
