@@ -725,6 +725,11 @@ data:
     const useCallback = hook('useCallback');
     const useMemo = hook('useMemo');
 
+    const apiRequest = pluginLib.ApiProxy && pluginLib.ApiProxy.request;
+    if (typeof apiRequest !== 'function') {
+      throw new Error(missing('ApiProxy.request'));
+    }
+
     function registerSidebarEntry(entry) {
       const register = target.registerSidebarEntry;
       if (!register) {
@@ -806,54 +811,35 @@ data:
     /**
      * Fetch the Gatus status document through the named Service proxy.
      *
-     * The call is read-only by construction: a GET, no body, no credentials, no
-     * Authorization header and nothing written to storage. A rejection is turned into
-     * a typed result rather than an exception so one failing read degrades this page
-     * instead of taking the console down.
+     * The call is read-only by construction: a GET, no body, no credential supplied
+     * by this plugin, and nothing written to storage. ApiProxy.request is required:
+     * Headlamp adds `/clusters/<current-cluster>` there. A raw browser fetch of this
+     * path would instead hit Headlamp's own `/api/v1` route and can return HTML, which
+     * must never be mistaken for a malformed Gatus document.
      */
     async function fetchStatuses() {
-      if (typeof fetch !== 'function') {
-        return { ok: false, reason: 'fetch-unavailable', status: 0, payload: null };
-      }
-      let response;
+      let payload;
       try {
-        response = await fetch(PROXY_PATH, {
+        payload = await apiRequest(PROXY_PATH, {
           method: 'GET',
-          credentials: 'same-origin',
+          isJSON: true,
+          timeout: 10000,
           headers: { Accept: 'application/json' },
         });
       } catch (error) {
+        const status = Number.isInteger(error && error.status) ? error.status : 0;
         return {
           ok: false,
-          reason: 'network',
-          status: 0,
+          reason: status === 401 || status === 403 ? 'forbidden' : status ? 'status' : 'network',
+          status,
           payload: null,
           message: error && error.message ? String(error.message) : 'request failed',
         };
       }
-
-      if (response.status === 403 || response.status === 401) {
-        return {
-          ok: false,
-          reason: 'forbidden',
-          status: response.status,
-          payload: null,
-        };
-      }
-      if (!response.ok) {
-        return { ok: false, reason: 'status', status: response.status, payload: null };
-      }
-
-      let payload;
-      try {
-        payload = await response.json();
-      } catch (error) {
-        return { ok: false, reason: 'malformed', status: response.status, payload: null };
-      }
       if (!Array.isArray(payload)) {
-        return { ok: false, reason: 'malformed', status: response.status, payload: null };
+        return { ok: false, reason: 'malformed', status: 200, payload: null };
       }
-      return { ok: true, reason: '', status: response.status, payload };
+      return { ok: true, reason: '', status: 200, payload };
     }
 
     const PLUGIN_NAMESPACE = NAMESPACE;
@@ -1206,7 +1192,7 @@ data:
   package.json: |
     {
       "name": "@sre-platform/headlamp-service-status",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "description": "Read-only Gatus availability view for the Headlamp operator console",
       "private": true,
       "license": "Apache-2.0",
@@ -1581,7 +1567,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: 427ff6e880d39bddb1d2b0163535ec32f56f28daa9a82109bfb409b0161f4b86
+        sre.platform.io/headlamp-plugins-sha256: 25a535dbb82d1464324458c8d9479ac1eec2b961e01d229dfffef7e77210a75e
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
