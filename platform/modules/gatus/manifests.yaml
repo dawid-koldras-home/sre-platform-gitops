@@ -212,8 +212,21 @@ spec:
   policyTypes:
     - Ingress
     - Egress
-  # No dashboard route is published, so no source is permitted.
-  ingress: []
+  ingress:
+  # The managed Prometheus server scraping /metrics. The port is the container
+  # port, not the Service port, because that is what the packet carries once the
+  # Service has been translated.
+  - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: prometheus
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/component: server
+            app.kubernetes.io/name: prometheus
+    ports:
+      - protocol: TCP
+        port: 8080
   egress:
     # DNS to the cluster resolver, so endpoint hostnames can be resolved at all. This
     # is the only allowance not derived from the endpoint configuration.
