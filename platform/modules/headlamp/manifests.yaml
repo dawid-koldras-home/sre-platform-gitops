@@ -476,41 +476,46 @@ data:
     }
 
     /**
-     * Index a Gatus status payload by endpoint name.
+     * Index a Gatus status payload by endpoint key.
      *
-     * Gatus answers `/api/v1/endpoints/statuses` with a list of
-     * `[name, group, results]` tuples. A tuple that is not of that shape, or whose
-     * results are not a list, is recorded as malformed for that name so the page can
-     * say which endpoint is unreadable instead of failing wholesale.
+     * Gatus v5.34 answers `/api/v1/endpoints/statuses` with objects shaped as
+     * `{key, name, group, results}`. The configured key is the stable join field;
+     * display names are deliberately ignored so duplicate or renamed labels cannot
+     * attach one endpoint's status to another. Only parsed results are retained.
      */
     function indexPayload(payload) {
       if (!Array.isArray(payload)) {
-        return { byName: new Map(), malformedEntries: 0, totalEntries: 0 };
+        return { byID: new Map(), malformedEntries: 0, totalEntries: 0 };
       }
-      const byName = new Map();
+      const byID = new Map();
       let malformedEntries = 0;
       let totalEntries = 0;
 
       for (const entry of payload) {
         totalEntries += 1;
-        if (!Array.isArray(entry) || entry.length < 3 || typeof entry[0] !== 'string' || !entry[0]) {
+        if (
+          !isRecord(entry) ||
+          typeof entry.key !== 'string' ||
+          !entry.key ||
+          typeof entry.name !== 'string' ||
+          !entry.name ||
+          typeof entry.group !== 'string'
+        ) {
           malformedEntries += 1;
           continue;
         }
-        const [name, group, results] = entry;
-        if (!Array.isArray(results)) {
+        if (!Array.isArray(entry.results) || byID.has(entry.key)) {
           malformedEntries += 1;
-          byName.set(name, { malformed: true, group: typeof group === 'string' ? group : '' });
+          byID.set(entry.key, { malformed: true });
           continue;
         }
-        byName.set(name, {
+        byID.set(entry.key, {
           malformed: false,
-          group: typeof group === 'string' ? group : '',
-          ...parseResults(results),
+          ...parseResults(entry.results),
         });
       }
 
-      return { byName, malformedEntries, totalEntries };
+      return { byID, malformedEntries, totalEntries };
     }
 
     /**
@@ -522,10 +527,10 @@ data:
      */
     function buildRows(specs, payload, nowMs) {
       const normalised = specs.map(normaliseEndpointSpec);
-      const { byName, malformedEntries, totalEntries } = indexPayload(payload);
+      const { byID, malformedEntries, totalEntries } = indexPayload(payload);
 
       const rows = normalised.map(spec => {
-        const found = byName.get(spec.name);
+        const found = byID.get(spec.id);
 
         if (!found) {
           return {
@@ -1201,7 +1206,7 @@ data:
   package.json: |
     {
       "name": "@sre-platform/headlamp-service-status",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "Read-only Gatus availability view for the Headlamp operator console",
       "private": true,
       "license": "Apache-2.0",
@@ -1576,7 +1581,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: bc46571d67868d742e528dc70b06bc83ad462b940e8bd2068aad926fe4db90cb
+        sre.platform.io/headlamp-plugins-sha256: 427ff6e880d39bddb1d2b0163535ec32f56f28daa9a82109bfb409b0161f4b86
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
@@ -1599,7 +1604,7 @@ spec:
           - -r
           - /plugins/ai-assistant/.
           - /out/ai-assistant/
-          image: ghcr.io/dawid-koldras-home/headlamp-plugin-ai-assistant-runtime@sha256:b2e4b6bde4560398d8014a57004b79c6ad26225adfa9d346119e5c90fc597bf9
+          image: ghcr.io/dawid-koldras-home/sre-platform-ai-assistant-runtime@sha256:117927558b0dd95d6a29785788edf7aeff8fba4934e507412036c16d45ab1a4b
           imagePullPolicy: IfNotPresent
           name: plugin-ai-assistant
           resources:
