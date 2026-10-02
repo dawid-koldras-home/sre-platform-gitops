@@ -1201,7 +1201,7 @@ data:
   package.json: |
     {
       "name": "@sre-platform/headlamp-service-status",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Read-only Gatus availability view for the Headlamp operator console",
       "private": true,
       "license": "Apache-2.0",
@@ -1576,7 +1576,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: c3881d68826a6f0de9d6b69ed3e70ba6453535560c770db56321dc9f4d2017e4
+        sre.platform.io/headlamp-plugins-sha256: 191d0f891dc15edf1b1d5da4e2c3c763020e02b3309a8af31e75060ac8c6d7a7
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
