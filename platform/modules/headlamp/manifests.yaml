@@ -734,6 +734,19 @@ data:
 
     const createElement = react.createElement;
 
+    /**
+     * The element factory under its short name.
+     *
+     * This build concatenates every module into one shared function scope rather than
+     * wrapping each one, because the console evaluates the payload with a single
+     * `new Function`. A name declared at the top level of two modules is therefore a
+     * `SyntaxError: Identifier 'h' has already been declared` in the console, not a
+     * shadowed binding, and a plugin that throws while loading is still *listed* as
+     * installed. So the alias is declared here, once, in the module every other module
+     * already depends on.
+     */
+    const h = react.createElement;
+
     function hook(name) {
       const value = react[name];
       if (typeof value !== 'function') {
@@ -789,6 +802,28 @@ data:
         throw new Error(missing(path));
       }
       return current;
+    }
+
+    /**
+     * The components only the endpoint editor renders.
+     *
+     * They are resolved on first use rather than at load, because a plugin that cannot find
+     * every component it names must not fail to load over one the page an operator opens does
+     * not use. Resolving these eagerly would mean the read-only dashboard broke on a console
+     * build that lacks a control the editor needs, which is exactly the "degrade one view,
+     * not the whole plugin" property the status page already guarantees for its own failure
+     * modes.
+     */
+    function Button() {
+      return component('MuiMaterial.Button');
+    }
+
+    function TextField() {
+      return component('MuiMaterial.TextField');
+    }
+
+    function Switch() {
+      return component('MuiMaterial.Switch');
     }
 
     const Box = component('MuiMaterial.Box');
@@ -869,10 +904,2552 @@ data:
       return { ok: true, reason: '', status: 200, payload };
     }
 
+    /**
+     * The editor route, under the console's settings section rather than the sidebar.
+     *
+     * Headlamp 0.43.0 has no plugin API for contributing a row to Settings -> Plugins, so the
+     * route is registered as an ordinary settings route and reached from the Service Status
+     * page. It is deliberately NOT registered through registerSidebarEntry: a second
+     * top-level item would imply the endpoint editor is a peer of the read-only dashboard,
+     * and would put a write affordance in the primary navigation of a console whose RBAC is
+     * read-only. The limitation is recorded in the TASK-209 ADR.
+     */
+    const EDITOR_PATH = '/settings/plugins/gatus/endpoints';
+
+    function registerEditorRoute(route) {
+      registerRoute(route);
+    }
+
     const PLUGIN_NAMESPACE = NAMESPACE;
     const PLUGIN_PATH = `/${NAMESPACE}/statuses`;
+    const PLUGIN_EDITOR_PATH = EDITOR_PATH;
     const PLUGIN_PROXY_PATH = PROXY_PATH;
     const PLUGIN_UI_PROXY_PATH = UI_PROXY_PATH;
+
+    /**
+     * Copy text to the clipboard, used for the YAML fragment this page produces.
+     *
+     * Two things are deliberate. The write happens only from an explicit operator action on
+     * the copy control, never on a field change. And the value is the validated fragment
+     * the validation already passed, so what lands on the clipboard is the reviewed artifact
+     * and not a re-serialisation of something else.
+     *
+     * The clipboard API is same-origin and permission-gated by the browser, so it can refuse.
+     * A refusal is reported rather than silently swallowed, because an operator who believes
+     * a copy succeeded and did not get it would paste a stale fragment later.
+     */
+    async function copyText(text) {
+      const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+      if (!clipboard || typeof clipboard.writeText !== 'function') {
+        return { ok: false, reason: 'unavailable' };
+      }
+      try {
+        await clipboard.writeText(text);
+        return { ok: true, reason: '' };
+      } catch (error) {
+        return { ok: false, reason: 'refused' };
+      }
+    }
+
+    /**
+     * Offer the fragment as a download.
+     *
+     * A download rather than a second network write: it produces a local file through the
+     * browser's own mechanism, so the editor gains no outbound request and holds no
+     * credential to make one. The object URL is revoked immediately after the click, so a
+     * repeated download does not accumulate blobs in the tab.
+     */
+    function downloadText(filename, text) {
+      const doc = typeof document !== 'undefined' ? document : undefined;
+      if (!doc || typeof doc.createElement !== 'function') {
+        return false;
+      }
+      const anchor = doc.createElement('a');
+      const url = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+        ? URL.createObjectURL(new Blob([text], { type: 'text/yaml;charset=utf-8' }))
+        : '';
+      try {
+        anchor.setAttribute('href', url);
+        anchor.setAttribute('download', filename);
+        doc.body.appendChild(anchor);
+        anchor.click();
+        doc.body.removeChild(anchor);
+        return true;
+      } catch (error) {
+        return false;
+      } finally {
+        if (url && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+          URL.revokeObjectURL(url);
+        }
+      }
+    }
+
+      // ---- src/contract.js ----
+    // Authoritative validation contract for the endpoint editor.
+    //
+    // The installer is the single place where Gatus endpoint policy is expressed. The
+    // resolver validates `spec.modules.gatus.endpoints` against constants in
+    // internal/resolver/gatus.go, and this file must not become a second, looser copy of
+    // them: a browser that accepted a wider set than the resolver would let an operator
+    // build a draft that is refused only after review, which hides the real bound until the
+    // worst possible moment.
+    //
+    // So the bounds below are transcribed from those constants and
+    // TestGatusEndpointEditorContractMatchesResolverBounds parses this file and fails the Go
+    // build if any value drifts. That test is the contract: a bound changed here and not
+    // there breaks the build rather than shipping a looser editor.
+    //
+    // ## Why the contract is a source file and not part of the delivered metadata
+    //
+    // The obvious design is for the resolver to inject these numbers into the plugin payload
+    // the way it already injects the endpoint list. That was implemented and reverted, because
+    // TASK-207's isolation gates forbid the in-cluster DNS suffix and the default secure port
+    // in the *runtime status metadata* the browser reads, and injecting validation bounds
+    // through the same channel would have widened that metadata from display and timing
+    // fields into installer policy.
+    //
+    // Those gates are correct, and so is the narrower place to enforce them. Cluster topology
+    // has no business in a status console, but it has every business being named in this file:
+    // an editor has to describe and validate these fields to be useful. The two concerns are
+    // separated rather than one being sacrificed to the other — the metadata assignment stays
+    // minimal, and the validation contract ships as reviewed first-party source.
+    //
+    // ## Why the advanced fields are supported rather than refused
+    //
+    // allowClusterInternal, allowInsecureHttp and ignoreRedirects were refused in 0.1.5 on the
+    // grounds that they are transport and topology decisions. That reasoning was sound about
+    // where the decision belongs and wrong about whether the page may carry it: the reviewed
+    // live customer configuration contains all three, so refusing them made the editor
+    // incompatible with the configuration it exists to edit. An operator pasting the real
+    // fragment got a wall of refusals, and the page could not claim complete-fragment import,
+    // Edit/Remove, or a deterministic replacement fragment while it did that.
+    //
+    // They are now supported with the resolver's exact semantics, which is the only version of
+    // "supported" that does not create a second policy:
+    //   - values must be real YAML booleans, so a quoted 'true', a numeric 1, and a bare yes
+    //     are all refused exactly as the resolver refuses them;
+    //   - a cleartext http target requires allowInsecureHttp;
+    //   - an in-cluster target requires allowClusterInternal, and only the exact
+    //     <service>.<namespace>.svc.cluster.local form is accepted, with the same DNS-label
+    //     rules and the same refusal of the kubernetes Service;
+    //   - allowClusterInternal on a public name is refused, so the flag cannot be used as a
+    //     blanket "relax validation" switch.
+    //
+    // What has not changed is the privacy boundary and the absence of a write path. These
+    // fields are still never inferred from status metadata, still never inferred from a
+    // hostname the console does not hold, and the exported fragment is still unapplied.
+
+    // Transcribed from internal/resolver/gatus.go. Do not edit without editing it there too.
+    const CONTRACT = {
+      maxEndpoints: 50,
+
+      interval: { defaultMs: 60000, minMs: 30000, maxMs: 300000 },
+      timeout: { defaultMs: 10000, minMs: 1000, maxMs: 30000 },
+
+      maxResponseTimeMs: 60000,
+      maxCertificateWindowHours: 2160,
+
+      idMaxLength: 63,
+      nameMaxLength: 200,
+      groupMaxLength: 64,
+
+      defaultStatusCodes: [200],
+      maxStatusCodes: 10,
+      maxPort: 65535,
+
+      // The port each scheme lands on when the target names none. The resolver derives its
+      // NetworkPolicy egress the same way, so the plan this editor shows an operator is the
+      // policy the installer will render rather than an approximation of it.
+      schemeDefaultPorts: { 'https:': 443, 'http:': 80 },
+
+      // gatusClusterLocalSuffix and gatusClusterLocalLabel, transcribed from gatus.go. An
+      // in-cluster target is named by an exact form rather than a suffix test, because a
+      // suffix test alone would accept a name that resolves off-cluster.
+      clusterLocalSuffix: '.svc.cluster.local',
+      clusterLocalLabel: 'cluster.local',
+
+      // gatusForbiddenInternalServices, transcribed from gatus.go. Reaching the Kubernetes API
+      // server is not an availability signal for a platform component, so it is never a target
+      // even with allowClusterInternal set.
+      forbiddenInternalServices: ['kubernetes'],
+
+      // The one group an endpoint with no group is reported under, and therefore the value
+      // the status join compares against.
+      defaultGroup: 'Ungrouped',
+
+      // Every field the editor may write, in the resolver's own accepted-field order. A key
+      // outside this set is refused, which is what keeps a typo from silently dropping a
+      // default that matters.
+      writableFields: [
+        'id',
+        'name',
+        'group',
+        'url',
+        'allowInsecureHttp',
+        'allowClusterInternal',
+        'interval',
+        'timeout',
+        'expectedStatusCodes',
+        'maxResponseTimeMs',
+        'certificateExpiry',
+        'ignoreRedirects',
+      ],
+
+      // The optional boolean fields. Each is written only when the operator set it explicitly,
+      // so an explicit `false` survives a round trip and an absent field stays absent rather
+      // than becoming a rendered `false` that looks like a decision nobody made.
+      booleanFields: ['allowInsecureHttp', 'allowClusterInternal', 'ignoreRedirects'],
+
+      // Fields that must be present and non-empty.
+      requiredFields: ['id', 'name', 'url'],
+
+      durationUnits: ['s', 'm', 'h'],
+      hoursUnits: ['h', 'd'],
+    };
+
+    // The optional fields whose absence is itself part of the configuration.
+    //
+    // Every field here has a resolver default, so writing one that the operator never chose is
+    // semantically free but not review-free: the exported fragment is a replacement for the
+    // customer's canonical file, and a no-op round trip that adds `interval: 1m` to an endpoint
+    // that omitted it produces a Git diff with no operator change behind it. An operator who
+    // exports and applies a fragment they did not intend to change has been handed a change they
+    // did not review, which is the specific failure the reviewed workflow exists to prevent.
+    //
+    // Presence is therefore recorded separately from value. The value in a draft is the
+    // *effective* configuration, because that is what the form must show and what validation
+    // must judge; presence is the *authoring* record, and only presence decides what gets
+    // written.
+    const OPTIONAL_FIELDS = [
+      'group',
+      'interval',
+      'timeout',
+      'expectedStatusCodes',
+      'maxResponseTimeMs',
+      'certificateExpiry',
+      'allowClusterInternal',
+      'allowInsecureHttp',
+      'ignoreRedirects',
+    ];
+
+    // View bookkeeping that exists only in the browser.
+    //
+    // These keys are not endpoint fields and are never emitted, but draft objects carry them
+    // so the view can tell an unknown target from a genuinely empty one, and so the exporter can
+    // tell an omitted field from a defaulted one. Validation therefore exempts exactly this set
+    // and nothing else, so the exemption cannot widen into "ignore whatever you are handed".
+    //
+    // `presentFields` is draft-only in the strongest sense the platform allows: it is not
+    // configuration, it is never rendered, never serialised into the fragment, never sent to a
+    // resolver and never included in the sanitized plan. It exists only inside the page's memory
+    // for as long as the draft does, which a reload discards along with the draft itself.
+    const DRAFT_ONLY_FIELDS = ['targetKnown', 'isNew', 'draftIndex', 'presentFields'];
+
+    // The schemes an endpoint may use.
+    //
+    // `http` is reachable only behind allowInsecureHttp: true, which the resolver enforces and
+    // which this editor reproduces rather than treating as a formality. Both are listed because
+    // refusing http outright would make the editor incompatible with a reviewed configuration
+    // that legitimately uses it for an in-cluster readiness probe.
+    const ALLOWED_SCHEMES = ['https', 'http'];
+
+    // The default scheme a new row starts on, so a blank row is not born invalid.
+    const DEFAULT_SCHEME = 'https';
+
+    // Short labels for what each advanced field changes, shown beside the control so an
+    // operator sees the consequence of the toggle rather than only the field name.
+    //
+    // These name a behaviour, never a target: the page must be able to describe the decision
+    // without printing the hostname the decision applies to.
+    const ADVANCED_FIELD_NOTES = {
+      allowInsecureHttp:
+        'accepts a cleartext http target; the check and its result cross the network unencrypted',
+      allowClusterInternal:
+        'allows a target inside this cluster, in the exact <service>.<namespace>.svc.cluster.local form only',
+      ignoreRedirects:
+        'reports the first response instead of following redirects, so a check cannot be satisfied by a redirect chain',
+    };
+
+    // The exact YAML spellings accepted for a boolean. Anything else is refused by name.
+    //
+    // Deliberately only `true` and `false`: the resolver reads these values through a YAML
+    // decoder that resolves the core schema, where `yes`, `no`, `on`, `off`, `1` and `0` are
+    // strings or integers rather than booleans, and it refuses every one of them with
+    // "must be a boolean". Accepting them here would make the editor the looser of the two.
+    const BOOLEAN_LITERALS = ['true', 'false'];
+      // ---- src/validate.js ----
+    // Validation for the endpoint editor, mirroring internal/resolver/gatus.go.
+    //
+    // Every rule here is a transcription of a resolver rule, and the bounds come from
+    // contract.js, which the Go drift test compares against the resolver constants. The
+    // error strings intentionally say the same thing the resolver says, so an operator who
+    // reads a refusal here and then reads the resolver's error sees one rule stated twice
+    // rather than two rules.
+    //
+    // The functions are pure and React-free so they are tested directly with `node --test`.
+
+
+    const DNS1123 = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+    /**
+     * One problem, addressed to a field, so the editor can attach it to a row or a control.
+     *
+     * `field` uses the resolver's own `endpoints[i].field` shape because that is what the
+     * exported fragment and the eventual `srectl` error will say, and an operator comparing
+     * the two should not have to translate between vocabularies.
+     */
+    function problem(field, message) {
+      return { field, message };
+    }
+
+    /**
+     * Reject a value that would corrupt a rendered manifest or a ConfigMap line.
+     *
+     * Control characters are refused in both the browser and the resolver for the same
+     * reason: a newline in a display name becomes a broken YAML line rather than a name.
+     */
+    function rejectControlCharacters(value) {
+      for (const character of String(value)) {
+        const code = character.codePointAt(0);
+        if (code < 0x20 || code === 0x7f) {
+          return 'must not contain control characters';
+        }
+      }
+      return '';
+    }
+
+    /**
+     * Reject template and placeholder markers.
+     *
+     * A doubled brace pair would be evaluated by any chart that renders a delivered payload
+     * through a template engine, and `<`/`>` are how an operator might expect a placeholder to
+     * behave in a value that is never interpolated. Both are refused in the resolver for the
+     * same reason.
+     *
+     * The doubled braces are assembled from single characters rather than written literally,
+     * because this file is bundled into the delivered payload and the build refuses to emit a
+     * raw doubled brace: the chart would treat it as a template action and evaluate it. Writing
+     * the literal here would make the source unrepresentable in its own output.
+     */
+    function rejectMarkers(value) {
+      const text = String(value);
+      const openBracePair = '{'.repeat(2);
+      const closeBracePair = '}'.repeat(2);
+      if (text.includes(openBracePair) || text.includes(closeBracePair)) {
+        return 'must not contain template markers';
+      }
+      if (text.includes('<') || text.includes('>')) {
+        return 'must not contain placeholder markers';
+      }
+      return '';
+    }
+
+    /**
+     * Parse a duration restricted to a single unit, in milliseconds.
+     *
+     * Returns null rather than throwing so a field with two problems reports both, which is
+     * the difference between a form an operator can fix in one pass and one they fix one
+     * error at a time.
+     */
+    function parseDurationMs(value) {
+      const text = String(value);
+      if (text.length < 2) {
+        return null;
+      }
+      const unit = text[text.length - 1];
+      const magnitude = Number(text.slice(0, -1));
+      if (!Number.isInteger(magnitude) || magnitude < 0) {
+        return null;
+      }
+      if (unit === 's') {
+        return magnitude * 1000;
+      }
+      if (unit === 'm') {
+        return magnitude * 60 * 1000;
+      }
+      if (unit === 'h') {
+        return magnitude * 60 * 60 * 1000;
+      }
+      return null;
+    }
+
+    /** Re-derive the canonical duration string, so 60s and 1m cannot render differently. */
+    function canonicalDuration(milliseconds) {
+      if (milliseconds >= 3600000 && milliseconds % 3600000 === 0) {
+        return `${milliseconds / 3600000}h`;
+      }
+      if (milliseconds >= 60000 && milliseconds % 60000 === 0) {
+        return `${milliseconds / 60000}m`;
+      }
+      return `${milliseconds / 1000}s`;
+    }
+
+    /**
+     * Validate an interval or timeout against its bound.
+     *
+     * Hours are allowed for both here, matching the resolver's `interval` handling; the
+     * resolver rejects hours for `timeout` separately, and that rejection is reproduced in
+     * validateEndpoint rather than here so the message can name the field.
+     */
+    function validateDuration(label, value, bound) {
+      const milliseconds = parseDurationMs(value);
+      if (milliseconds === null) {
+        return [problem(label, `must be a duration in ${CONTRACT.durationUnits.join(', ')}, got "${value}"`)];
+      }
+      if (!CONTRACT.durationUnits.includes(value[value.length - 1])) {
+        return [problem(label, `must use ${CONTRACT.durationUnits.join(' or ')} units`)];
+      }
+      const problems = [];
+      if (milliseconds < bound.minMs || milliseconds > bound.maxMs) {
+        problems.push(
+          problem(
+            label,
+            `must be between ${canonicalDuration(bound.minMs)} and ${canonicalDuration(bound.maxMs)}, got ${value}`
+          )
+        );
+      }
+      return problems;
+    }
+
+    /** Parse an h/d window into hours, matching parseGatusHours. */
+    function parseWindowHours(value) {
+      const text = String(value);
+      if (text.length < 2) {
+        return null;
+      }
+      const magnitude = Number(text.slice(0, -1));
+      if (!Number.isInteger(magnitude) || magnitude < 0) {
+        return null;
+      }
+      if (text[text.length - 1] === 'h') {
+        return magnitude;
+      }
+      if (text[text.length - 1] === 'd') {
+        return magnitude * 24;
+      }
+      return null;
+    }
+
+    /**
+     * Validate the accepted status-code set.
+     *
+     * A multi-code set is legal here because Gatus ANDs the conditions and the resolver
+     * renders one `any(...)` condition for the whole set. What is refused is an empty list,
+     * which would render an endpoint with no status condition at all.
+     */
+    function validateStatusCodes(value) {
+      if (!Array.isArray(value)) {
+        return [problem('expectedStatusCodes', 'must be an array of integers')];
+      }
+      if (value.length === 0 || value.length > CONTRACT.maxStatusCodes) {
+        return [
+          problem(
+            'expectedStatusCodes',
+            `must contain between 1 and ${CONTRACT.maxStatusCodes} codes, got ${value.length}`
+          ),
+        ];
+      }
+      const problems = [];
+      value.forEach((code, index) => {
+        if (!Number.isInteger(code) || code < 100 || code > 599) {
+          problems.push(problem(`expectedStatusCodes[${index}]`, 'must be an HTTP status code between 100 and 599'));
+        }
+      });
+      return problems;
+    }
+
+    /**
+     * Validate a target hostname the way classifyGatusTargetHost does.
+     *
+     * This is the rule that makes an in-cluster target an exact, opt-in form rather than a
+     * suffix test. Reproduced from internal/resolver/gatus.go because an editor that guessed
+     * would let an operator compose a target the installer refuses, and one that was looser
+     * about the internal form would defeat the NetworkPolicy narrowing the resolver derives
+     * from the namespace and port it returns.
+     *
+     * @returns an object with `ok` and, when the host is an accepted in-cluster target,
+     * `service` and `namespace`. The caller never sees the host itself.
+     */
+    function classifyTargetHost(host, allowClusterInternal) {
+      const text = String(host === undefined || host === null ? '' : host).toLowerCase().replace(/\.$/, '');
+      if (text === '') {
+        return { ok: false, message: 'must include a hostname' };
+      }
+      if (text === 'localhost' || text.endsWith('.localhost')) {
+        return { ok: false, message: 'must not target localhost' };
+      }
+
+      if (isIpLiteral(text)) {
+        const literal = parseIpLiteral(text);
+        if (literal.loopback || literal.linkLocal || literal.unspecified) {
+          return { ok: false, message: 'must not target a loopback, link-local or unspecified address' };
+        }
+        if (literal.private) {
+          return {
+            ok: false,
+            message: 'must not target a raw private address; name the target so the platform can restrict egress to it',
+          };
+        }
+        if (allowClusterInternal) {
+          return {
+            ok: false,
+            message: `sets allowClusterInternal but the target is an address literal, not an in-cluster ${CONTRACT.clusterLocalSuffix} name`,
+          };
+        }
+        return { ok: true, internal: false, service: '', namespace: '' };
+      }
+
+      // A cluster zone anywhere but the end is a name that resolves off-cluster while looking
+      // internal. Refused for both flag states, because the honest answer is the same either
+      // way.
+      if (text.includes(CONTRACT.clusterLocalLabel) && !text.endsWith(CONTRACT.clusterLocalSuffix)) {
+        return {
+          ok: false,
+          message: `must not embed ${CONTRACT.clusterLocalLabel} in the middle of the hostname; only the exact in-cluster form <service>.<namespace>${CONTRACT.clusterLocalSuffix} is accepted`,
+        };
+      }
+
+      if (text.endsWith('.local')) {
+        if (!text.endsWith(CONTRACT.clusterLocalSuffix)) {
+          return {
+            ok: false,
+            message: `must not target a link-local or mDNS name; only the in-cluster ${CONTRACT.clusterLocalSuffix} form is accepted`,
+          };
+        }
+        const parts = text.slice(0, -CONTRACT.clusterLocalSuffix.length).split('.');
+        if (parts.length !== 2 || parts[0] === '' || parts[1] === '') {
+          return {
+            ok: false,
+            message: `must be exactly <service>.<namespace>${CONTRACT.clusterLocalSuffix}`,
+          };
+        }
+        const [service, namespace] = parts;
+        if (!DNS1123.test(service)) {
+          return { ok: false, message: `has an invalid service name "${service}"; it must be a lowercase DNS label` };
+        }
+        if (!DNS1123.test(namespace)) {
+          return { ok: false, message: `has an invalid namespace "${namespace}"; it must be a lowercase DNS label` };
+        }
+        if (CONTRACT.forbiddenInternalServices.includes(service)) {
+          return {
+            ok: false,
+            message:
+              service === 'kubernetes'
+                ? 'must not target the "kubernetes" Service: it is the Kubernetes API server Service, not a platform component'
+                : `must not target the "${service}" Service`,
+          };
+        }
+        if (!allowClusterInternal) {
+          return {
+            ok: false,
+            message: `targets an in-cluster name; set allowClusterInternal: true to accept an internal readiness endpoint deliberately`,
+          };
+        }
+        return { ok: true, internal: true, service, namespace };
+      }
+
+      if (allowClusterInternal) {
+        return {
+          ok: false,
+          message: `sets allowClusterInternal but the target is a public name; the flag is only valid for an in-cluster ${CONTRACT.clusterLocalSuffix} target`,
+        };
+      }
+      return { ok: true, internal: false, service: '', namespace: '' };
+    }
+
+    /**
+     * Is this an IPv4 or IPv6 literal?
+     *
+     * Shape, not range: an unparseable "address" is then classified as a name and refused by
+     * the DNS rules instead of being silently accepted as a public target.
+     */
+    function isIpLiteral(text) {
+      if (/^\d{1,3}(\.\d{1,3}){3}$/.test(text)) {
+        return true;
+      }
+      return text.includes(':');
+    }
+
+    /** Classify an IP literal the way the resolver's net.ParseIP checks do. */
+    function parseIpLiteral(text) {
+      if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(text)) {
+        // An IPv6 literal. The resolver refuses loopback (::1), link-local (fe80::/10) and
+        // unspecified (::); unique-local and IPv4-mapped private space are treated as private
+        // here so the browser cannot be the more permissive of the two.
+        const lower = text.toLowerCase();
+        const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(lower);
+        if (mapped) {
+          return { ...classifyIpv4(mapped[1]), loopback: false, linkLocal: false, unspecified: false };
+        }
+        return {
+          loopback: lower === '::1',
+          linkLocal: /^fe[89ab][0-9a-f]:/.test(lower),
+          unspecified: lower === '::',
+          private: lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('fe80:'),
+        };
+      }
+      return classifyIpv4(text);
+    }
+
+    /** The address classes the resolver refuses for an IPv4 literal. */
+    function classifyIpv4(text) {
+      const octets = text.split('.').map(part => Number(part));
+      if (octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+        return { loopback: true, linkLocal: false, unspecified: false, private: true };
+      }
+      const [a, b] = octets;
+      return {
+        loopback: a === 127,
+        linkLocal: a === 169 && b === 254,
+        unspecified: a === 0,
+        private: a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168),
+      };
+    }
+
+    /**
+     * Validate the target URL against validateGatusTargetURL and classifyGatusTargetHost.
+     *
+     * Userinfo, query strings and fragments are refused for the resolver's reasons. A query
+     * string is the ordinary way a credential ends up in a URL, and a fragment is never sent to
+     * the server, so accepting either would add an unauditable value to the component that then
+     * makes the request.
+     *
+     * @returns `{ problems, internal, service, namespace }`. The host is never included in
+     * either half of the result, because both are rendered.
+     */
+    function validateTargetUrl(value, options) {
+      const settings = options || {};
+      const allowInsecure = settings.allowInsecureHttp === true;
+      const allowClusterInternal = settings.allowClusterInternal === true;
+      const text = String(value);
+      const problems = [];
+
+      let parsed;
+      try {
+        parsed = new URL(text);
+      } catch (error) {
+        return { problems: [problem('url', 'is not a valid URL')], internal: false, service: '', namespace: '' };
+      }
+
+      const scheme = parsed.protocol.replace(':', '');
+      if (!ALLOWED_SCHEMES.includes(scheme)) {
+        problems.push(problem('url', `must use the ${ALLOWED_SCHEMES.join(' or ')} scheme, got "${scheme}"`));
+      } else if (scheme === 'http' && !allowInsecure) {
+        // The resolver's acknowledgement rule, reproduced exactly. Without this the editor
+        // would accept a cleartext target the installer refuses.
+        problems.push(problem('url', 'uses cleartext http; set allowInsecureHttp to true to accept it deliberately'));
+      }
+      if (!parsed.hostname) {
+        problems.push(problem('url', 'must include a hostname'));
+      }
+      if (parsed.username || parsed.password) {
+        problems.push(problem('url', 'must not contain embedded credentials'));
+      }
+      if (text.includes('?')) {
+        problems.push(problem('url', 'must not contain a query string; a credential in a query is never accepted'));
+      }
+      if (text.includes('#')) {
+        problems.push(problem('url', 'must not contain a fragment'));
+      }
+      if (parsed.port) {
+        const port = Number(parsed.port);
+        if (!Number.isInteger(port) || port < 1 || port > CONTRACT.maxPort) {
+          problems.push(problem('url', 'has an invalid port'));
+        }
+      }
+
+      let internal = false;
+      let service = '';
+      let namespace = '';
+      if (parsed.hostname) {
+        const classification = classifyTargetHost(parsed.hostname, allowClusterInternal);
+        if (!classification.ok) {
+          problems.push(problem('url', classification.message));
+        } else {
+          internal = classification.internal;
+          service = classification.service;
+          namespace = classification.namespace;
+        }
+      }
+
+      return { problems, internal, service, namespace };
+    }
+
+    /**
+     * Validate one of the three optional boolean endpoint fields.
+     *
+     * The resolver reads these through a YAML decoder and type-asserts the result to `bool`, so
+     * a quoted 'true', a numeric 1 and a bare yes are each refused with "must be a boolean".
+     * An absent field is not an error: the resolver defaults it to false, and the editor keeps
+     * it absent so the exported fragment says only what the operator actually chose.
+     */
+    function validateBooleanField(name, value) {
+      if (value === undefined) {
+        return [];
+      }
+      if (typeof value !== 'boolean') {
+        return [
+          problem(
+            name,
+            `must be a boolean, got ${describeValueType(value)}; write true or false without quotes`
+          ),
+        ];
+      }
+      return [];
+    }
+
+    /** Name the received type the way the resolver's %T does, so the two messages agree. */
+    function describeValueType(value) {
+      if (typeof value === 'string') {
+        return 'string';
+      }
+      if (typeof value === 'number') {
+        return Number.isInteger(value) ? 'int' : 'float64';
+      }
+      if (Array.isArray(value)) {
+        return '[]interface {}';
+      }
+      if (value === null) {
+        return '<nil>';
+      }
+      return typeof value;
+    }
+
+    /**
+     * Validate one endpoint draft.
+     *
+     * The returned array is empty exactly when the resolver would accept this endpoint, so
+     * an empty result is a claim the drift test and the resolver together keep honest.
+     */
+    function validateEndpoint(draft) {
+      const problems = [];
+      if (!draft || typeof draft !== 'object') {
+        return [problem('endpoint', 'must be an object')];
+      }
+
+      // A key outside the writable set is refused, never ignored, so a typo cannot silently
+      // drop a default that matters and an unknown field cannot be smuggled past a browser that
+      // would validate it more loosely than the resolver.
+      for (const key of Object.keys(draft)) {
+        if (CONTRACT.writableFields.includes(key) || DRAFT_ONLY_FIELDS.includes(key)) {
+          continue;
+        }
+        problems.push(problem(key, 'unknown field is not allowed'));
+      }
+
+      for (const required of CONTRACT.requiredFields) {
+        const value = draft[required];
+        if (typeof value !== 'string' || value.trim() === '') {
+          problems.push(problem(required, 'is required and must not be empty'));
+        }
+      }
+
+      const id = typeof draft.id === 'string' ? draft.id : '';
+      if (id !== '') {
+        if (id.length > CONTRACT.idMaxLength || !DNS1123.test(id)) {
+          problems.push(
+            problem('id', `must be a lowercase DNS label of at most ${CONTRACT.idMaxLength} characters, got "${id}"`)
+          );
+        }
+      }
+
+      const name = typeof draft.name === 'string' ? draft.name : '';
+      if (name !== '') {
+        if (name.length > CONTRACT.nameMaxLength) {
+          problems.push(problem('name', `must be at most ${CONTRACT.nameMaxLength} characters`));
+        }
+        const control = rejectControlCharacters(name);
+        if (control) {
+          problems.push(problem('name', control));
+        }
+        const markers = rejectMarkers(name);
+        if (markers) {
+          problems.push(problem('name', markers));
+        }
+      }
+
+      const group = draft.group === undefined || draft.group === null ? '' : draft.group;
+      if (typeof group !== 'string') {
+        problems.push(problem('group', 'must be a string'));
+      } else {
+        if (group.length > CONTRACT.groupMaxLength) {
+          problems.push(problem('group', `must be at most ${CONTRACT.groupMaxLength} characters`));
+        }
+        const control = rejectControlCharacters(group);
+        if (control) {
+          problems.push(problem('group', control));
+        }
+        const markers = rejectMarkers(group);
+        if (markers) {
+          problems.push(problem('group', markers));
+        }
+      }
+
+      // The three optional booleans are read before the URL, because the URL rules depend on
+      // two of them. Each is validated for type first so the URL refusal that follows names the
+      // field the operator has to set rather than the consequence.
+      for (const booleanField of CONTRACT.booleanFields) {
+        problems.push(...validateBooleanField(booleanField, draft[booleanField]));
+      }
+
+      const url = typeof draft.url === 'string' ? draft.url : '';
+      if (url !== '') {
+        const markers = rejectMarkers(url);
+        if (markers) {
+          problems.push(problem('url', markers));
+        } else {
+          // The classification result is discarded here: this function returns problems, and the
+          // destination class is derived separately by describeDestination so the plan can show
+          // it without the validation result being carried around.
+          problems.push(
+            ...validateTargetUrl(url, {
+              allowInsecureHttp: draft.allowInsecureHttp === true,
+              allowClusterInternal: draft.allowClusterInternal === true,
+            }).problems
+          );
+        }
+      }
+
+      // Durations default when omitted, exactly as the resolver defaults them, so an omitted
+      // field cannot make the editor and the rendered check disagree about cadence.
+      let intervalMs = CONTRACT.interval.defaultMs;
+      let timeoutMs = CONTRACT.timeout.defaultMs;
+      if (draft.interval !== undefined && draft.interval !== null && draft.interval !== '') {
+        problems.push(...validateDuration('interval', draft.interval, CONTRACT.interval));
+        intervalMs = parseDurationMs(draft.interval);
+      }
+      if (draft.timeout !== undefined && draft.timeout !== null && draft.timeout !== '') {
+        problems.push(...validateDuration('timeout', draft.timeout, CONTRACT.timeout));
+        // The resolver refuses hours for a timeout. Reproduced here so the operator is told
+        // at the field rather than at submit.
+        if (typeof draft.timeout === 'string' && draft.timeout.endsWith('h')) {
+          problems.push(problem('timeout', 'must be expressed in seconds or minutes'));
+        }
+        timeoutMs = parseDurationMs(draft.timeout);
+      }
+      if (typeof intervalMs === 'number' && typeof timeoutMs === 'number' && timeoutMs >= intervalMs) {
+        problems.push(
+          problem(
+            'timeout',
+            `must be shorter than interval (${canonicalDuration(intervalMs)}), got ${canonicalDuration(timeoutMs)}`
+          )
+        );
+      }
+
+      if (draft.expectedStatusCodes !== undefined && draft.expectedStatusCodes !== null) {
+        problems.push(...validateStatusCodes(draft.expectedStatusCodes));
+      }
+
+      if (draft.maxResponseTimeMs !== undefined && draft.maxResponseTimeMs !== null && draft.maxResponseTimeMs !== '') {
+        const value = draft.maxResponseTimeMs;
+        if (!Number.isInteger(value) || value < 1 || value > CONTRACT.maxResponseTimeMs) {
+          problems.push(
+            problem('maxResponseTimeMs', `must be between 1 and ${CONTRACT.maxResponseTimeMs} milliseconds`)
+          );
+        } else if (typeof timeoutMs === 'number' && value >= timeoutMs) {
+          // Below the timeout is the point of the condition: at or above it, a request that
+          // breaches the threshold has already failed the timeout, so the condition could
+          // never report a slow-but-answering endpoint.
+          problems.push(
+            problem('maxResponseTimeMs', `must be shorter than timeout (${canonicalDuration(timeoutMs)})`)
+          );
+        }
+      }
+
+      if (draft.certificateExpiry !== undefined && draft.certificateExpiry !== null && draft.certificateExpiry !== '') {
+        const hours = parseWindowHours(draft.certificateExpiry);
+        if (hours === null) {
+          problems.push(
+            problem('certificateExpiry', `must be a duration in ${CONTRACT.hoursUnits.join(' or ')}, got "${draft.certificateExpiry}"`)
+          );
+        } else if (hours < 1 || hours > CONTRACT.maxCertificateWindowHours) {
+          problems.push(
+            problem(
+              'certificateExpiry',
+              `must be between 1h and ${CONTRACT.maxCertificateWindowHours} h (90d), got "${draft.certificateExpiry}"`
+            )
+          );
+        }
+      }
+
+      return problems;
+    }
+
+    /**
+     * Classify one draft's destination and the egress it implies, for the sanitized plan.
+     *
+     * Reports a class and a port, never a hostname. The plan is rendered, copied and pasted, so
+     * anything that named a target would put customer topology into a string designed to be
+     * shared. An in-cluster target is described as `cluster-internal` and an address literal or
+     * public name as `public`, which is the distinction the NetworkPolicy actually cares about:
+     * the first narrows egress to one namespace, the second cannot.
+     *
+     * @returns `{ klass, explicitPort, schemeDefaultPort, port, source }` where `source` is
+     * `explicit`, `scheme-default` or `none`, and `klass` is `public`, `cluster-internal`,
+     * `unknown` (a host the rules rejected) or `unset` (no usable target at all).
+     *
+     * `unset` and `unknown` are deliberately different. A row the operator has not filled in yet
+     * is not a target, and counting it as one would make the plan claim egress that no endpoint
+     * grants. A row whose host the rules rejected is a target the plan must not describe as
+     * public, because that would understate what the operator is trying to point at.
+     */
+    function describeDestination(draft) {
+      const empty = {
+        klass: 'unset',
+        explicitPort: 0,
+        schemeDefaultPort: 0,
+        port: 0,
+        source: 'none',
+      };
+      if (!draft || typeof draft.url !== 'string' || draft.url === '') {
+        return empty;
+      }
+      let parsed;
+      try {
+        parsed = new URL(draft.url);
+      } catch (error) {
+        return empty;
+      }
+      if (!parsed.hostname) {
+        return empty;
+      }
+      const classification = classifyTargetHost(
+        parsed.hostname,
+        draft.allowClusterInternal === true
+      );
+      const klass = !classification.ok
+        ? 'unknown'
+        : classification.internal
+          ? 'cluster-internal'
+          : 'public';
+      const schemeDefaultPort = CONTRACT.schemeDefaultPorts[parsed.protocol] || 0;
+      if (parsed.port) {
+        const explicitPort = Number(parsed.port);
+        return {
+          klass,
+          explicitPort,
+          schemeDefaultPort,
+          port: explicitPort,
+          source: 'explicit',
+        };
+      }
+      return {
+        klass,
+        explicitPort: 0,
+        schemeDefaultPort,
+        port: schemeDefaultPort,
+        source: schemeDefaultPort ? 'scheme-default' : 'none',
+      };
+    }
+
+    /**
+     * Validate the whole draft list.
+     *
+     * List-level rules live here rather than per-endpoint because they are properties of the
+     * set: duplicate ids and names, and the endpoint ceiling. The resolver applies exactly the
+     * same three, for the same reasons — the view keys rows on id, Gatus keys results on
+     * name, and each endpoint is one more outbound check.
+     */
+    function validateDraft(drafts) {
+      if (!Array.isArray(drafts)) {
+        return [problem('endpoints', 'must be an array of endpoint objects')];
+      }
+      if (drafts.length === 0) {
+        return [problem('endpoints', 'must contain at least one endpoint; there is no implicit, discovered or wildcard endpoint set')];
+      }
+      if (drafts.length > CONTRACT.maxEndpoints) {
+        return [problem('endpoints', `must contain at most ${CONTRACT.maxEndpoints} entries, got ${drafts.length}`)];
+      }
+      const problems = [];
+      const seenIds = new Map();
+      const seenNames = new Map();
+      drafts.forEach((draft, index) => {
+        for (const item of validateEndpoint(draft)) {
+          problems.push({ ...item, field: `endpoints[${index}].${item.field}`, index });
+        }
+        if (!draft || typeof draft !== 'object') {
+          return;
+        }
+        const id = typeof draft.id === 'string' ? draft.id : '';
+        const name = typeof draft.name === 'string' ? draft.name : '';
+        if (id !== '' && seenIds.has(id)) {
+          problems.push({
+            field: `endpoints[${index}].id`,
+            index,
+            message: `duplicate id "${id}"; ids must be unique because the Headlamp view keys rows on them`,
+          });
+        }
+        if (id !== '') {
+          seenIds.set(id, index);
+        }
+        if (name !== '' && seenNames.has(name)) {
+          problems.push({
+            field: `endpoints[${index}].name`,
+            index,
+            message: `duplicate name "${name}"; names must be unique because Gatus keys its results by name`,
+          });
+        }
+        if (name !== '') {
+          seenNames.set(name, index);
+        }
+      });
+      return problems;
+    }
+      // ---- src/editor.js ----
+    // Draft state, sanitized plan and YAML fragment for the endpoint editor.
+    //
+    // This is deliberately a pure module: no React, no DOM, no network. Everything an
+    // operator can do to a draft happens here as a function, which is what makes the
+    // fail-closed behaviour testable and what keeps the view from growing a second,
+    // divergent copy of the rules.
+    //
+    // ## Nothing here applies anything
+    //
+    // There is no API to call. The merged baseline has no server-side service that accepts a
+    // customer configuration change: control-center/ is seven markdown files with no code,
+    // and nothing in the repository commits the canonical customer YAML. Per TASK-209's
+    // write-path contract, that means the first phase fails closed to building and
+    // validating a draft and exporting it for a reviewed `srectl` run.
+    //
+    // The absence is a finding, not a stub. Writing a hidden ConfigMap, a CRD, a
+    // browser-persisted source of truth or a Git token held by the page would each turn the
+    // console into a second reconciler holding a credential, which is the outcome the platform
+    // architecture forbids. So this module produces an artifact and labels it unapplied.
+
+
+    /**
+     * The optional fields a draft explicitly carries.
+     *
+     * Presence is tracked in `OPTIONAL_FIELDS` order so the record is deterministic: two drafts
+     * built from the same fragment produce the same array, which keeps draft equality meaningful
+     * in tests and keeps anything that renders a draft from depending on assignment order.
+     *
+     * A draft with no presence record at all did not come from the fragment reader or from
+     * addDraft. Rather than read that as "nothing was present" and silently drop fields a caller
+     * clearly set, this falls back to asking whether the value is non-empty. The fallback exists
+     * only for drafts built directly by tests and tools; every draft this module creates carries
+     * a record.
+     */
+    function presentSet(draft) {
+      if (draft && Array.isArray(draft.presentFields)) {
+        return new Set(draft.presentFields);
+      }
+      const derived = new Set();
+      for (const field of OPTIONAL_FIELDS) {
+        const value = draft ? draft[field] : undefined;
+        if (value === undefined || value === null || value === '') {
+          continue;
+        }
+        if (typeof value === 'boolean' && value === false) {
+          // An explicit false cannot be told from an absent boolean by value alone, and telling
+          // them apart is precisely what this record exists to do.
+          continue;
+        }
+        derived.add(field);
+      }
+      return derived;
+    }
+
+    /** Record `field` as explicitly present, or with false as explicitly cleared. */
+    function withPresence(draft, field, present) {
+      const set = presentSet(draft);
+      if (present) {
+        set.add(field);
+      } else {
+        set.delete(field);
+      }
+      return { ...draft, presentFields: OPTIONAL_FIELDS.filter(name => set.has(name)) };
+    }
+
+    /**
+     * Whether an optional field is written back out for this draft.
+     *
+     * Deliberately asked as presence, not as value. `group` equal to the default group,
+     * `interval` equal to the default interval and `ignoreRedirects: false` are all values the
+     * resolver treats identically to absence, and all three are authoring decisions that must
+     * survive an export.
+     */
+    function isPresent(draft, field) {
+      if (draft && Array.isArray(draft.presentFields)) {
+        return draft.presentFields.includes(field);
+      }
+      const value = draft ? draft[field] : undefined;
+      return value !== undefined && value !== null && value !== '';
+    }
+
+    /**
+     * Normalise one draft into the exact shape the YAML fragment carries.
+     *
+     * Only writable fields are emitted, in the resolver's own field order, so the fragment a
+     * customer pastes is the fragment the resolver reads. An optional field is written when the
+     * operator set it and not otherwise: emitting a default that was never chosen would change
+     * nothing semantically, but it would hand an operator who merely exported a reviewable
+     * change they did not make.
+     */
+    function serialiseEndpoint(draft) {
+      const lines = [];
+      lines.push(`  - id: ${quote(draft.id)}`);
+      lines.push(`    name: ${quote(draft.name)}`);
+      if (isPresent(draft, 'group') && draft.group !== '' && draft.group !== undefined) {
+        lines.push(`    group: ${quote(draft.group)}`);
+      }
+      lines.push(`    url: ${quote(draft.url)}`);
+      // The two transport acknowledgements first, because that is where the resolver's own
+      // accepted-field order puts them. An explicit `false` is written as `false`, and an absent
+      // field is not written at all.
+      for (const booleanField of ['allowInsecureHttp', 'allowClusterInternal']) {
+        if (isPresent(draft, booleanField)) {
+          lines.push(`    ${booleanField}: ${draft[booleanField] === true ? 'true' : 'false'}`);
+        }
+      }
+      if (isPresent(draft, 'interval') && draft.interval !== undefined && draft.interval !== null && draft.interval !== '') {
+        lines.push(`    interval: ${canonicalDuration(parseDuration(draft.interval))}`);
+      }
+      if (isPresent(draft, 'timeout') && draft.timeout !== undefined && draft.timeout !== null && draft.timeout !== '') {
+        lines.push(`    timeout: ${canonicalDuration(parseDuration(draft.timeout))}`);
+      }
+      if (isPresent(draft, 'expectedStatusCodes') && Array.isArray(draft.expectedStatusCodes)) {
+        lines.push(`    expectedStatusCodes: [${draft.expectedStatusCodes.join(', ')}]`);
+      }
+      if (isPresent(draft, 'maxResponseTimeMs') && draft.maxResponseTimeMs !== undefined && draft.maxResponseTimeMs !== null && draft.maxResponseTimeMs !== '') {
+        lines.push(`    maxResponseTimeMs: ${draft.maxResponseTimeMs}`);
+      }
+      if (isPresent(draft, 'certificateExpiry') && draft.certificateExpiry !== undefined && draft.certificateExpiry !== null && draft.certificateExpiry !== '') {
+        lines.push(`    certificateExpiry: ${quote(draft.certificateExpiry)}`);
+      }
+    // Last, because that is where the resolver's accepted-field order puts it.
+      if (isPresent(draft, 'ignoreRedirects')) {
+        lines.push(`    ignoreRedirects: ${draft.ignoreRedirects === true ? 'true' : 'false'}`);
+      }
+      return lines.join('\n');
+    }
+
+    function parseDuration(value) {
+      const text = String(value);
+      const unit = text[text.length - 1];
+      const magnitude = Number(text.slice(0, -1));
+      if (unit === 's') {
+        return magnitude * 1000;
+      }
+      if (unit === 'm') {
+        return magnitude * 60000;
+      }
+      return magnitude * 3600000;
+    }
+
+    /**
+     * Quote a scalar for YAML.
+     *
+     * A single-quoted YAML scalar is literal, so a value containing `:` or `#` cannot be
+     * reinterpreted as structure or as a comment. Every value goes through this rather than
+     * only the awkward ones, because deciding per-value which are awkward is how an unquoted
+     * colon eventually reaches a ConfigMap line and changes its meaning.
+     */
+    function quote(value) {
+      return `'${String(value).replace(/'/g, "''")}'`;
+    }
+
+    /** The canonical configuration path this fragment belongs under, which is where a
+     * customer pastes it and what `srectl` validates. */
+    const FRAGMENT_PATH = 'spec.modules.gatus.endpoints';
+
+    /**
+     * Render the `spec.modules.gatus.endpoints` fragment.
+     *
+     * This is the artifact of record for the draft. It is the exact YAML an operator pastes
+     * under `spec.modules.gatus.endpoints` in the canonical customer configuration, and it is
+     * what `srectl` validates.
+     */
+    function renderEndpointsYaml(drafts) {
+      const sorted = sortEndpoints(drafts);
+      const body = sorted.map(draft => serialiseEndpoint(draft)).join('\n');
+      return `endpoints:\n${body}\n`;
+    }
+
+    /** The exact prefix the imported fragment must carry, so the editor never guesses. */
+    const ENDPOINTS_KEY = 'endpoints:';
+
+    /**
+     * Parse the `spec.modules.gatus.endpoints` fragment an operator imports.
+     *
+     * ## Why a bounded reader rather than a YAML library
+     *
+     * The plugin is deliberately self-contained: it ships no reader of its own, and adding a
+     * general-purpose YAML engine would put one in the browser of an operator whose console is
+     * meant to hold no credential and write nothing. So this reads exactly the shape this
+     * editor emits and the customer configuration uses — one top-level `endpoints` key, then a
+     * list of mappings of writable scalar fields — and refuses everything else by name.
+     *
+     * Refusing rather than guessing is the whole point. A reader that silently skipped an
+     * unrecognised construct would produce a fragment missing whatever that construct held, and
+     * an operator who pasted it back would delete a real endpoint. Every refusal names the line
+     * so the operator can see precisely what the editor would not interpret.
+     *
+     * ## Why the imported text is not kept anywhere
+     *
+     * A pasted fragment carries customer targets, which is the one class of value TASK-207
+     * keeps out of
+     * the console's runtime state. It lives in a React state variable for the lifetime of the
+     * page and nothing else: no browser-persisted store, no cookie, no session store, no
+     * analytics, no log
+     * line, no outbound request. Reloading the console discards it, and that is the intended
+     * behaviour rather than a limitation to work around.
+     *
+     * @returns an object with `drafts` and `problems`. `drafts` is empty whenever anything was
+     * refused, because a partial read is exactly the failure mode this parser exists to avoid.
+     */
+    function parseEndpointsYaml(text) {
+      const problems = [];
+      const source = String(text === undefined || text === null ? '' : text);
+      const lines = source.split('\n');
+      const drafts = [];
+
+      let seenTopLevel = false;
+      let inList = false;
+      let current = null;
+      let seenKeys = new Set();
+
+      for (let index = 0; index < lines.length; index += 1) {
+        const raw = lines[index];
+        const lineNumber = index + 1;
+        const withoutComment = stripComment(raw);
+        const line = withoutComment.trim();
+        // Indentation decides whether a line continues the current endpoint or starts a new
+        // one, so it has to be read before the line is trimmed.
+        const indented = /^\s/.test(withoutComment);
+
+        if (line === '' || line === '---') {
+          // A single document start is tolerated; a second one is refused below by the shape
+          // rules, because a multi-document fragment is not what this path accepts.
+          continue;
+        }
+
+        if (!inList) {
+          if (line !== ENDPOINTS_KEY) {
+            problems.push(`line ${lineNumber}: expected the fragment to start with "${ENDPOINTS_KEY}", got "${line}"`);
+            return { drafts: [], problems };
+          }
+          seenTopLevel = true;
+          inList = true;
+          continue;
+        }
+
+        if (line.startsWith('- ') || line === '-') {
+          current = importDraft(drafts.length);
+          drafts.push(current);
+          seenKeys = new Set();
+          const first = line === '-' ? '' : line.slice(2).trim();
+          if (first !== '') {
+            if (!assign(current, seenKeys, first, lineNumber, problems)) {
+              return { drafts: [], problems };
+            }
+          }
+          continue;
+        }
+
+        if (indented) {
+          if (!current) {
+            problems.push(`line ${lineNumber}: a field appeared before the first endpoint`);
+            return { drafts: [], problems };
+          }
+          if (!assign(current, seenKeys, line, lineNumber, problems)) {
+            return { drafts: [], problems };
+          }
+          continue;
+        }
+
+        problems.push(`line ${lineNumber}: expected an endpoint or an indented field, got "${line}"`);
+        return { drafts: [], problems };
+      }
+
+      if (!seenTopLevel) {
+        return { drafts: [], problems: ['the fragment must start with an "endpoints:" key'] };
+      }
+      if (drafts.length === 0) {
+        return { drafts: [], problems: ['the fragment contains no endpoints'] };
+      }
+      if (problems.length > 0) {
+        return { drafts: [], problems };
+      }
+
+      // Validation is deliberately not skipped: text that parses is still not necessarily
+      // acceptable, and the caller wants the same problems it would show for a typed row.
+      const invalid = validateDraft(drafts);
+      if (invalid.length > 0) {
+        return {
+          drafts: [],
+          problems: invalid.map(item => `${item.field}: ${item.message}`),
+        };
+      }
+      return { drafts, problems: [] };
+    }
+
+    /** Remove a trailing `#` comment that is not inside a quoted scalar. */
+    function stripComment(line) {
+      let quote = '';
+      for (let index = 0; index < line.length; index += 1) {
+        const character = line[index];
+        if (quote !== '') {
+          if (character === quote) {
+            // A doubled single quote is an escaped quote, not a terminator.
+            if (quote === "'" && line[index + 1] === "'") {
+              index += 1;
+              continue;
+            }
+            quote = '';
+          }
+          continue;
+        }
+        if (character === "'" || character === '"') {
+          quote = character;
+          continue;
+        }
+        if (character === '#' && (index === 0 || /\s/.test(line[index - 1]))) {
+          return line.slice(0, index);
+        }
+      }
+      return line;
+    }
+
+    /**
+     * Assign one `key: value` pair onto a draft, refusing anything it will not interpret.
+     *
+     * @returns {boolean} false when the line was refused, so the caller can stop immediately
+     * rather than accumulate a fragment that is missing a field.
+     */
+    function assign(draft, seenKeys, line, lineNumber, problems) {
+      const separator = findKeySeparator(line);
+      if (separator < 0) {
+        problems.push(`line ${lineNumber}: expected "field: value", got "${line}"`);
+        return false;
+      }
+      const key = line.slice(0, separator).trim();
+      const value = line.slice(separator + 1).trim();
+
+      if (DRAFT_ONLY_FIELDS.includes(key)) {
+        problems.push(`line ${lineNumber}: "${key}" is browser bookkeeping and is not a configuration field`);
+        return false;
+      }
+      if (key === '') {
+        problems.push(`line ${lineNumber}: a field has no name`);
+        return false;
+      }
+      if (!CONTRACT.writableFields.includes(key)) {
+        problems.push(
+          `line ${lineNumber}: "${key}" is not a configuration field this page understands`
+        );
+        return false;
+      }
+      // Tracked in a set rather than by testing the draft for the key, because a draft is
+      // pre-seeded with empty defaults and those must not read as "the fragment set this".
+      if (seenKeys.has(key)) {
+        problems.push(`line ${lineNumber}: "${key}" is set twice`);
+        return false;
+      }
+
+      const parsed = parseScalar(key, value, lineNumber, problems);
+      if (!parsed.ok) {
+        return false;
+      }
+      seenKeys.add(key);
+      draft[key] = parsed.value;
+      // An optional field that appears in the fragment is present, whatever its value. That is
+      // what keeps an explicit `false` and an explicitly stated default distinguishable from
+      // omission all the way to the exporter.
+      if (OPTIONAL_FIELDS.includes(key)) {
+        draft.presentFields = OPTIONAL_FIELDS.filter(field => field === key || draft.presentFields.includes(field));
+      }
+      if (key === 'url') {
+        draft.targetKnown = true;
+      }
+      return true;
+    }
+
+    /** Find the `:` that separates a key from its value, ignoring quoted colons. */
+    function findKeySeparator(line) {
+      let quote = '';
+      for (let index = 0; index < line.length; index += 1) {
+        const character = line[index];
+        if (quote !== '') {
+          if (character === quote) {
+            if (quote === "'" && line[index + 1] === "'") {
+              index += 1;
+              continue;
+            }
+            quote = '';
+          }
+          continue;
+        }
+        if (character === "'" || character === '"') {
+          quote = character;
+          continue;
+        }
+        if (character === ':') {
+          return index;
+        }
+      }
+      return -1;
+    }
+
+    /** Decode exactly the scalar forms this editor emits, and refuse the rest by name. */
+    function parseScalar(key, value, lineNumber, problems) {
+      // The three optional booleans are decoded before the generic scalar handling, because a
+      // quoted or numeric value has to be refused as a type error rather than carried into the
+      // draft as a string the resolver would later reject. Only the bare literals are accepted,
+      // which is exactly what the resolver's YAML decoder resolves to a Go bool.
+      if (CONTRACT.booleanFields.includes(key)) {
+        if (!BOOLEAN_LITERALS.includes(value)) {
+          problems.push(
+            `line ${lineNumber}: "${key}" must be true or false without quotes, got "${value}"`
+          );
+          return { ok: false };
+        }
+        return { ok: true, value: value === 'true' };
+      }
+
+      if (value === '') {
+        return { ok: true, value: '' };
+      }
+
+      if (value.startsWith('[')) {
+        if (key !== 'expectedStatusCodes') {
+          problems.push(`line ${lineNumber}: "${key}" cannot be a list`);
+          return { ok: false };
+        }
+        if (!value.endsWith(']')) {
+          problems.push(`line ${lineNumber}: a multi-line list is not accepted; keep it on one line`);
+          return { ok: false };
+        }
+        const tokens = value
+          .slice(1, -1)
+          .split(',')
+          .map(token => token.trim())
+          .filter(token => token !== '');
+        const codes = tokens.map(token => Number(token));
+        if (codes.some(code => !Number.isInteger(code))) {
+          problems.push(`line ${lineNumber}: expectedStatusCodes must contain integers, got "${value}"`);
+          return { ok: false };
+        }
+        return { ok: true, value: codes };
+      }
+
+      if (value[0] === '{' || value[0] === '&' || value[0] === '*' || value[0] === '|' || value[0] === '>') {
+        problems.push(`line ${lineNumber}: "${key}" uses a YAML construct this page will not interpret`);
+        return { ok: false };
+      }
+
+      if (value[0] === "'") {
+        if (!value.endsWith("'") || value.length < 2) {
+          problems.push(`line ${lineNumber}: "${key}" has an unterminated single-quoted value`);
+          return { ok: false };
+        }
+        return { ok: true, value: value.slice(1, -1).replace(/''/g, "'") };
+      }
+
+      if (value[0] === '"') {
+        if (!value.endsWith('"') || value.length < 2) {
+          problems.push(`line ${lineNumber}: "${key}" has an unterminated double-quoted value`);
+          return { ok: false };
+        }
+        try {
+          return { ok: true, value: JSON.parse(value) };
+        } catch (error) {
+          problems.push(`line ${lineNumber}: "${key}" is not a valid double-quoted value`);
+          return { ok: false };
+        }
+      }
+
+      if (key === 'maxResponseTimeMs') {
+        const number = Number(value);
+        if (!Number.isInteger(number)) {
+          problems.push(`line ${lineNumber}: maxResponseTimeMs must be an integer, got "${value}"`);
+          return { ok: false };
+        }
+        return { ok: true, value: number };
+      }
+
+      return { ok: true, value };
+    }
+
+    /**
+     * Canonical sort by id, matching the resolver's stable sort.
+     *
+     * The order is total and independent of the order rows were added, so the same endpoint
+     * set always renders the same fragment and a diff shows a real change rather than a
+     * reshuffle.
+     */
+    function sortEndpoints(drafts) {
+      return [...drafts].sort((left, right) => {
+        const a = String((left && left.id) || '');
+        const b = String((right && right.id) || '');
+        if (a === b) {
+          return 0;
+        }
+        return a < b ? -1 : 1;
+      });
+    }
+
+    /**
+     * The display order paired with each row's real position in the draft array.
+     *
+     * Sorting for display while editing by display position would write an edit into whichever
+     * row happens to sit at that index once the ids are re-sorted, so an operator renaming a row
+     * would change a different endpoint. Carrying the original index removes that class of bug:
+     * the view may reorder freely while every mutation names the row it means.
+     */
+    function draftOrder(drafts) {
+      return sortEndpoints(drafts)
+        .map(draft => drafts.indexOf(draft))
+        .map(index => ({ draft: drafts[index], index }));
+    }
+
+    /**
+     * The sanitized endpoint view model the editor starts from.
+     *
+     * It is built from the delivered metadata, which deliberately carries no target URL, so
+     * every draft begins with an empty target. An operator editing a row re-supplies it; the
+     * exported fragment is then the complete record.
+     *
+     * Returning `targetKnown: false` is what lets the view say so, instead of rendering an
+     * empty field as though the target were genuinely empty.
+     */
+    function draftFromMetadata(metadata) {
+      return (metadata.endpoints || []).map(spec => {
+        const draft = {
+          id: String(spec.id || ''),
+          name: String(spec.name || ''),
+          group: spec.group === CONTRACT.defaultGroup ? '' : String(spec.group || ''),
+          url: '',
+          interval: canonicalDuration(Number(spec.intervalMs) || CONTRACT.interval.defaultMs),
+          timeout: canonicalDuration(Number(spec.timeoutMs) || CONTRACT.timeout.defaultMs),
+          targetKnown: false,
+          presentFields: [],
+        };
+        // The delivered metadata carries resolved cadence for every endpoint, so those two are
+        // written back explicitly if the operator completes this row. The group is only present
+        // when the rendered configuration states a non-default one.
+        for (const field of ['interval', 'timeout']) {
+          draft.presentFields.push(field);
+        }
+        if (draft.group !== '') {
+          draft.presentFields.push('group');
+        }
+        draft.presentFields = OPTIONAL_FIELDS.filter(name => draft.presentFields.includes(name));
+        return draft;
+      });
+    }
+
+    /**
+     * Add an empty draft row.
+     *
+     * A new row starts blank rather than prefilled with a guess, because a prefilled target
+     * would be a URL nobody chose and it would then be exported as though they had.
+     */
+    function addDraft(drafts) {
+      if (drafts.length >= CONTRACT.maxEndpoints) {
+        return { drafts, refused: `at most ${CONTRACT.maxEndpoints} endpoints are configurable` };
+      }
+      return { drafts: [...drafts, blankDraft(drafts.length)], refused: '' };
+    }
+
+    /**
+     * A new row.
+     *
+     * Cadence starts on the documented editor defaults and is marked present, because a row the
+     * operator creates has no imported fragment to preserve and the defaults are a deliberate,
+     * reviewable starting point rather than something inferred later. The target, the group and
+     * the three transport fields start absent, because there is no defensible default for any of
+     * them: inventing one would write a URL, a group or a transport acknowledgement that
+     * nobody chose.
+     */
+    function blankDraft(index) {
+      return {
+        id: '',
+        name: '',
+        group: '',
+        url: '',
+        interval: canonicalDuration(CONTRACT.interval.defaultMs),
+        timeout: canonicalDuration(CONTRACT.timeout.defaultMs),
+        expectedStatusCodes: [...CONTRACT.defaultStatusCodes],
+        maxResponseTimeMs: '',
+        certificateExpiry: '',
+        targetKnown: false,
+        isNew: true,
+        draftIndex: index,
+        presentFields: ['interval', 'timeout', 'expectedStatusCodes'],
+      };
+    }
+
+    /**
+     * An imported row.
+     *
+     * Identical in shape to a new row except that nothing is marked present: the presence record
+     * is built up by the importer from the fragment's own lines, so a field the fragment omitted
+     * cannot be mistaken for one it stated. The values are still seeded with the effective
+     * defaults, because the form must show the configuration the resolver will actually apply,
+     * and hiding a default behind an empty box would misrepresent what is in force.
+     */
+    function importDraft(index) {
+      const draft = blankDraft(index);
+      draft.isNew = false;
+      draft.presentFields = [];
+      return draft;
+    }
+
+    /**
+     * Replace one row, preserving its position so typing does not reorder the table.
+     *
+     * The presence record is updated from the patch alone, and only for fields the patch names.
+     * That is what makes editing one field leave every untouched field exactly as the imported
+     * fragment had it: editing a name cannot materialise a default interval, and clearing a field
+     * the operator had set removes it from the fragment rather than exporting it as a default.
+     */
+    function editDraft(drafts, index, patch) {
+      return drafts.map((draft, position) => {
+        if (position !== index) {
+          return draft;
+        }
+        let next = { ...draft, ...patch };
+        for (const field of OPTIONAL_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(patch, field)) {
+            continue;
+          }
+          const value = next[field];
+          const cleared =
+            value === undefined ||
+            value === null ||
+            value === '' ||
+            (Array.isArray(value) && value.length === 0);
+          next = withPresence(next, field, !cleared);
+        }
+        return next;
+      });
+    }
+
+    /** Remove one row. An invalid list is a property of the whole draft, not of a row. */
+    function removeDraft(drafts, index) {
+      return drafts.filter((_, position) => position !== index);
+    }
+
+    /**
+     * The workflow state of a draft, stated explicitly.
+     *
+     * A local draft is never reported as live. `unapplied` is the honest terminal state for
+     * this phase, and the view is required to render it as such rather than implying the
+     * change reached the cluster.
+     */
+    const WORKFLOW_STATE = {
+      draft: 'draft',
+      invalid: 'invalid',
+      unapplied: 'unapplied',
+    };
+
+    /**
+     * Derive the workflow state from the draft.
+     *
+     * There is no `submitted`, `reconciling` or `applied` state in this phase, because no
+     * write path exists to reach them. Inventing the states now would put a progress
+     * indicator on screen that can never advance.
+     */
+    function workflowState(drafts) {
+      const problems = validateDraft(drafts);
+      if (problems.length > 0) {
+        return WORKFLOW_STATE.invalid;
+      }
+      return WORKFLOW_STATE.draft;
+    }
+
+    /** Problems for one row, so one malformed endpoint degrades only its own row. */
+    function problemsForIndex(problems, index) {
+      return problems.filter(item => item.index === index);
+    }
+
+    /**
+     * Compute the derived NetworkPolicy egress ports a draft implies.
+     *
+     * The resolver derives egress from the endpoints' target hosts and ports — including the
+     * port each scheme lands on when the target names none — so the plan an operator reviews
+     * here is the policy the installer will render, not an approximation of it. Reporting only
+     * the ports an operator typed explicitly would understate the grant and would hide the one
+     * that matters: adding a target adds a rule even when the port is the default.
+     *
+     * Only the port is reported, never the host. The host is customer topology, and this
+     * string is rendered, copied and pasted.
+     */
+    function derivedEgressPorts(drafts) {
+      return deriveEgress(drafts).ports;
+    }
+
+    /**
+     * Derive the full egress picture the plan shows.
+     *
+     * The resolver derives egress from the endpoints' target hosts and ports — including the
+     * port each scheme lands on when the target names none — so the plan an operator reviews here
+     * is the policy the installer will render, not an approximation of it. Reporting only the
+     * ports an operator typed explicitly would understate the grant and would hide the one that
+     * matters: adding a target adds a rule even when the port is the default.
+     *
+     * Explicit and scheme-default ports are reported separately as well as together, because
+     * they are different decisions. An explicit port is a choice the operator made; 443 on an
+     * https target is an inference this page made and the operator should be able to see it.
+     *
+     * Only ports and destination classes are reported, never the host. The host is customer
+     * topology, and this string is rendered, copied and pasted.
+     */
+    function deriveEgress(drafts) {
+      const ports = new Set();
+      const explicit = new Set();
+      const schemeDefaults = new Set();
+      let clusterInternal = 0;
+      let publicTargets = 0;
+      let unknown = 0;
+      let cleartextHttp = false;
+      let redirectSuppressed = false;
+
+      for (const draft of drafts) {
+        const described = describeDestination(draft);
+        // A row with no usable target grants no egress and is not a destination. Counting it
+        // would make the plan overstate the NetworkPolicy change the operator is about to make.
+        if (described.klass === 'unset') {
+          continue;
+        }
+        if (described.klass === 'cluster-internal') {
+          clusterInternal += 1;
+        } else if (described.klass === 'public') {
+          publicTargets += 1;
+        } else {
+          unknown += 1;
+        }
+        if (described.port) {
+          ports.add(described.port);
+          if (described.source === 'explicit') {
+            explicit.add(described.explicitPort);
+          } else if (described.source === 'scheme-default') {
+            schemeDefaults.add(described.schemeDefaultPort);
+          }
+        }
+        if (draft && draft.allowInsecureHttp === true) {
+          cleartextHttp = true;
+        }
+        if (draft && draft.ignoreRedirects === true) {
+          redirectSuppressed = true;
+        }
+      }
+
+      const ascending = set => [...set].sort((left, right) => left - right);
+      return {
+        ports: ascending(ports),
+        explicitPorts: ascending(explicit),
+        schemeDefaultPorts: ascending(schemeDefaults),
+        clusterInternalTargets: clusterInternal,
+        publicTargets,
+        unclassifiedTargets: unknown,
+        cleartextHttp,
+        redirectSuppressed,
+      };
+    }
+
+    /**
+     * Build the sanitized plan.
+     *
+     * The comparison is by id, because that is the stable key the view keys rows on. A
+     * changed endpoint is reported as changed without its target being printed, so the plan
+     * can be shown to anyone who can see the console without leaking topology.
+     */
+    function buildPlan(current, drafts) {
+      const currentById = new Map(current.map(spec => [String(spec.id || ''), spec]));
+      const draftById = new Map(drafts.filter(draft => draft && draft.id).map(draft => [draft.id, draft]));
+
+      const added = [];
+      const changed = [];
+      for (const draft of sortEndpoints([...drafts])) {
+        const id = draft.id;
+        if (id === '') {
+          continue;
+        }
+        const existing = currentById.get(id);
+        if (!existing) {
+          added.push(sanitiseSummary(draft));
+          continue;
+        }
+        const differences = describeChanges(existing, draft);
+        if (differences.length > 0) {
+          changed.push({ ...sanitiseSummary(draft), differences });
+        }
+      }
+
+      const removed = current
+        .filter(spec => !draftById.has(String(spec.id || '')))
+        .map(spec => ({ id: String(spec.id || ''), name: String(spec.name || ''), group: String(spec.group || '') }));
+
+      // The delivered metadata carries no target, so the currently granted egress set is not
+      // derivable in the browser. That is reported as unknown rather than guessed: the plan
+      // shows the full derived set and tells the operator to confirm it against the rendered
+      // policy, instead of implying some of it is already allowed.
+      const currentPorts = derivedEgressPorts(
+        current.map(spec => ({ url: spec.url })).filter(spec => spec.url)
+      );
+      const currentEgressPortsKnown = current.some(spec => typeof spec.url === 'string' && spec.url !== '');
+      const egress = deriveEgress(drafts);
+      const draftPorts = egress.ports;
+      const newPorts = currentEgressPortsKnown
+        ? draftPorts.filter(port => !currentPorts.includes(port))
+        : draftPorts;
+
+      return {
+        added,
+        changed,
+        removed,
+        egressPorts: draftPorts,
+        newEgressPorts: newPorts,
+        currentEgressPortsKnown,
+        egress,
+        expectedRollout: 'gatus',
+        rollback: 'git revert the customer configuration commit, then re-apply through srectl',
+        checkerLimit: 'an in-cluster checker cannot detect a total cluster outage',
+        applied: false,
+      };
+    }
+
+    /** The endpoint identity and cadence, with no target. */
+    function sanitiseSummary(draft) {
+      const described = describeDestination(draft);
+      return {
+        id: draft.id,
+        name: draft.name,
+        group: draft.group === '' ? CONTRACT.defaultGroup : draft.group,
+        interval: draft.interval,
+        timeout: draft.timeout,
+        // The destination class, not the destination. This is the one fact about the target an
+        // operator needs in order to review the egress grant, and it names no host.
+        destination: described.klass,
+        cleartextHttp: draft.allowInsecureHttp === true,
+        redirectSuppressed: draft.ignoreRedirects === true,
+      };
+    }
+
+    /**
+     * Name the fields that differ, so a plan says what changes without printing a target.
+     *
+     * A target change is reported as `url` rather than as the URL. The plan has to be
+     * reviewable, and a reviewable plan that contained every hostname would be a second copy
+     * of the customer's topology.
+     */
+    function describeChanges(existing, draft) {
+      const differences = [];
+      if (String(existing.name || '') !== String(draft.name || '')) {
+        differences.push('name');
+      }
+      const existingGroup = existing.group === CONTRACT.defaultGroup ? '' : String(existing.group || '');
+      if (existingGroup !== String(draft.group || '')) {
+        differences.push('group');
+      }
+      const existingInterval = canonicalDuration(Number(existing.intervalMs) || CONTRACT.interval.defaultMs);
+      if (existingInterval !== canonicalDuration(parseDuration(draft.interval))) {
+        differences.push('interval');
+      }
+      const existingTimeout = canonicalDuration(Number(existing.timeoutMs) || CONTRACT.timeout.defaultMs);
+      if (existingTimeout !== canonicalDuration(parseDuration(draft.timeout))) {
+        differences.push('timeout');
+      }
+      // The metadata never carries the target, so a target change is undetectable here and is
+      // not reported. The exported fragment is the record of what the target becomes.
+      return differences;
+    }
+
+    /**
+     * The reviewed command an operator runs after reviewing the fragment.
+     *
+     * It is a plan, not an action: nothing in this module runs it. The file path is the
+     * operator's canonical configuration, which this module has deliberately not read and
+     * cannot know.
+     */
+    function renderApplyCommand(configurationPath) {
+      return `srectl apply -f ${configurationPath}`;
+    }
+      // ---- src/editorview.js ----
+    // Endpoint fragment editor on the settings-namespaced plugin route.
+    //
+    // ## What this page is, and what it deliberately is not
+    //
+    // It is a draft builder. It reads the authoritative endpoint list the installer already
+    // rendered, lets an operator add, edit or remove rows, validates the whole list with the
+    // installer's semantics, shows a sanitized plan, and exports the exact
+    // `spec.modules.gatus.endpoints` YAML fragment for a reviewed `srectl` run.
+    //
+    // It is not a write path, and that is a finding rather than an omission. The merged
+    // baseline contains no server-side service that can update the canonical customer
+    // configuration through a reviewable commit or pull request: `control-center/` is seven
+    // markdown files with no code, and nothing in the repository commits customer YAML. The
+    // valid write paths in the write-path contract therefore do not exist yet, so TASK-209's
+    // contract requires this phase to fail closed, and it does.
+    //
+    // The alternatives were all rejected on the record. A hidden ConfigMap, a CRD, a
+    // browser-persisted source of truth, a Git token held by the page, a direct manifest
+    // editor or a second
+    // controller would each make the console a reconciler holding a credential, which is what
+    // the platform architecture forbids. Every one of them would also have satisfied the
+    // literal wording of "Add/Edit/Remove" while violating the intent of "must not turn
+    // Headlamp into a second reconciler".
+    //
+    // ## What it will not do
+    //
+    // It issues no write request of any kind. It holds no credential, reads no Secret and
+    // stores nothing between visits: the draft lives in React state, so a reload discards it
+    // and a discarded draft is the cheapest possible rollback. It never shows a local draft
+    // as live; the workflow state is rendered as `draft` or `invalid` and the fragment is
+    // labelled unapplied.
+
+
+    /**
+     * A short, always-visible statement of what this page does not do.
+     *
+     * It is above the controls rather than in a dialog or a tooltip, because the one thing an
+     * operator must not leave this page believing is that an edit reached the cluster.
+     */
+    function NotAppliedNotice() {
+      return h(
+        Paper,
+        { variant: 'outlined', sx: { p: 2, mb: 2, borderColor: 'warning.main' } },
+        h(Typography, { variant: 'h6', gutterBottom: true, color: 'warning.main' }, 'Draft only — not applied'),
+        h(
+          Typography,
+          { variant: 'body2' },
+          'This page builds and validates a draft. It cannot change the platform: there is no ' +
+            'approved server-side API that updates the canonical customer configuration, and this ' +
+            'page deliberately does not write to Kubernetes, to a ConfigMap or to Git. Take the ' +
+            'fragment, paste it under ',
+          h(Typography, { component: 'span', variant: 'body2', sx: { fontFamily: 'monospace' } }, FRAGMENT_PATH),
+          ' in your customer configuration, review the diff, and apply through srectl. The draft ' +
+            'is discarded when this tab closes.'
+        )
+      );
+    }
+
+    function field(name, label, value, onChange, options) {
+      const settings = options || {};
+      // Resolved per call so a console that lacks the control fails on the editor row rather
+      // than preventing the whole payload from loading.
+      const Input = TextField();
+      const props = {
+        key: name,
+        label: settings.label || name,
+        value: value === undefined || value === null ? '' : String(value),
+        onChange: event => onChange(name, event.target.value),
+        size: 'small',
+        fullWidth: true,
+        placeholder: settings.placeholder || '',
+        helperText: settings.helperText || '',
+        type: settings.type || 'text',
+        sx: { mb: 1 },
+      };
+      if (settings.disabled) {
+        props.disabled = true;
+      }
+      if (settings.error) {
+        props.error = true;
+      }
+      return h(Input, props);
+    }
+
+    /**
+     * One draft row.
+     *
+     * A malformed row degrades only itself: problems are addressed by index, so a bad URL in
+     * row three does not blank the two healthy rows. An invalid submitted list still fails the
+     * whole plan, because the exported fragment is a single list and a partly-valid one is not
+     * a thing the resolver accepts.
+     */
+    function DraftRow({ draft, index, problems, onEdit, onRemove, unknownTarget }) {
+      // A metadata-derived row has no target, so editing or removing it would produce a
+      // replacement fragment that silently drops an endpoint the operator never saw. The
+      // controls are disabled rather than hidden, because the row is still displayed and an
+      // operator is entitled to know why it cannot be touched.
+      const locked = Boolean(unknownTarget);
+      const patch = (name, value) => {
+        if (!locked) {
+          onEdit(index, { [name]: value });
+        }
+      };
+      const remove = () => {
+        if (!locked) {
+          onRemove(index);
+        }
+      };
+      const has = name => problems.some(item => item.field === `endpoints[${index}].${name}`);
+      const messageFor = name => {
+        const item = problems.find(entry => entry.field === `endpoints[${index}].${name}`);
+        return item ? item.message : '';
+      };
+
+      const statusCodes = Array.isArray(draft.expectedStatusCodes) ? draft.expectedStatusCodes.join(',') : '';
+      // Validation still reports on a locked row. An unresolvable url is a known, expected
+      // state for a row the console cannot fully hold, and hiding that would leave the page
+      // claiming the draft was complete.
+      const notes = { locked };
+
+      return h(
+        Paper,
+        { variant: 'outlined', sx: { p: 2, mb: 2 } },
+        h(
+          Box,
+          { sx: { display: 'flex', alignItems: 'center', mb: 1 } },
+          h(Chip, { key: 'id', size: 'small', label: draft.id || `row ${index + 1}`, sx: { mr: 1 } }),
+          draft.isNew
+            ? h(Chip, { key: 'new', size: 'small', label: 'new', color: 'info', sx: { mr: 1 } })
+            : null,
+          h(
+            Box,
+            { key: 'rm', sx: { marginLeft: 'auto' } },
+            h(
+              Button(),
+              { key: 'rm', color: 'error', size: 'small', disabled: locked, onClick: remove },
+              'Remove'
+            )
+          )
+        ),
+        h(
+          Box,
+          { sx: { display: 'flex', flexWrap: 'wrap', gap: 2 } },
+          h(
+            Box,
+            { key: 'a', sx: { flex: '1 1 220px' } },
+            field('id', 'id', draft.id, patch, {
+              disabled: notes.locked,
+              error: has('id'),
+              helperText: messageFor('id'),
+            }),
+            field('name', 'name', draft.name, patch, {
+              disabled: notes.locked,
+              error: has('name'),
+              helperText: messageFor('name'),
+            })
+          ),
+          h(
+            Box,
+            { key: 'b', sx: { flex: '1 1 220px' } },
+            field('group', 'group', draft.group, patch, {
+              disabled: notes.locked,
+              helperText:
+                draft.group === '' ? `empty means "${CONTRACT.defaultGroup}"` : messageFor('group'),
+              error: has('group'),
+            }),
+            field(
+              'url',
+              'url',
+              draft.url,
+              patch,
+              {
+                disabled: notes.locked,
+                error: has('url'),
+                helperText:
+                  messageFor('url') ||
+                  (draft.url === '' && !draft.isNew
+                    ? 'not held by this console; re-supply the target you intend'
+                    : ''),
+                placeholder: 'https://',
+              }
+            )
+          ),
+          h(
+            Box,
+            { key: 'c', sx: { flex: '1 1 220px' } },
+            field('interval', 'interval', draft.interval, patch, {
+              disabled: notes.locked,
+              error: has('interval'),
+              helperText:
+                messageFor('interval') ||
+                `${CONTRACT.interval.minMs / 1000}s–${CONTRACT.interval.maxMs / 1000}s`,
+            }),
+            field('timeout', 'timeout', draft.timeout, patch, {
+              disabled: notes.locked,
+              error: has('timeout'),
+              helperText:
+                messageFor('timeout') ||
+                `${CONTRACT.timeout.minMs / 1000}s–${CONTRACT.timeout.maxMs / 1000}s`,
+            }),
+            field(
+              'expectedStatusCodes',
+              'expectedStatusCodes',
+              statusCodes,
+              value => patch('expectedStatusCodes', parseStatusCodes(value)),
+              {
+                disabled: notes.locked,
+                helperText:
+                  messageFor('expectedStatusCodes') ||
+                  `1–${CONTRACT.maxStatusCodes} codes, default 200`,
+              }
+            ),
+            field('maxResponseTimeMs', 'maxResponseTimeMs', draft.maxResponseTimeMs, patch, {
+              disabled: notes.locked,
+              error: has('maxResponseTimeMs'),
+              helperText:
+                messageFor('maxResponseTimeMs') ||
+                `below timeout, max ${CONTRACT.maxResponseTimeMs}`,
+            }),
+            field('certificateExpiry', 'certificateExpiry', draft.certificateExpiry, patch, {
+              disabled: notes.locked,
+              error: has('certificateExpiry'),
+              helperText: messageFor('certificateExpiry') || 'h or d, max 90d',
+            })
+          )
+        ),
+        h(AdvancedFields, { draft, patch, disabled: notes.locked, problems, index }),
+        unknownTarget ? UnknownTargetNotice() : null
+      );
+    }
+
+    /**
+     * The Advanced section: the three optional booleans.
+     *
+     * They are behind their own labelled section because each one changes what the check is
+     * allowed to do rather than how often it runs, and an operator reviewing a fragment should
+     * be able to see that a cleartext or in-cluster decision was made deliberately.
+     *
+     * Each control is a switch rather than a text field, because the resolver requires a real
+     * boolean: a free-text control would let an operator type `1` or `yes`, which the
+     * installer refuses, and the editor would then have shown a plan for something that cannot
+     * be applied. Toggling sets an explicit true or false; toggling back off leaves the field
+     * set to false rather than removing it, so a deliberate `false` survives a round trip
+     * instead of silently reverting to "not stated".
+     *
+     * The warnings name a behaviour, never a target. This page must be able to explain a
+     * transport decision without printing the hostname the decision applies to.
+     */
+    function AdvancedFields({ draft, patch, disabled, problems, index }) {
+      const Toggle = Switch();
+      const messageFor = name => {
+        const item = problems.find(entry => entry.field === `endpoints[${index}].${name}`);
+        return item ? item.message : '';
+      };
+      const control = name => {
+        const enabled = draft[name] === true;
+        return h(
+          Box,
+          { key: name, sx: { display: 'flex', alignItems: 'flex-start', mb: 1 } },
+          h(Toggle, {
+            key: 'sw',
+            checked: enabled,
+            disabled,
+            size: 'small',
+            inputProps: { 'aria-label': name },
+            onChange: (event, checked) => patch(name, checked === true),
+          }),
+          h(
+            Box,
+            { key: 'txt', sx: { ml: 1 } },
+            h(
+              Typography,
+              { key: 'lbl', variant: 'body2', sx: { fontFamily: 'monospace' } },
+              `${name}: ${enabled ? 'true' : 'false'}`
+            ),
+            h(
+              Typography,
+              { key: 'note', variant: 'caption', sx: { display: 'block' } },
+              ADVANCED_FIELD_NOTES[name]
+            ),
+            messageFor(name)
+              ? h(
+                  Typography,
+                  { key: 'err', variant: 'caption', color: 'error.main', sx: { display: 'block' } },
+                  messageFor(name)
+                )
+              : null
+          )
+        );
+      };
+
+      return h(
+        Box,
+        { sx: { mt: 2, pt: 1, borderTop: '1px solid', borderColor: 'divider' } },
+        h(Typography, { variant: 'subtitle2' }, 'Advanced — changes what the check may do'),
+        h(
+          Typography,
+          { variant: 'caption', sx: { display: 'block', mb: 1 } },
+          'These change network reachability or redirect handling, not cadence. Each is validated ' +
+            "with the installer's own rules, and each is written to the fragment only when set."
+        ),
+        control('allowClusterInternal'),
+        control('allowInsecureHttp'),
+        control('ignoreRedirects')
+      );
+    }
+
+    /**
+     * Label a plan row's destination without naming it.
+     *
+     * "cluster-internal" is the fact that matters for egress review; the transport flags follow
+     * it because a cleartext or redirect-suppressing endpoint is one an operator should notice
+     * even when nothing else changed.
+     */
+    function describeDestinationLabel(row) {
+      const parts = [row.destination || 'unknown'];
+      if (row.cleartextHttp) {
+        parts.push('cleartext http');
+      }
+      if (row.redirectSuppressed) {
+        parts.push('no redirect follow');
+      }
+      return parts.join(', ');
+    }
+
+    /**
+     * Parse the comma-separated status codes, keeping an unparseable token as text so the
+     * validation error names the input the operator typed rather than a coerced number.
+     */
+    function parseStatusCodes(value) {
+      const tokens = String(value)
+        .split(',')
+        .map(token => token.trim())
+        .filter(token => token !== '');
+      return tokens.map(token => (/^\d+$/.test(token) ? Number(token) : token));
+    }
+
+    /** The sanitized plan: what changes, what egress it implies, how it rolls back. */
+    function PlanPanel({ plan, state, fragment, onCopy }) {
+      if (state === WORKFLOW_STATE.invalid) {
+        return h(
+          Paper,
+          { variant: 'outlined', sx: { p: 2, mb: 2 } },
+          h(Typography, { variant: 'h6', gutterBottom: true, color: 'error.main' }, 'Draft is invalid'),
+          h(
+            Typography,
+            { variant: 'body2' },
+            'Nothing can be exported until every row is valid. Fix the rows above; a single bad ' +
+              'endpoint is not exportable because the fragment is one list.'
+          )
+        );
+      }
+
+      const section = (label, rows, describe) => {
+        if (!rows || rows.length === 0) {
+          return null;
+        }
+        return h(
+          Box,
+          { key: label, sx: { mb: 1 } },
+          h(Typography, { variant: 'subtitle2' }, `${label} (${rows.length})`),
+          h(
+            Box,
+            { component: 'ul', sx: { m: 0, pl: 3 } },
+            rows.map(row => h('li', { key: row.id }, describe(row)))
+          )
+        );
+      };
+
+      const egress = plan.egress || {};
+      const transport = [];
+      if (egress.cleartextHttp) {
+        transport.push('cleartext http accepted');
+      }
+      if (egress.redirectSuppressed) {
+        transport.push('redirects not followed');
+      }
+
+      return h(
+        Paper,
+        { variant: 'outlined', sx: { p: 2, mb: 2 } },
+        h(Typography, { variant: 'h6', gutterBottom: true }, 'Plan (not applied)'),
+        section('added', plan.added, row => `${row.id} — ${row.group} — ${describeDestinationLabel(row)}`),
+        section(
+          'changed',
+          plan.changed,
+          row => `${row.id} — ${row.differences.join(', ') || 'target'} — ${describeDestinationLabel(row)}`
+        ),
+        section('removed', plan.removed, row => `${row.id} — ${row.group}`),
+        h(
+          Typography,
+          { variant: 'body2', sx: { mt: 1 } },
+          `Derived NetworkPolicy egress ports: ${plan.egressPorts.join(', ') || 'none'}` +
+            (plan.newEgressPorts.length > 0
+              ? ` — new: ${plan.newEgressPorts.join(', ')}`
+              : ' (no new port)')
+        ),
+        // Port provenance, because an explicit port is an operator decision and 443 on an https
+        // target is this page's inference. An operator reviewing egress needs to tell them apart.
+        h(
+          Typography,
+          { variant: 'body2' },
+          `Explicit ports: ${(egress.explicitPorts || []).join(', ') || 'none'} — ` +
+            `scheme-default ports: ${(egress.schemeDefaultPorts || []).join(', ') || 'none'}`
+        ),
+        // Destination class, because it is what decides whether the egress grant is a wildcard
+        // address rule or a single named destination. No hostname is shown to say it.
+        h(
+          Typography,
+          { variant: 'body2' },
+          `Destinations: ${egress.publicTargets || 0} public, ` +
+            `${egress.clusterInternalTargets || 0} cluster-internal` +
+            (egress.unclassifiedTargets ? `, ${egress.unclassifiedTargets} unclassified` : '')
+        ),
+        transport.length > 0
+          ? h(Typography, { variant: 'body2', color: 'warning.main' }, `Transport: ${transport.join('; ')}`)
+          : null,
+        h(Typography, { variant: 'body2' }, `Expected rollout: ${plan.expectedRollout}`),
+        h(Typography, { variant: 'body2' }, `Rollback: ${plan.rollback}`),
+        h(Typography, { variant: 'caption', sx: { display: 'block', mt: 1 } }, plan.checkerLimit),
+        h(
+          Typography,
+          { variant: 'subtitle2', sx: { mt: 2 } },
+          `${FRAGMENT_PATH} — paste under this path`
+        ),
+        h(
+          Box,
+          {
+            component: 'pre',
+            sx: {
+              p: 1,
+              mb: 1,
+              fontSize: '0.8rem',
+              overflowX: 'auto',
+              bgcolor: 'action.hover',
+            },
+          },
+          fragment
+        ),
+        h(
+          Box,
+          { sx: { display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 } },
+          h(
+            Button(),
+            { key: 'copy', size: 'small', variant: 'outlined', onClick: () => onCopy(fragment) },
+            'Copy fragment'
+          ),
+          h(
+            Button(),
+            { key: 'dl', size: 'small', variant: 'outlined', onClick: () => downloadText('gatus-endpoints.yaml', fragment) },
+            'Download fragment'
+          )
+        ),
+        h(
+          Typography,
+          { variant: 'caption', sx: { display: 'block' } },
+          `After reviewing, apply the whole customer configuration with: ${renderApplyCommand('<your-customer-config.yaml>')}`
+        )
+      );
+    }
+
+    /**
+     * The paste panel: the only way an existing endpoint target can reach this page.
+     *
+     * ## Why pasting the current fragment is required rather than optional
+     *
+     * The delivered metadata carries identity and cadence but deliberately carries no target, so
+     * the browser cannot reconstruct what an operator has configured today. That is the correct
+     * privacy boundary, and it has a direct consequence for editing: an Edit or Remove action on
+     * a row whose target was never delivered would produce a replacement fragment silently
+     * missing that target, and pasting it back would delete a real endpoint.
+     *
+     * So this page refuses to offer Edit or Remove on an imported set it has not read. The
+     * operator supplies the current fragment explicitly, it is validated, and only then does the
+     * page offer full Add/Edit/Remove over the complete list. Without the current fragment the
+     * page still
+     * works, but only for Add: an operator can compose a new endpoint without ever being able to
+     * damage one they have not shown the page.
+     *
+     * ## Why the pasted fragment is not kept anywhere
+     *
+     * A pasted fragment is the only customer target this console ever holds. It lives in React
+     * state and nowhere else: no browser-persisted store, no session storage, no cookie, no
+     * telemetry, no log line, no network request. Reloading the console discards it. That is the
+     * intended behaviour, and it is why the page can be trusted not to accumulate customer
+     * topology in a browser.
+     */
+    function ImportPanel({ text, onText, onImport, refused, imported }) {
+      const Input = TextField();
+      return h(
+        Paper,
+        { variant: 'outlined', sx: { p: 2, mb: 2 } },
+        h(Typography, { variant: 'h6', gutterBottom: true }, 'Import the current fragment'),
+        h(
+          Typography,
+          { variant: 'body2', sx: { mb: 1 } },
+          'The console is given the endpoint list without its targets, so it cannot edit what it ' +
+            'cannot see. Paste the ',
+          h(Typography, { component: 'span', variant: 'body2', sx: { fontFamily: 'monospace' } }, FRAGMENT_PATH),
+          ' fragment from your customer configuration to enable editing and removing existing ' +
+            'endpoints. It is validated, held only in this tab and discarded on reload.'
+        ),
+        h(Input, {
+          key: 'import',
+          label: 'Current endpoints fragment (YAML)',
+          value: text,
+          onChange: event => onText(event.target.value),
+          multiline: true,
+          minRows: 6,
+          fullWidth: true,
+          placeholder: 'endpoints:\n  - id: ...\n    name: ...\n    url: ...',
+          sx: { fontFamily: 'monospace' },
+        }),
+        imported
+          ? h(
+              Typography,
+              { variant: 'caption', sx: { display: 'block', mt: 1 } },
+              `${imported} endpoints imported. The draft is now editable and removable.`
+            )
+          : null,
+        refused.length > 0
+          ? h(
+              Paper,
+              { key: 'refusals', variant: 'outlined', sx: { p: 1, mt: 1, borderColor: 'error.main' } },
+              h(Typography, { variant: 'body2', color: 'error.main' }, 'The fragment was not imported:'),
+              h(
+                Typography,
+                { component: 'ul', variant: 'body2', sx: { m: 0, pl: 2 } },
+                refused.map((reason, index) => h('li', { key: `r:${index}` }, reason))
+              ),
+              h(
+                Typography,
+                { variant: 'caption', sx: { display: 'block', mt: 1 } },
+                'Nothing was imported, so no existing endpoint was changed. Every endpoint below ' +
+                  'still has an unknown target.'
+              )
+            )
+          : null,
+        h(
+          Box,
+          { sx: { mt: 1, display: 'flex', justifyContent: 'flex-end' } },
+          h(Button(), { size: 'small', variant: 'outlined', onClick: onImport }, 'Import fragment')
+        )
+      );
+    }
+
+    /**
+     * The per-row warning shown when a target is unknown.
+     *
+     * Without it an empty target field reads as "this endpoint has no target", which is a very
+     * different statement from "this page was never told the target", and the difference is the
+     * one that would delete a live endpoint.
+     */
+    function UnknownTargetNotice() {
+      return h(
+        Typography,
+        { variant: 'caption', sx: { display: 'block', color: 'warning.main' } },
+        'Target unknown: the console is not given existing targets. Import the current fragment ' +
+          'to edit or remove this endpoint, or supply a target to add it.'
+      );
+    }
+
+    /**
+     * The endpoint editor page.
+     *
+     * Exported and registered by view.js so every route in this plugin is registered in one
+     * place, and so the editor is part of the module graph the build follows rather than a
+     * module that silently fails to ship.
+     */
+    function EndpointEditorPage() {
+      const metadata = useMemo(() => readEndpointMetadata(), []);
+      const [drafts, setDrafts] = useState(() => draftFromMetadata(metadata));
+      const [notice, setNotice] = useState('');
+      const [importText, setImportText] = useState('');
+      const [refused, setRefused] = useState([]);
+      const [importedCount, setImportedCount] = useState(0);
+
+      const state = workflowState(drafts);
+      const problems = useMemo(() => validateDraft(drafts), [drafts]);
+      const plan = useMemo(() => buildPlan(metadata.endpoints || [], drafts), [metadata, drafts]);
+      const fragment = useMemo(() => renderEndpointsYaml(drafts), [drafts]);
+
+      const onEdit = useCallback((index, patch) => setDrafts(current => editDraft(current, index, patch)), []);
+      const onRemove = useCallback((index) => setDrafts(current => removeDraft(current, index)), []);
+      const onAdd = useCallback(() => {
+        setDrafts(current => {
+          const result = addDraft(current);
+          setNotice(result.refused);
+          return result.drafts;
+        });
+      }, []);
+
+      const onImport = useCallback(() => {
+        const result = parseEndpointsYaml(importText);
+        setRefused(result.problems);
+        if (result.problems.length > 0) {
+          // Nothing is replaced on a refusal: a partial read is the one outcome that could
+          // silently drop an endpoint, so the existing draft is left exactly as it was.
+          setNotice('');
+          return;
+        }
+        setDrafts(result.drafts);
+        setImportedCount(result.drafts.length);
+        setNotice('');
+      }, [importText]);
+
+      const onCopy = useCallback(text => {
+        copyText(text).then(result => setNotice(result));
+      }, []);
+
+      if (metadata.degraded) {
+        return h(
+          Paper,
+          { variant: 'outlined', sx: { p: 2 } },
+          h(Typography, { variant: 'h6', gutterBottom: true, color: 'error.main' }, 'Endpoint metadata is missing'),
+          h(
+            Typography,
+            { variant: 'body2' },
+            'The installer did not render the endpoint list next to this plugin, so there is ' +
+              'nothing authoritative to edit and no draft can be compared to the live ' +
+              'configuration. Re-apply the installation to restore it. No draft is offered rather ' +
+              'than a draft that would overwrite an unknown list.'
+          )
+        );
+      }
+
+      // Display order is canonical, but every mutation names the row by its real position, so
+      // re-sorting the table can never redirect an edit onto a different endpoint.
+      const ordered = draftOrder(drafts);
+
+      return h(
+        Box,
+        { sx: { p: 2 } },
+        h(Typography, { variant: 'h5', gutterBottom: true }, 'Service Status endpoints'),
+        NotAppliedNotice(),
+        ImportPanel({
+          text: importText,
+          onText: setImportText,
+          onImport,
+          refused,
+          imported: importedCount,
+        }),
+        h(
+          Box,
+          { sx: { display: 'flex', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 } },
+          h(
+            Chip,
+            {
+              key: 'state',
+              label: state,
+              color: state === WORKFLOW_STATE.invalid ? 'error' : 'default',
+              sx: { mr: 1 },
+            },
+            null
+          ),
+          h(
+            Box,
+            { key: 'add', sx: { marginLeft: 'auto' } },
+            h(Button(), { size: 'small', variant: 'contained', onClick: onAdd }, 'Add endpoint')
+          )
+        ),
+        notice
+          ? h(
+              Paper,
+              { key: 'notice', variant: 'outlined', sx: { p: 1, mb: 2 } },
+              h(Typography, { variant: 'body2' }, notice)
+            )
+          : null,
+        ordered.map(({ draft, index }) =>
+          h(DraftRow, {
+            key: draft.id ? `d:${draft.id}` : `d:${index}`,
+            draft,
+            index,
+            problems: problemsForIndex(problems, index),
+            onEdit,
+            onRemove,
+            unknownTarget: !draft.targetKnown,
+          })
+        ),
+        PlanPanel({ plan, state, fragment, onCopy })
+      );
+    }
 
       // ---- src/view.js ----
     // The Service Status page.
@@ -886,8 +3463,6 @@ data:
     // "everything is down", which is the one conclusion this page must never suggest
     // without evidence.
 
-
-    const h = createElement;
 
     /** Poll a little faster than the slowest configured interval, and never tighter. */
     const REFRESH_MS = 60000;
@@ -1108,6 +3683,10 @@ data:
 
     function ServiceStatusPage() {
       const metadata = useMemo(() => readEndpointMetadata(), []);
+      // The endpoint editor is reached from the settings plugin list rather than from a
+      // second sidebar item, so this page only offers the way in. It is a link, not a fetch
+      // of anything the dashboard has not already read.
+      const editorHref = useMemo(() => PLUGIN_EDITOR_PATH, []);
       const [state, setState] = useState({
         loading: true,
         reason: '',
@@ -1194,7 +3773,16 @@ data:
             'authoritative current-status source; this page only reads it. A Gatus instance inside ' +
             'the cluster cannot detect a total cluster outage.'
         ),
-        h(Link, { component: 'button', variant: 'body2', onClick: refresh, sx: { mt: 1 } }, 'Refresh now')
+        h(Link, { component: 'button', variant: 'body2', onClick: refresh, sx: { mt: 1 } }, 'Refresh now'),
+        h(
+          Box,
+          { sx: { mt: 2 } },
+          h(
+            Link,
+            { href: editorHref, variant: 'body2' },
+            'Open endpoint fragment editor (changes are not applied)'
+          )
+        )
       );
     }
 
@@ -1215,19 +3803,33 @@ data:
       component: ServiceStatusPage,
     });
 
+    // The endpoint editor lives under the settings path because it is a configuration surface,
+    // not a status view, and the dashboard keeps the single sidebar entry. Headlamp 0.43.0
+    // exposes no plugin API for adding a row to the native Settings -> Plugins list, so the page
+    // is reachable by URL and from the dashboard link; it does not invent a sidebar item, and
+    // registering a second one would change the navigation TASK-207 established.
+    registerEditorRoute({
+      path: PLUGIN_EDITOR_PATH,
+      sidebar: null,
+      name: 'service-status-endpoints',
+      exact: true,
+      keepMounted: false,
+      component: EndpointEditorPage,
+    });
+
     })();
-  package.json: |
+  package.json: |-
     {
       "name": "@sre-platform/headlamp-service-status",
-      "version": "0.1.5",
-      "description": "Read-only Gatus availability view for the Headlamp operator console",
+      "version": "0.1.6",
+      "description": "Read-only Gatus availability view and endpoint fragment editor for the Headlamp operator console",
       "private": true,
       "license": "Apache-2.0",
       "main": "src/view.js",
       "type": "module",
       "scripts": {
         "build": "node build.mjs",
-        "test": "node --test test/status.test.mjs test/payload.test.mjs"
+        "test": "node --test test/status.test.mjs test/payload.test.mjs test/editor.test.mjs"
       },
       "devDependencies": {
         "@kinvolk/headlamp-plugin": "0.13.1"
@@ -1594,7 +4196,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: 4aea38531552b852849c408ca26887231a35352adedbdfa7c65c643c1d296cb9
+        sre.platform.io/headlamp-plugins-sha256: 7b6b1e6d0bb5fb50b52def796d7896bdaa3c99a64d4aebe75ad2781a40a4c72b
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
