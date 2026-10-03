@@ -476,18 +476,34 @@ data:
     }
 
     /**
-     * Index a Gatus status payload by endpoint key.
+     * Build a collision-safe join key from the two display fields shared by the
+     * installer metadata and the Gatus status API.
+     *
+     * The API's `key` is not the installer endpoint ID. Gatus derives it from the
+     * group and name (for example `platform_argo-cd`), while the customer config may
+     * use an independent stable ID. Joining those unrelated
+     * values made every live endpoint appear MISSING.
+     */
+    function endpointJoinKey(group, name) {
+      return JSON.stringify([String(group || ''), String(name || '')]);
+    }
+
+    /**
+     * Index a Gatus status payload by its exact group and display name.
      *
      * Gatus v5.34 answers `/api/v1/endpoints/statuses` with objects shaped as
-     * `{key, name, group, results}`. The configured key is the stable join field;
-     * display names are deliberately ignored so duplicate or renamed labels cannot
-     * attach one endpoint's status to another. Only parsed results are retained.
+     * `{key, name, group, results}`. `key` is still validated and required to be
+     * unique, but it cannot be used as the join field because Gatus derives it rather
+     * than preserving the installer ID. The resolver already rejects duplicate
+     * endpoint names, and the exact group+name pair is present on both sides. Only
+     * parsed results are retained.
      */
     function indexPayload(payload) {
       if (!Array.isArray(payload)) {
-        return { byID: new Map(), malformedEntries: 0, totalEntries: 0 };
+        return { byEndpoint: new Map(), malformedEntries: 0, totalEntries: 0 };
       }
-      const byID = new Map();
+      const byEndpoint = new Map();
+      const backendKeys = new Map();
       let malformedEntries = 0;
       let totalEntries = 0;
 
@@ -504,18 +520,24 @@ data:
           malformedEntries += 1;
           continue;
         }
-        if (!Array.isArray(entry.results) || byID.has(entry.key)) {
+        const joinKey = endpointJoinKey(entry.group, entry.name);
+        const previousJoinKey = backendKeys.get(entry.key);
+        if (!Array.isArray(entry.results) || previousJoinKey || byEndpoint.has(joinKey)) {
           malformedEntries += 1;
-          byID.set(entry.key, { malformed: true });
+          if (previousJoinKey) {
+            byEndpoint.set(previousJoinKey, { malformed: true });
+          }
+          byEndpoint.set(joinKey, { malformed: true });
           continue;
         }
-        byID.set(entry.key, {
+        backendKeys.set(entry.key, joinKey);
+        byEndpoint.set(joinKey, {
           malformed: false,
           ...parseResults(entry.results),
         });
       }
 
-      return { byID, malformedEntries, totalEntries };
+      return { byEndpoint, malformedEntries, totalEntries };
     }
 
     /**
@@ -527,10 +549,10 @@ data:
      */
     function buildRows(specs, payload, nowMs) {
       const normalised = specs.map(normaliseEndpointSpec);
-      const { byID, malformedEntries, totalEntries } = indexPayload(payload);
+      const { byEndpoint, malformedEntries, totalEntries } = indexPayload(payload);
 
       const rows = normalised.map(spec => {
-        const found = byID.get(spec.id);
+        const found = byEndpoint.get(endpointJoinKey(spec.group, spec.name));
 
         if (!found) {
           return {
@@ -1197,7 +1219,7 @@ data:
   package.json: |
     {
       "name": "@sre-platform/headlamp-service-status",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "description": "Read-only Gatus availability view for the Headlamp operator console",
       "private": true,
       "license": "Apache-2.0",
@@ -1572,7 +1594,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: 1b6320a92fce1e52dae60886cd41d8e96acc97f05be6fc310a2c28d27077c6ef
+        sre.platform.io/headlamp-plugins-sha256: 4aea38531552b852849c408ca26887231a35352adedbdfa7c65c643c1d296cb9
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
