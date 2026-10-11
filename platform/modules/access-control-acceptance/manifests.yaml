@@ -322,7 +322,6 @@ metadata:
   name: acl-live-acceptance
   namespace: argocd
   annotations:
-    argocd.argoproj.io/refresh: hard
     sre.platform.io/break-glass-engine-application: acl-live-acceptance
     sre.platform.io/break-glass-engine-namespace: argocd
     sre.platform.io/break-glass-grants-namespace: acl-live-acceptance
