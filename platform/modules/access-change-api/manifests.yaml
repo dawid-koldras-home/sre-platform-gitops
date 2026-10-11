@@ -231,7 +231,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: access-change-api
-          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:f283a3a9b08169220ea49ea05885659efd59409945bbf21c306b3b6c0560e5e7"
+          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:b8f2c7f0d82c745791ac8025342f29e2706b1453a6796f062fc82c55603e797d"
           imagePullPolicy: IfNotPresent
           workingDir: /app
           args:
@@ -244,7 +244,7 @@ spec:
             - --audit-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
             - --audit-ca-file=/etc/access-change/audit/ca.crt
             - --audit-token-file=/etc/access-change/audit/token
-            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:f283a3a9b08169220ea49ea05885659efd59409945bbf21c306b3b6c0560e5e7
+            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:b8f2c7f0d82c745791ac8025342f29e2706b1453a6796f062fc82c55603e797d
             - --service-namespace=platform
             - --service-name=access-change-api
             - --git-credentials-file=/etc/access-change/git-credentials/credentials
@@ -370,7 +370,7 @@ data:
             breakGlassGrantsNamespace: acl-live-acceptance
             gitCredentialsSecretName: access-change-api-git-credentials
             image:
-              digest: sha256:f283a3a9b08169220ea49ea05885659efd59409945bbf21c306b3b6c0560e5e7
+              digest: sha256:b8f2c7f0d82c745791ac8025342f29e2706b1453a6796f062fc82c55603e797d
               repository: ghcr.io/dawid-koldras-home/access-change-api
           enabled: true
         access-control-acceptance:
