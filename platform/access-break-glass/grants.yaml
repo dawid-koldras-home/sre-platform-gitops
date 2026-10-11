@@ -1,0 +1,15 @@
+apiVersion: v1
+data:
+  approved-break-glass-grants.json: '[]'
+kind: ConfigMap
+metadata:
+  annotations:
+    sre.platform.io/break-glass-grants-digest: sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+    sre.platform.io/break-glass-source-revision: ""
+  labels:
+    app.kubernetes.io/component: access-change
+    app.kubernetes.io/managed-by: access-change-api
+    app.kubernetes.io/name: access-break-glass-grants
+    app.kubernetes.io/part-of: sre-platform
+  name: access-break-glass-grants
+  namespace: acl-live-acceptance
