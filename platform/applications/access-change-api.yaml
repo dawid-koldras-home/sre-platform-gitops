@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: headlamp
+  name: access-change-api
   namespace: argocd
   annotations:
     argocd.argoproj.io/refresh: hard
@@ -9,24 +9,18 @@ metadata:
   labels:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: srectl
-    sre.platform.io/tenant: "sre-tools"
+    sre.platform.io/tenant: "acl-stagec"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: platform
   source:
     repoURL: "https://github.com/dawid-koldras-home/sre-platform-gitops.git"
-    targetRevision: "main"
-    path: "platform/modules/headlamp"
+    targetRevision: "task/220-access-control-live-acceptance"
+    path: "platform/modules/access-change-api"
   destination:
     server: https://kubernetes.default.svc
-    namespace: "headlamp"
-  ignoreDifferences:
-    - group: apps
-      kind: Deployment
-      name: headlamp
-      jsonPointers:
-        - /spec/template/spec/hostUsers
+    namespace: "access-change-api"
   syncPolicy:
     automated:
       prune: true

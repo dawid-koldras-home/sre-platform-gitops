@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cost-explorer
+  name: access-control-acceptance
   namespace: argocd
   annotations:
     argocd.argoproj.io/refresh: hard
@@ -9,18 +9,18 @@ metadata:
   labels:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: srectl
-    sre.platform.io/tenant: "sre-tools"
+    sre.platform.io/tenant: "acl-stagec"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: platform
   source:
     repoURL: "https://github.com/dawid-koldras-home/sre-platform-gitops.git"
-    targetRevision: "main"
-    path: "platform/modules/cost-explorer"
+    targetRevision: "task/220-access-control-live-acceptance"
+    path: "platform/modules/access-control-acceptance"
   destination:
     server: https://kubernetes.default.svc
-    namespace: "cost-explorer"
+    namespace: "acl-live-acceptance"
   syncPolicy:
     automated:
       prune: true
