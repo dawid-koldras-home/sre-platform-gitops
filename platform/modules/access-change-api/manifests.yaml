@@ -348,6 +348,61 @@ data:
       customerId: acl-stagec
       environment: dev
     spec:
+      accessPolicy:
+        policies:
+        - name: acl-viewers
+          role: viewer
+          scope:
+            clusterWide: true
+            clusters:
+            - lke643351
+            environments:
+            - dev
+          subjects:
+          - kind: group
+            name: acl-viewers
+        - name: acl-operators
+          role: operator
+          scope:
+            clusterWide: true
+            clusters:
+            - lke643351
+            environments:
+            - dev
+          subjects:
+          - kind: group
+            name: acl-operators
+        - name: acl-platform-admins
+          role: platformAdministrator
+          scope:
+            clusterWide: true
+            clusters:
+            - lke643351
+            environments:
+            - dev
+          subjects:
+          - kind: group
+            name: acl-platform-admins
+        - name: acl-access-admins
+          role: accessAdministrator
+          scope:
+            clusterWide: true
+            clusters:
+            - lke643351
+            environments:
+            - dev
+          subjects:
+          - kind: user
+            name: alice@example.com
+            reason: designated access administrator for the TASK-220 isolated acceptance
+              run
+        privilegeCeiling:
+          roles:
+          - viewer
+          - operator
+          - platformAdministrator
+          - accessAdministrator
+        version: v1alpha1
       gitops:
         authentication:
           existingSecret: srectl-repository-f59d2c4411a1
@@ -377,8 +432,14 @@ data:
           config:
             allowedGroups:
             - sre
+            - acl-viewers
+            - acl-operators
+            - acl-platform-admins
             allowedUsers:
             - alice@example.com
+            - vera@example.com
+            - owen@example.com
+            - pat@example.com
             apiEgressCIDRs:
             - 10.0.0.1/32
             image:
@@ -388,6 +449,7 @@ data:
           enabled: true
       profile: none
       target:
+        clusterName: lke643351
         context: lke643351-ctx
         mode: existing-cluster
 kind: ConfigMap

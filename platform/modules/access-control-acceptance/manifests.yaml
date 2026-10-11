@@ -37,7 +37,7 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/component: headlamp-identity-bridge
 data:
-  allow-list.json: '{"users":["alice@example.com"],"groups":["sre"]}'
+  allow-list.json: '{"users":["alice@example.com","owen@example.com","pat@example.com","vera@example.com"],"groups":["acl-operators","acl-platform-admins","acl-viewers","sre"]}'
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -279,6 +279,9 @@ rules:
   - ""
   resourceNames:
   - alice@example.com
+  - owen@example.com
+  - pat@example.com
+  - vera@example.com
   resources:
   - users
   verbs:
@@ -286,6 +289,9 @@ rules:
 - apiGroups:
   - ""
   resourceNames:
+  - acl-operators
+  - acl-platform-admins
+  - acl-viewers
   - sre
   resources:
   - groups
