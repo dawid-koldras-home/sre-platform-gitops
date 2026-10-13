@@ -220,6 +220,8 @@ spec:
       labels:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
+      annotations:
+        sre.platform.io/config-checksum: "sha256:d518c1f10194da9b581433a8af7636d846a026d82ef166d34abbd915ba723ec7"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -353,22 +355,24 @@ data:
         - name: acl-viewers
           role: viewer
           scope:
-            clusterWide: true
             clusters:
             - lke643351
             environments:
             - dev
+            namespaces:
+            - acl-demo
           subjects:
           - kind: group
             name: acl-viewers
         - name: acl-operators
           role: operator
           scope:
-            clusterWide: true
             clusters:
             - lke643351
             environments:
             - dev
+            namespaces:
+            - acl-demo
           subjects:
           - kind: group
             name: acl-operators
@@ -386,11 +390,12 @@ data:
         - name: acl-access-admins
           role: accessAdministrator
           scope:
-            clusterWide: true
             clusters:
             - lke643351
             environments:
             - dev
+            namespaces:
+            - acl-demo
           subjects:
           - kind: user
             name: alice@example.com
