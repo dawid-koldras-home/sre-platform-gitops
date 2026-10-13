@@ -221,7 +221,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:8c6265f5b139f441fa3928c0a0262d0990c6dca31ab0167e36f28132e653ab66"
+        sre.platform.io/config-checksum: "sha256:8d855876f90820147ae411016eda4842842fadfdf9eab1c2b28547f97f3ff32f"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -401,6 +401,8 @@ data:
             name: alice@example.com
             reason: designated access administrator for the TASK-220 isolated acceptance
               run
+          - kind: group
+            name: acl-access-admins
         privilegeCeiling:
           roles:
           - viewer
@@ -440,13 +442,43 @@ data:
             - acl-viewers
             - acl-operators
             - acl-platform-admins
+            - acl-access-admins
             allowedUsers:
             - alice@example.com
             - vera@example.com
             - owen@example.com
             - pat@example.com
+            - sre-syn-viewer
+            - sre-syn-operator
+            - sre-syn-platform
+            - sre-syn-access
             apiEgressCIDRs:
-            - 10.0.0.1/32
+            - 85.90.247.96/32
+            apiEgressPorts:
+            - 6443
+            identityProvider:
+              className: nginx
+              clusterIssuerName: sre-tools-letsencrypt
+              cookieDomain: 139.162.145.158.nip.io
+              cookieName: acl_acceptance_session
+              defaultRedirectionUrl: https://acl-bridge.139.162.145.158.nip.io
+              enabled: true
+              enrollment:
+                identities:
+                - sre-syn-viewer
+                - sre-syn-operator
+                - sre-syn-platform
+                - sre-syn-access
+                key: totp.yaml
+                lifecycle: provision
+                secretName: acl-authelia-enrollment
+              host: acl-auth.139.162.145.158.nip.io
+              image:
+                digest: sha256:d8238611b35c76732b9764e560dc25f814d0abfb2f979a3be15b6301df80782b
+                repository: ghcr.io/authelia/authelia
+              secretsSecretName: acl-authelia-secrets
+              tlsSecretName: acl-live-acceptance-authelia-tls
+              usersSecretName: acl-authelia-users
             image:
               digest: sha256:f98c50ad028db76978a50ff887a8bbfaae983bf9e72fceec61c7d342552f3f10
               repository: ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge
