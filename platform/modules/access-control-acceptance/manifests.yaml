@@ -52,7 +52,7 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/component: headlamp-identity-bridge
 data:
-  allow-list.json: '{"users":["alice@example.com","owen@example.com","pat@example.com","vera@example.com"],"groups":["acl-operators","acl-platform-admins","acl-viewers","sre"]}'
+  allow-list.json: '{"users":["alice@example.com","owen@example.com","pat@example.com","sre-syn-access","sre-syn-operator","sre-syn-platform","sre-syn-viewer","vera@example.com"],"groups":["acl-access-admins","acl-operators","acl-platform-admins","acl-viewers","sre"]}'
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -73,7 +73,7 @@ spec:
       annotations:
         sre.platform.io/accepted-git-revision: task/220-access-control-live-acceptance
         sre.platform.io/break-glass-projection: sha256:3c536529ab68e11b00463d8b034be3b376cd231531be75f4a48fa1fb7f7ae8f7
-        sre.platform.io/content-checksum: sha256:1395f9e7ee6eee3a527e48ce88e8271d8ca343cf0d69420768a7353dd548d1e7
+        sre.platform.io/content-checksum: sha256:76b46188b3f000c804e5be1208d539fdf85916d05a62eaa926482d8d6966fba7
       labels:
         app.kubernetes.io/name: headlamp-identity-bridge
         app.kubernetes.io/part-of: sre-platform
@@ -303,6 +303,10 @@ rules:
   - alice@example.com
   - owen@example.com
   - pat@example.com
+  - sre-syn-access
+  - sre-syn-operator
+  - sre-syn-platform
+  - sre-syn-viewer
   - vera@example.com
   resources:
   - users
@@ -311,6 +315,7 @@ rules:
 - apiGroups:
   - ""
   resourceNames:
+  - acl-access-admins
   - acl-operators
   - acl-platform-admins
   - acl-viewers
@@ -359,8 +364,8 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/auth-method: GET
-    nginx.ingress.kubernetes.io/auth-url: http://authelia.authelia.svc.cluster.local/api/authz/auth-request
-    nginx.ingress.kubernetes.io/auth-signin: https://auth.139.162.145.158.nip.io?rm=$request_method
+    nginx.ingress.kubernetes.io/auth-url: http://acl-authelia.acl-live-acceptance.svc.cluster.local/api/authz/auth-request
+    nginx.ingress.kubernetes.io/auth-signin: https://acl-auth.139.162.145.158.nip.io?rm=$request_method
     nginx.ingress.kubernetes.io/auth-response-headers: Remote-User,Remote-Groups,Remote-Email,Remote-Id-Token
 spec:
   ingressClassName: nginx
@@ -406,6 +411,524 @@ spec:
     ports:
     - protocol: TCP
       port: 8089
+---
+apiVersion: v1
+data:
+  configuration.yaml: |2
+        theme: 'auto'
+        default_2fa_method: 'totp'
+        server:
+          address: 'tcp://0.0.0.0:9091/'
+          endpoints:
+            authz:
+              auth-request:
+                implementation: 'AuthRequest'
+        log:
+          level: 'info'
+          format: 'json'
+          keep_stdout: true
+        totp:
+          disable: false
+          issuer: 'SRE Platform Acceptance'
+          skew: 1
+          secret_size: 32
+          algorithm: 'SHA1'
+          digits: 6
+          period: 30
+        authentication_backend:
+          refresh_interval: '5 minutes'
+          file:
+            path: '/config/authelia/users/users_database.yml'
+            watch: true
+            password:
+              algorithm: 'argon2'
+              argon2:
+                variant: 'argon2id'
+                iterations: 3
+                memory: 65536
+                parallelism: 2
+                key_length: 32
+                salt_length: 16
+        session:
+          name: 'acl_acceptance_session'
+          same_site: 'lax'
+          inactivity: '15 minutes'
+          expiration: '1 hour'
+          remember_me: '8 hours'
+          cookies:
+            - domain: '139.162.145.158.nip.io'
+              authelia_url: 'https://acl-auth.139.162.145.158.nip.io'
+              default_redirection_url: 'https://acl-bridge.139.162.145.158.nip.io'
+        regulation:
+          modes:
+            - 'user'
+          max_retries: 3
+          find_time: '2 minutes'
+          ban_time: '5 minutes'
+        storage:
+          local:
+            path: '/config/db.sqlite3'
+        notifier:
+          disable_startup_check: true
+          filesystem:
+            filename: '/config/notification.txt'
+        access_control:
+          default_policy: 'deny'
+          rules:
+            - policy: 'two_factor'
+              domain:
+                - 'acl-bridge.139.162.145.158.nip.io'
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: access-control-identity-provider
+    app.kubernetes.io/name: acl-authelia
+    app.kubernetes.io/part-of: sre-platform
+  name: acl-authelia
+  namespace: acl-live-acceptance
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: access-control-identity-provider
+    app.kubernetes.io/name: acl-authelia
+    app.kubernetes.io/part-of: sre-platform
+  name: acl-authelia
+  namespace: acl-live-acceptance
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: access-control-identity-provider
+      app.kubernetes.io/name: acl-authelia
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: access-control-identity-provider
+        app.kubernetes.io/name: acl-authelia
+        app.kubernetes.io/part-of: sre-platform
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - command:
+        - authelia
+        env:
+        - name: AUTHELIA_SERVER_DISABLE_HEALTHCHECK
+          value: "true"
+        - name: AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE
+          value: /secrets/internal/identity_validation.reset_password.jwt.hmac.key
+        - name: AUTHELIA_SESSION_SECRET_FILE
+          value: /secrets/internal/session.encryption.key
+        - name: AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE
+          value: /secrets/internal/storage.encryption.key
+        - name: X_AUTHELIA_CONFIG
+          value: /configuration.yaml
+        - name: X_AUTHELIA_CONFIG_FILTERS
+          value: template
+        image: ghcr.io/authelia/authelia@sha256:d8238611b35c76732b9764e560dc25f814d0abfb2f979a3be15b6301df80782b
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: acl-authelia
+        ports:
+        - containerPort: 9091
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+        startupProbe:
+          failureThreshold: 6
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /config
+          name: config-dir
+          readOnly: false
+        - mountPath: /configuration.yaml
+          name: config
+          readOnly: true
+          subPath: configuration.yaml
+        - mountPath: /secrets/internal
+          name: secrets
+          readOnly: true
+        - mountPath: /config/authelia/users
+          name: users-database
+          readOnly: true
+      enableServiceLinks: false
+      initContainers:
+      - args:
+        - -op
+        - provision
+        - -identity
+        - sre-syn-viewer
+        - -sqlite-path
+        - /config/db.sqlite3
+        - -import-file
+        - /enrollment/import.yml
+        command:
+        - /usr/local/bin/srectl-conformance-helper
+        env:
+        - name: AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE
+          value: /secrets/internal/storage.encryption.key
+        - name: X_AUTHELIA_CONFIG
+          value: /configuration.yaml
+        - name: X_AUTHELIA_CONFIG_FILTERS
+          value: template
+        image: ghcr.io/dawid-koldras-home/sre-platform-conformance-helper@sha256:ed703e494eb1f99eabcf47e8ee4e4d607ff35f5041a1b482970ed2bff8bcfdc1
+        imagePullPolicy: IfNotPresent
+        name: sre-conformance-enrollment-sre-syn-viewer
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /config
+          name: config-dir
+          readOnly: false
+        - mountPath: /secrets/internal
+          name: secrets
+          readOnly: true
+        - mountPath: /configuration.yaml
+          name: config
+          readOnly: true
+          subPath: configuration.yaml
+        - mountPath: /enrollment
+          name: enrollment-document
+          readOnly: true
+      - args:
+        - -op
+        - provision
+        - -identity
+        - sre-syn-operator
+        - -sqlite-path
+        - /config/db.sqlite3
+        - -import-file
+        - /enrollment/import.yml
+        command:
+        - /usr/local/bin/srectl-conformance-helper
+        env:
+        - name: AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE
+          value: /secrets/internal/storage.encryption.key
+        - name: X_AUTHELIA_CONFIG
+          value: /configuration.yaml
+        - name: X_AUTHELIA_CONFIG_FILTERS
+          value: template
+        image: ghcr.io/dawid-koldras-home/sre-platform-conformance-helper@sha256:ed703e494eb1f99eabcf47e8ee4e4d607ff35f5041a1b482970ed2bff8bcfdc1
+        imagePullPolicy: IfNotPresent
+        name: sre-conformance-enrollment-sre-syn-operator
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /config
+          name: config-dir
+          readOnly: false
+        - mountPath: /secrets/internal
+          name: secrets
+          readOnly: true
+        - mountPath: /configuration.yaml
+          name: config
+          readOnly: true
+          subPath: configuration.yaml
+        - mountPath: /enrollment
+          name: enrollment-document
+          readOnly: true
+      - args:
+        - -op
+        - provision
+        - -identity
+        - sre-syn-platform
+        - -sqlite-path
+        - /config/db.sqlite3
+        - -import-file
+        - /enrollment/import.yml
+        command:
+        - /usr/local/bin/srectl-conformance-helper
+        env:
+        - name: AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE
+          value: /secrets/internal/storage.encryption.key
+        - name: X_AUTHELIA_CONFIG
+          value: /configuration.yaml
+        - name: X_AUTHELIA_CONFIG_FILTERS
+          value: template
+        image: ghcr.io/dawid-koldras-home/sre-platform-conformance-helper@sha256:ed703e494eb1f99eabcf47e8ee4e4d607ff35f5041a1b482970ed2bff8bcfdc1
+        imagePullPolicy: IfNotPresent
+        name: sre-conformance-enrollment-sre-syn-platform
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /config
+          name: config-dir
+          readOnly: false
+        - mountPath: /secrets/internal
+          name: secrets
+          readOnly: true
+        - mountPath: /configuration.yaml
+          name: config
+          readOnly: true
+          subPath: configuration.yaml
+        - mountPath: /enrollment
+          name: enrollment-document
+          readOnly: true
+      - args:
+        - -op
+        - provision
+        - -identity
+        - sre-syn-access
+        - -sqlite-path
+        - /config/db.sqlite3
+        - -import-file
+        - /enrollment/import.yml
+        command:
+        - /usr/local/bin/srectl-conformance-helper
+        env:
+        - name: AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE
+          value: /secrets/internal/storage.encryption.key
+        - name: X_AUTHELIA_CONFIG
+          value: /configuration.yaml
+        - name: X_AUTHELIA_CONFIG_FILTERS
+          value: template
+        image: ghcr.io/dawid-koldras-home/sre-platform-conformance-helper@sha256:ed703e494eb1f99eabcf47e8ee4e4d607ff35f5041a1b482970ed2bff8bcfdc1
+        imagePullPolicy: IfNotPresent
+        name: sre-conformance-enrollment-sre-syn-access
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /config
+          name: config-dir
+          readOnly: false
+        - mountPath: /secrets/internal
+          name: secrets
+          readOnly: true
+        - mountPath: /configuration.yaml
+          name: config
+          readOnly: true
+          subPath: configuration.yaml
+        - mountPath: /enrollment
+          name: enrollment-document
+          readOnly: true
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+      - emptyDir: {}
+        name: config-dir
+      - configMap:
+          items:
+          - key: configuration.yaml
+            path: configuration.yaml
+          name: acl-authelia
+        name: config
+      - name: secrets
+        secret:
+          items:
+          - key: identity_validation.reset_password.jwt.hmac.key
+            path: identity_validation.reset_password.jwt.hmac.key
+          - key: session.encryption.key
+            path: session.encryption.key
+          - key: storage.encryption.key
+            path: storage.encryption.key
+          secretName: acl-authelia-secrets
+      - name: users-database
+        secret:
+          items:
+          - key: users_database.yml
+            path: users_database.yml
+          secretName: acl-authelia-users
+      - name: enrollment-document
+        secret:
+          items:
+          - key: totp.yaml
+            path: import.yml
+          secretName: acl-authelia-enrollment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: access-control-identity-provider
+    app.kubernetes.io/name: acl-authelia
+    app.kubernetes.io/part-of: sre-platform
+  name: acl-authelia
+  namespace: acl-live-acceptance
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 9091
+  selector:
+    app.kubernetes.io/component: access-control-identity-provider
+    app.kubernetes.io/name: acl-authelia
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    cert-manager.io/cluster-issuer: sre-tools-letsencrypt
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    sre-platform.io/ingress-type: access-control-acceptance
+  labels:
+    app.kubernetes.io/component: access-control-identity-provider
+    app.kubernetes.io/name: acl-authelia
+    app.kubernetes.io/part-of: sre-platform
+  name: acl-authelia
+  namespace: acl-live-acceptance
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: acl-auth.139.162.145.158.nip.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: acl-authelia
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+  tls:
+  - hosts:
+    - acl-auth.139.162.145.158.nip.io
+    secretName: acl-live-acceptance-authelia-tls
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/component: access-control-identity-provider
+    app.kubernetes.io/name: acl-authelia
+    app.kubernetes.io/part-of: sre-platform
+  name: acl-authelia
+  namespace: acl-live-acceptance
+spec:
+  egress:
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+    ports:
+    - port: 9091
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: access-control-identity-provider
+      app.kubernetes.io/name: acl-authelia
+  policyTypes:
+  - Ingress
+  - Egress
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
