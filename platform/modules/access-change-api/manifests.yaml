@@ -221,7 +221,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:d518c1f10194da9b581433a8af7636d846a026d82ef166d34abbd915ba723ec7"
+        sre.platform.io/config-checksum: "sha256:8c6265f5b139f441fa3928c0a0262d0990c6dca31ab0167e36f28132e653ab66"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -450,6 +450,15 @@ data:
             image:
               digest: sha256:f98c50ad028db76978a50ff887a8bbfaae983bf9e72fceec61c7d342552f3f10
               repository: ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge
+            ingress:
+              authProviderUrl: https://auth.139.162.145.158.nip.io
+              authServiceName: authelia
+              authServiceNamespace: authelia
+              className: nginx
+              clusterIssuerName: sre-tools-letsencrypt
+              enabled: true
+              host: acl-bridge.139.162.145.158.nip.io
+              tlsSecretName: acl-live-acceptance-tls
             upstreamUrl: https://kubernetes.default.svc
           enabled: true
       profile: none

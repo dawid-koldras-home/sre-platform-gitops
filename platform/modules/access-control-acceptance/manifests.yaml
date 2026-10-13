@@ -73,7 +73,7 @@ spec:
       annotations:
         sre.platform.io/accepted-git-revision: task/220-access-control-live-acceptance
         sre.platform.io/break-glass-projection: sha256:3c536529ab68e11b00463d8b034be3b376cd231531be75f4a48fa1fb7f7ae8f7
-        sre.platform.io/content-checksum: sha256:352ac46de4115c24aaeea4f1d72368271bc781f0c0824d8577a6a37cf3e2167a
+        sre.platform.io/content-checksum: sha256:1395f9e7ee6eee3a527e48ce88e8271d8ca343cf0d69420768a7353dd548d1e7
       labels:
         app.kubernetes.io/name: headlamp-identity-bridge
         app.kubernetes.io/part-of: sre-platform
@@ -272,6 +272,12 @@ spec:
     - podSelector:
         matchLabels:
             app.kubernetes.io/name: headlamp
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
     ports:
     - protocol: TCP
       port: 8080
@@ -337,6 +343,42 @@ subjects:
 - kind: ServiceAccount
   name: headlamp-identity-bridge
   namespace: acl-live-acceptance
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: headlamp-identity-bridge-route
+  namespace: acl-live-acceptance
+  labels:
+    app.kubernetes.io/name: headlamp-identity-bridge
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/component: headlamp-identity-bridge
+  annotations:
+    sre-platform.io/ingress-type: access-control-acceptance
+    cert-manager.io/cluster-issuer: sre-tools-letsencrypt
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-method: GET
+    nginx.ingress.kubernetes.io/auth-url: http://authelia.authelia.svc.cluster.local/api/authz/auth-request
+    nginx.ingress.kubernetes.io/auth-signin: https://auth.139.162.145.158.nip.io?rm=$request_method
+    nginx.ingress.kubernetes.io/auth-response-headers: Remote-User,Remote-Groups,Remote-Email,Remote-Id-Token
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - acl-bridge.139.162.145.158.nip.io
+      secretName: acl-live-acceptance-tls
+  rules:
+    - host: acl-bridge.139.162.145.158.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: headlamp-identity-bridge
+                port:
+                  number: 8080
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
