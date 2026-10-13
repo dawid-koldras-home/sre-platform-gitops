@@ -52772,7 +52772,7 @@ spec:
             - --disableMetrics=false
             - --otelConfig=prometheus
             - --metricsPort=8000
-            - --admissionReports=true
+            - --admissionReports=false
             - --autoUpdateWebhooks=true
             - --enableConfigMapCaching=true
             - --enableDeferredLoading=true
@@ -53133,7 +53133,7 @@ metadata:
     app.kubernetes.io/version: 3.2.0
     helm.sh/chart: kyverno-3.2.0
 spec:
-  replicas: 
+  replicas: 1
   revisionHistoryLimit: 10
   strategy:
     rollingUpdate:
@@ -53185,7 +53185,7 @@ spec:
             - --disableMetrics=false
             - --otelConfig=prometheus
             - --metricsPort=8000
-            - --admissionReports=true
+            - --admissionReports=false
             - --aggregateReports=true
             - --policyReports=true
             - --validatingAdmissionPolicyReports=false
