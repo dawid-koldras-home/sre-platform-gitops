@@ -73,7 +73,7 @@ spec:
       annotations:
         sre.platform.io/accepted-git-revision: task/220-access-control-live-acceptance
         sre.platform.io/break-glass-projection: sha256:3c536529ab68e11b00463d8b034be3b376cd231531be75f4a48fa1fb7f7ae8f7
-        sre.platform.io/content-checksum: sha256:b81524932c1481177cf183975907275f23118f58113c10c119cf486bc3e19ca3
+        sre.platform.io/content-checksum: sha256:ff264011005e77e09004cbcfa0f3bcd0217cd75459c5916949f05d9bdf7d6a80
       labels:
         app.kubernetes.io/name: headlamp-identity-bridge
         app.kubernetes.io/part-of: sre-platform
@@ -247,10 +247,10 @@ spec:
       port: 53
   - to:
     - ipBlock:
-        cidr: 10.128.0.1/32
+        cidr: 85.90.247.96/32
     ports:
     - protocol: TCP
-      port: 443
+      port: 6443
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
