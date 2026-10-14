@@ -73,7 +73,7 @@ spec:
       annotations:
         sre.platform.io/accepted-git-revision: task/220-access-control-live-acceptance
         sre.platform.io/break-glass-projection: sha256:3c536529ab68e11b00463d8b034be3b376cd231531be75f4a48fa1fb7f7ae8f7
-        sre.platform.io/content-checksum: sha256:ec48ca0e756adb2869b257a60585dba0e1c9abdedae3ecd4b8817c88755a8d3b
+        sre.platform.io/content-checksum: sha256:dbf588b29faa44737db94a41bed9ec2e367bb3efa3891a1ea7aeee049e482909
       labels:
         app.kubernetes.io/name: headlamp-identity-bridge
         app.kubernetes.io/part-of: sre-platform
@@ -539,6 +539,7 @@ data:
             - policy: 'two_factor'
               domain:
                 - 'acl-bridge.139.162.145.158.nip.io'
+                - 'acl-access.139.162.145.158.nip.io'
 kind: ConfigMap
 metadata:
   labels:
@@ -990,6 +991,95 @@ spec:
   policyTypes:
   - Ingress
   - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: access-change-api-acceptance
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/component: access-change-api
+  annotations:
+    sre-platform.io/ingress-type: access-change-api-acceptance
+    cert-manager.io/cluster-issuer: sre-tools-letsencrypt
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/auth-method: GET
+    nginx.ingress.kubernetes.io/auth-url: http://acl-authelia.acl-live-acceptance.svc.cluster.local/api/authz/auth-request
+    nginx.ingress.kubernetes.io/auth-signin: https://acl-auth.139.162.145.158.nip.io?rm=$request_method
+    nginx.ingress.kubernetes.io/auth-response-headers: Remote-User,Remote-Groups,Remote-Email,Remote-Id-Token
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - acl-access.139.162.145.158.nip.io
+      secretName: acl-access-acceptance-tls
+  rules:
+    - host: acl-access.139.162.145.158.nip.io
+      http:
+        paths:
+          - path: ^/api/v1/access/(?:policies|policies/[^/]+|requests|requests/[^/]+|actions)$
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: access-change-api
+                port:
+                  number: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: access-change-api-acceptance-ingress
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/component: access-change-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: access-change-api
+      app.kubernetes.io/instance: access-change-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: access-change-api-acceptance-acme-solver
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/component: access-change-api
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8089
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application

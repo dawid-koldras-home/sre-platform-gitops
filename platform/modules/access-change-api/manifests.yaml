@@ -221,7 +221,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:c5e9b8509fbcd4b43402850e86d55e69b7a7d12e13311f2a601364aec52691f2"
+        sre.platform.io/config-checksum: "sha256:a9f54c6a54948b07d94e54d39de92890b7f376bbdac4f805a7c4bae3ee1faf48"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -240,6 +240,7 @@ spec:
             - --config=/etc/access-change/customer.yaml
             - --listen=:8080
             - --allowed-origin=https://headlamp.example.com
+            - --allowed-origin=https://acl-access.139.162.145.158.nip.io
             - --argo-application=acl-live-acceptance
             - --argo-namespace=argocd
             - --break-glass-grants-namespace=acl-live-acceptance
@@ -422,6 +423,7 @@ data:
           config:
             allowedOrigin:
             - https://headlamp.example.com
+            - https://acl-access.139.162.145.158.nip.io
             argoApplication: acl-live-acceptance
             argoNamespace: argocd
             audit:
@@ -436,6 +438,12 @@ data:
           enabled: true
         access-control-acceptance:
           config:
+            accessChangeApiRoute:
+              className: nginx
+              clusterIssuerName: sre-tools-letsencrypt
+              enabled: true
+              host: acl-access.139.162.145.158.nip.io
+              tlsSecretName: acl-access-acceptance-tls
             allowedGroups:
             - sre
             - acl-viewers
