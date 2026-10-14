@@ -221,7 +221,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:8d855876f90820147ae411016eda4842842fadfdf9eab1c2b28547f97f3ff32f"
+        sre.platform.io/config-checksum: "sha256:c5e9b8509fbcd4b43402850e86d55e69b7a7d12e13311f2a601364aec52691f2"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -390,12 +390,11 @@ data:
         - name: acl-access-admins
           role: accessAdministrator
           scope:
+            clusterWide: true
             clusters:
             - lke643351
             environments:
             - dev
-            namespaces:
-            - acl-demo
           subjects:
           - kind: user
             name: alice@example.com
@@ -456,6 +455,14 @@ data:
             - 85.90.247.96/32
             apiEgressPorts:
             - 6443
+            audit:
+              caSecretName: audit-ca
+              peer:
+                app.kubernetes.io/component: sink
+              peerNamespace:
+                kubernetes.io/metadata.name: audit-conformance
+              tokenSecretName: audit-token
+              url: https://audit-sink.audit-conformance.svc.cluster.local:8443
             identityProvider:
               className: nginx
               clusterIssuerName: sre-tools-letsencrypt
