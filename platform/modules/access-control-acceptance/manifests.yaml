@@ -73,7 +73,7 @@ spec:
       annotations:
         sre.platform.io/accepted-git-revision: task/220-access-control-live-acceptance
         sre.platform.io/break-glass-projection: sha256:3c536529ab68e11b00463d8b034be3b376cd231531be75f4a48fa1fb7f7ae8f7
-        sre.platform.io/content-checksum: sha256:ff264011005e77e09004cbcfa0f3bcd0217cd75459c5916949f05d9bdf7d6a80
+        sre.platform.io/content-checksum: sha256:ec48ca0e756adb2869b257a60585dba0e1c9abdedae3ecd4b8817c88755a8d3b
       labels:
         app.kubernetes.io/name: headlamp-identity-bridge
         app.kubernetes.io/part-of: sre-platform
@@ -108,6 +108,12 @@ spec:
         - --groups-header=Remote-Groups
         - --listen-addr=:8080
         - --break-glass-grants-file=/etc/identity-bridge/break-glass/approved-break-glass-grants.json
+        - --audit-sink-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
+        - --audit-sink-ca-file=/etc/identity-bridge/audit-ca/ca.crt
+        - --audit-token-path=/etc/identity-bridge/audit-token/token
+        - --bridge-image-digest=ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:f98c50ad028db76978a50ff887a8bbfaae983bf9e72fceec61c7d342552f3f10
+        - --audit-impersonating-namespace=acl-live-acceptance
+        - --audit-impersonating-name=headlamp-identity-bridge
         ports:
         - name: http
           containerPort: 8080
@@ -154,6 +160,12 @@ spec:
         - name: break-glass-grants
           mountPath: /etc/identity-bridge/break-glass
           readOnly: true
+        - name: audit-sink-ca
+          mountPath: /etc/identity-bridge/audit-ca
+          readOnly: true
+        - name: audit-sink-token
+          mountPath: /etc/identity-bridge/audit-token
+          readOnly: true
       volumes:
       - name: kube-api-access
         projected:
@@ -182,6 +194,18 @@ spec:
           items:
           - key: approved-break-glass-grants.json
             path: approved-break-glass-grants.json
+      - name: audit-sink-ca
+        secret:
+          secretName: audit-ca
+          items:
+          - key: ca.crt
+            path: ca.crt
+      - name: audit-sink-token
+        secret:
+          secretName: audit-token
+          items:
+          - key: token
+            path: token
 ---
 apiVersion: v1
 kind: Service
@@ -251,6 +275,16 @@ spec:
     ports:
     - protocol: TCP
       port: 6443
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: audit-conformance
+      podSelector:
+        matchLabels:
+            app.kubernetes.io/component: sink
+    ports:
+    - protocol: TCP
+      port: 8443
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -348,6 +382,33 @@ subjects:
 - kind: ServiceAccount
   name: headlamp-identity-bridge
   namespace: acl-live-acceptance
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: access-control-acceptance-identity-bridge-sink-ingress
+  namespace: audit-conformance
+  labels:
+    app.kubernetes.io/name: headlamp-identity-bridge
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/component: headlamp-identity-bridge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: sink
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: acl-live-acceptance
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: headlamp-identity-bridge
+    ports:
+    - protocol: TCP
+      port: 8443
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
