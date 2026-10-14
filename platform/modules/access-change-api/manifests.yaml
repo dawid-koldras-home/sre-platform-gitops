@@ -221,7 +221,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:a9f54c6a54948b07d94e54d39de92890b7f376bbdac4f805a7c4bae3ee1faf48"
+        sre.platform.io/config-checksum: "sha256:2b2dcb772e49ddd051937e0c97dfb5a1f8f6b11db8bc1005c865ee52fc3391e8"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -233,7 +233,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: access-change-api
-          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:fa83c3ab2c4cb56ad1a9b2614330cb611101d4587c7a266aed549a18df2a4fa6"
+          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:791af79f7f5b173cb2d2e558aaaa5ce8bcc257216fc136741c49303805bb6e0d"
           imagePullPolicy: IfNotPresent
           workingDir: /app
           args:
@@ -247,7 +247,7 @@ spec:
             - --audit-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
             - --audit-ca-file=/etc/access-change/audit/ca.crt
             - --audit-token-file=/etc/access-change/audit/token
-            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:fa83c3ab2c4cb56ad1a9b2614330cb611101d4587c7a266aed549a18df2a4fa6
+            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:791af79f7f5b173cb2d2e558aaaa5ce8bcc257216fc136741c49303805bb6e0d
             - --service-namespace=platform
             - --service-name=access-change-api
             - --git-credentials-file=/etc/access-change/git-credentials/credentials
@@ -433,7 +433,7 @@ data:
             breakGlassGrantsNamespace: acl-live-acceptance
             gitCredentialsSecretName: access-change-api-git-credentials
             image:
-              digest: sha256:fa83c3ab2c4cb56ad1a9b2614330cb611101d4587c7a266aed549a18df2a4fa6
+              digest: sha256:791af79f7f5b173cb2d2e558aaaa5ce8bcc257216fc136741c49303805bb6e0d
               repository: ghcr.io/dawid-koldras-home/access-change-api
           enabled: true
         access-control-acceptance:
