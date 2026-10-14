@@ -1034,29 +1034,221 @@ spec:
         maxDuration: 3m
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  annotations:
+    platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
+    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-policies: acl-viewers
+    platform.sre-platform.io/access-role: viewer
+    platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
+    platform.sre-platform.io/access-scope: namespaced
+  labels:
+    app.kubernetes.io/managed-by: srectl-accesscontrol
+    app.kubernetes.io/part-of: sre-platform
+  name: sre-acl-v1alpha1-viewer-ns-acl-demo
+  namespace: acl-demo
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - pods/log
+  - events
+  - services
+  - endpoints
+  - persistentvolumeclaims
+  - resourcequotas
+  - limitranges
+  - replicationcontrollers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  - daemonsets
+  - replicasets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  - cronjobs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  - networkpolicies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways
+  - httproutes
+  - grpcroutes
+  - tcproutes
+  - tlsroutes
+  - referencegrants
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - snapshot.storage.k8s.io
+  resources:
+  - volumesnapshots
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  - applicationsets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kyverno.io
+  resources:
+  - policies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kyverno.io
+  resources:
+  - policyexceptions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  - issuers
+  - orders
+  - challenges
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - roles
+  - rolebindings
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - wgpolicyk8s.io
+  resources:
+  - policies
+  - policyreports
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - acme.cert-manager.io
+  resources:
+  - orders
+  - challenges
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
     platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
-    platform.sre-platform.io/access-policies: acl-operators
-    platform.sre-platform.io/access-role: operator
-    platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-OPS-01,R-OPS-02,R-OPS-03,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
+    platform.sre-platform.io/access-policies: acl-viewers
+    platform.sre-platform.io/access-role: viewer
+    platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
     platform.sre-platform.io/access-scope: namespaced
     platform.sre-platform.io/access-subject-kind: Group
   labels:
     app.kubernetes.io/managed-by: srectl-accesscontrol
     app.kubernetes.io/part-of: sre-platform
-  name: sre-acl-v1alpha1-operator-ns-acl-demo-e824602bf2
+  name: sre-acl-v1alpha1-viewer-ns-acl-demo-e4f2a8cbe8
   namespace: acl-demo
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: sre-acl-v1alpha1-operator-ns-acl-demo
+  name: sre-acl-v1alpha1-viewer-ns-acl-demo
 subjects:
 - apiGroup: rbac.authorization.k8s.io
   kind: Group
-  name: acl-operators
+  name: acl-viewers
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -1064,7 +1256,7 @@ metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
     platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
-    platform.sre-platform.io/access-policies: acl-operators,acl-viewers
+    platform.sre-platform.io/access-policies: acl-operators
     platform.sre-platform.io/access-role: operator
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-OPS-01,R-OPS-02,R-OPS-03,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
     platform.sre-platform.io/access-scope: namespaced
@@ -1285,7 +1477,7 @@ metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
     platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
-    platform.sre-platform.io/access-policies: acl-viewers
+    platform.sre-platform.io/access-policies: acl-operators
     platform.sre-platform.io/access-role: operator
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-OPS-01,R-OPS-02,R-OPS-03,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
     platform.sre-platform.io/access-scope: namespaced
@@ -1293,7 +1485,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: srectl-accesscontrol
     app.kubernetes.io/part-of: sre-platform
-  name: sre-acl-v1alpha1-operator-ns-acl-demo-c2943b1388
+  name: sre-acl-v1alpha1-operator-ns-acl-demo-e824602bf2
   namespace: acl-demo
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -1302,7 +1494,7 @@ roleRef:
 subjects:
 - apiGroup: rbac.authorization.k8s.io
   kind: Group
-  name: acl-viewers
+  name: acl-operators
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -1310,7 +1502,167 @@ metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
     platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
-    platform.sre-platform.io/access-policies: acl-operators,acl-viewers
+    platform.sre-platform.io/access-policies: acl-viewers
+    platform.sre-platform.io/access-role: viewer
+    platform.sre-platform.io/access-rule-ids: R-COMMON-02,R-COMMON-03,R-COMMON-04,R-COMMON-05,R-COMMON-06,R-COMMON-07,R-COMMON-18,R-COMMON-19,R-COMMON-20,R-COMMON-21,R-VIEW-02,R-VIEW-04,R-VIEW-06,R-VIEW-08,R-VIEW-10,R-VIEW-11,R-VIEW-12,R-VIEW-15,R-VIEW-17
+    platform.sre-platform.io/access-scope: cluster
+  labels:
+    app.kubernetes.io/managed-by: srectl-accesscontrol
+    app.kubernetes.io/part-of: sre-platform
+  name: sre-acl-v1alpha1-viewer-cluster
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  - persistentvolumes
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  - csidrivers
+  - csinodes
+  - volumeattachments
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - scheduling.k8s.io
+  resources:
+  - priorityclasses
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingressclasses
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gatewayclasses
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - snapshot.storage.k8s.io
+  resources:
+  - volumesnapshotclasses
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - selfsubjectaccessreviews
+  - selfsubjectrulesreviews
+  verbs:
+  - create
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - snapshot.storage.k8s.io
+  resources:
+  - volumesnapshotcontents
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  - clusterrolebindings
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - argoproj.io
+  resources:
+  - appprojects
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - kyverno.io
+  resources:
+  - clusterpolicies
+  - clusterpolicyreports
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - reports.kyverno.io
+  resources:
+  - policies
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - clusterissuers
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - apiextensions.crossplane.io
+  resources:
+  - compositeresourcedefinitions
+  - compositions
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - storage.platform.io
+  resources:
+  - xobjectbuckets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - wgpolicyk8s.io
+  resources:
+  - clusterpolicies
+  - clusterpolicyreports
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - s3.aws.upbound.io
+  resources:
+  - buckets
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
+    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-policies: acl-operators
     platform.sre-platform.io/access-role: operator
     platform.sre-platform.io/access-rule-ids: R-COMMON-02,R-COMMON-03,R-COMMON-04,R-COMMON-05,R-COMMON-06,R-COMMON-07,R-COMMON-18,R-COMMON-19,R-COMMON-20,R-COMMON-21,R-VIEW-02,R-VIEW-04,R-VIEW-06,R-VIEW-08,R-VIEW-10,R-VIEW-11,R-VIEW-12,R-VIEW-15,R-VIEW-17
     platform.sre-platform.io/access-scope: cluster
