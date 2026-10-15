@@ -1,19 +1,7 @@
 apiVersion: v1
 data:
   access-policy.yaml: |
-    policies:
-    - name: t220-k3b-mustfail
-      role: viewer
-      scope:
-        clusters:
-        - lke643351
-        environments:
-        - dev
-        namespaces:
-        - acl-demo
-      subjects:
-      - kind: group
-        name: acl-viewers
+    policies: []
     privilegeCeiling:
       roles:
       - accessAdministrator
@@ -26,7 +14,7 @@ metadata:
   annotations:
     access.sre.platform.io/customer-id: acl-stagec
     access.sre.platform.io/environment: dev
-    access.sre.platform.io/request-id: f89ffe39d6fda929
+    access.sre.platform.io/request-id: 7b56acb909da8370
     access.sre.platform.io/submitted-by: sre-syn-access
   labels:
     app.kubernetes.io/component: access-change
