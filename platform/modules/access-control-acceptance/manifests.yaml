@@ -52,7 +52,7 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/component: headlamp-identity-bridge
 data:
-  allow-list.json: '{"users":["alice@example.com","owen@example.com","pat@example.com","sre-syn-access","sre-syn-breakglass","sre-syn-operator","sre-syn-platform","sre-syn-viewer","vera@example.com"],"groups":["acl-access-admins","acl-operators","acl-platform-admins","acl-viewers","sre"]}'
+  allow-list.json: '{"users":["alice@example.com","owen@example.com","pat@example.com","sre-syn-access","sre-syn-operator","sre-syn-platform","sre-syn-viewer","vera@example.com"],"groups":["acl-access-admins","acl-operators","acl-platform-admins","acl-viewers","sre"]}'
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -73,7 +73,7 @@ spec:
       annotations:
         sre.platform.io/accepted-git-revision: task/220-access-control-live-acceptance
         sre.platform.io/break-glass-projection: sha256:3c536529ab68e11b00463d8b034be3b376cd231531be75f4a48fa1fb7f7ae8f7
-        sre.platform.io/content-checksum: sha256:cbb9db526f5a702716a4c219b2a0457be6b7abe0f0c8b7db4d90554c07212e1b
+        sre.platform.io/content-checksum: sha256:dbf588b29faa44737db94a41bed9ec2e367bb3efa3891a1ea7aeee049e482909
       labels:
         app.kubernetes.io/name: headlamp-identity-bridge
         app.kubernetes.io/part-of: sre-platform
@@ -338,7 +338,6 @@ rules:
   - owen@example.com
   - pat@example.com
   - sre-syn-access
-  - sre-syn-breakglass
   - sre-syn-operator
   - sre-syn-platform
   - sre-syn-viewer
@@ -833,57 +832,6 @@ spec:
         image: ghcr.io/dawid-koldras-home/sre-platform-conformance-helper@sha256:ed703e494eb1f99eabcf47e8ee4e4d607ff35f5041a1b482970ed2bff8bcfdc1
         imagePullPolicy: IfNotPresent
         name: sre-conformance-enrollment-sre-syn-access
-        resources:
-          limits:
-            cpu: 200m
-            memory: 128Mi
-          requests:
-            cpu: 50m
-            memory: 64Mi
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
-          seccompProfile:
-            type: RuntimeDefault
-        volumeMounts:
-        - mountPath: /config
-          name: config-dir
-          readOnly: false
-        - mountPath: /secrets/internal
-          name: secrets
-          readOnly: true
-        - mountPath: /configuration.yaml
-          name: config
-          readOnly: true
-          subPath: configuration.yaml
-        - mountPath: /enrollment
-          name: enrollment-document
-          readOnly: true
-      - args:
-        - -op
-        - provision
-        - -identity
-        - sre-syn-breakglass
-        - -sqlite-path
-        - /config/db.sqlite3
-        - -import-file
-        - /enrollment/import.yml
-        command:
-        - /usr/local/bin/srectl-conformance-helper
-        env:
-        - name: AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE
-          value: /secrets/internal/storage.encryption.key
-        - name: X_AUTHELIA_CONFIG
-          value: /configuration.yaml
-        - name: X_AUTHELIA_CONFIG_FILTERS
-          value: template
-        image: ghcr.io/dawid-koldras-home/sre-platform-conformance-helper@sha256:ed703e494eb1f99eabcf47e8ee4e4d607ff35f5041a1b482970ed2bff8bcfdc1
-        imagePullPolicy: IfNotPresent
-        name: sre-conformance-enrollment-sre-syn-breakglass
         resources:
           limits:
             cpu: 200m

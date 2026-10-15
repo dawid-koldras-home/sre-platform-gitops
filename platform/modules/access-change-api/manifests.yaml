@@ -221,7 +221,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:4f2ffd64995fb9f7c939e2bd2c7aa8c59ad17c570d3679d2614a77ff0785cb39"
+        sre.platform.io/config-checksum: "sha256:3d2c5cf4108aae0b9b4b819173cbe2d7373002e4dab54ae0d5f715f33d0908e5"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -461,7 +461,6 @@ data:
             - sre-syn-operator
             - sre-syn-platform
             - sre-syn-access
-            - sre-syn-breakglass
             apiEgressCIDRs:
             - 85.90.247.96/32
             apiEgressPorts:
@@ -487,7 +486,6 @@ data:
                 - sre-syn-operator
                 - sre-syn-platform
                 - sre-syn-access
-                - sre-syn-breakglass
                 key: totp.yaml
                 lifecycle: provision
                 secretName: acl-authelia-enrollment
