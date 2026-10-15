@@ -1,12 +1,11 @@
 apiVersion: v1
 data:
-  approved-break-glass-grants.json: '[{"grantId":"l220-fix-d17ccce7","subject":"sre-syn-breakglass","requester":"sre-syn-platform","approvals":[{"identity":"sre-syn-access","authorized":true,"time":"2026-10-15T14:00:10Z"},{"identity":"sre-syn-operator","authorized":true,"time":"2026-10-15T14:00:10Z"}],"window":{"notBefore":"2026-10-15T14:00:10Z","expiresAt":"2026-10-15T14:11:10Z"},"namespaces":["acl-demo"],"reason":"TASK-220
-    stage L fresh break-glass elevation after impersonation fix","state":"approved"}]'
+  approved-break-glass-grants.json: '[]'
 kind: ConfigMap
 metadata:
   annotations:
-    sre.platform.io/break-glass-grants-digest: sha256:69d98bafce12927187351767039123c68e464cb35464fb7406ec1608d6766449
-    sre.platform.io/break-glass-source-revision: 66d61144200bea7e2e055e610370995cb9ecff61
+    sre.platform.io/break-glass-grants-digest: sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
+    sre.platform.io/break-glass-source-revision: ""
   labels:
     app.kubernetes.io/component: access-change
     app.kubernetes.io/managed-by: access-change-api
