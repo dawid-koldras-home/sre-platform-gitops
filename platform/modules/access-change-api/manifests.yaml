@@ -221,7 +221,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:2b2dcb772e49ddd051937e0c97dfb5a1f8f6b11db8bc1005c865ee52fc3391e8"
+        sre.platform.io/config-checksum: "sha256:955d012853e9e2a67fe4e0b0b0a1c7ac64aa9ed47e0a1206e4ff0a3fbc7c9952"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -354,7 +354,7 @@ data:
       accessPolicy:
         policies:
         - name: acl-viewers
-          role: viewer
+          role: operator
           scope:
             clusters:
             - lke643351
