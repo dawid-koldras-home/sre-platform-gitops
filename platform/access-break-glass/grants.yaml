@@ -1,11 +1,13 @@
 apiVersion: v1
 data:
-  approved-break-glass-grants.json: '[]'
+  approved-break-glass-grants.json: '[{"grantId":"l220-bg-demo","subject":"sre-syn-breakglass","requester":"sre-syn-access","approvals":[{"identity":"breakglass-approver-a@example.invalid","authorized":true,"time":"2026-10-15T12:17:03Z"},{"identity":"breakglass-approver-b@example.invalid","authorized":true,"time":"2026-10-15T12:17:03Z"}],"window":{"notBefore":"2026-10-15T12:17:03Z","expiresAt":"2026-10-15T12:31:03Z"},"namespaces":["acl-demo"],"reason":"TASK-220
+    Stage L: time-bounded read-only elevation to list pods in acl-demo during a controlled
+    break-glass exercise","state":"approved"}]'
 kind: ConfigMap
 metadata:
   annotations:
-    sre.platform.io/break-glass-grants-digest: sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945
-    sre.platform.io/break-glass-source-revision: ""
+    sre.platform.io/break-glass-grants-digest: sha256:1f4605d6413994946bab5cde7aea06cf01839608e0ef9cbc40437b384edbd1a1
+    sre.platform.io/break-glass-source-revision: cee16660a941c9e8b347f0a4a6b0869dd9004c40
   labels:
     app.kubernetes.io/component: access-change
     app.kubernetes.io/managed-by: access-change-api
