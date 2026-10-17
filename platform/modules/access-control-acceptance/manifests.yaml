@@ -540,6 +540,7 @@ data:
               domain:
                 - 'acl-bridge.139.162.145.158.nip.io'
                 - 'acl-access.139.162.145.158.nip.io'
+                - 'acl-headlamp.139.162.145.158.nip.io'
 kind: ConfigMap
 metadata:
   labels:
@@ -567,6 +568,8 @@ spec:
       app.kubernetes.io/name: acl-authelia
   template:
     metadata:
+      annotations:
+        sre.platform.io/config-checksum: sha256:ef33c0799ee59c2b8f0c41993ed5da6e30071ccade19ffb234e8801e1de4900a
       labels:
         app.kubernetes.io/component: access-control-identity-provider
         app.kubernetes.io/name: acl-authelia
