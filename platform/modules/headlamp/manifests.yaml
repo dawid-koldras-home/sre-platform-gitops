@@ -4509,6 +4509,27 @@ subjects:
 ---
 # Source: headlamp/templates/extra-manifests.yaml
 apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+    platform.sre-platform.io/access-identity: cluster-admin-users
+  labels:
+    app.kubernetes.io/component: headlamp-identity-bridge
+    app.kubernetes.io/managed-by: srectl
+    app.kubernetes.io/name: sre-identity-bridge
+    app.kubernetes.io/part-of: sre-platform
+  name: sre-identity-bridge-cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: platform-admin
+---
+# Source: headlamp/templates/extra-manifests.yaml
+apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   annotations:
