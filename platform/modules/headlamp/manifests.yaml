@@ -62,6 +62,27 @@ spec:
     ports:
     - protocol: TCP
       port: 8443
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: gatus
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/instance: gatus
+          app.kubernetes.io/name: gatus
+    ports:
+    - protocol: TCP
+      port: 8080
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: holmes
+      podSelector:
+        matchLabels:
+          app: holmes
+    ports:
+    - protocol: TCP
+      port: 5050
 ---
 # Source: headlamp/templates/extra-manifests.yaml
 apiVersion: networking.k8s.io/v1
@@ -87,6 +108,63 @@ spec:
     ports:
     - protocol: TCP
       port: 8080
+---
+# Source: headlamp/templates/extra-manifests.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sre-identity-bridge-service-proxy-ingress
+  namespace: gatus
+  labels:
+    app.kubernetes.io/name: sre-identity-bridge
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/component: headlamp-identity-bridge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: gatus
+      app.kubernetes.io/name: gatus
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: headlamp
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: sre-identity-bridge
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+# Source: headlamp/templates/extra-manifests.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sre-identity-bridge-service-proxy-ingress
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: sre-identity-bridge
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/component: headlamp-identity-bridge
+spec:
+  podSelector:
+    matchLabels:
+      app: holmes
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: headlamp
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: sre-identity-bridge
+    ports:
+    - protocol: TCP
+      port: 5050
 ---
 # Source: headlamp/templates/extra-manifests.yaml
 apiVersion: networking.k8s.io/v1
