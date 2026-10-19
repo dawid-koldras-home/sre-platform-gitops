@@ -4208,10 +4208,10 @@ kind: ClusterRole
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: ""
     platform.sre-platform.io/access-role: identity-bridge
-    platform.sre-platform.io/access-rule-ids: R-BRIDGE-01,R-BRIDGE-02
+    platform.sre-platform.io/access-rule-ids: R-BRIDGE-01,R-BRIDGE-02,R-BRIDGE-03,R-BRIDGE-04
     platform.sre-platform.io/access-scope: cluster
   labels:
     app.kubernetes.io/managed-by: srectl-accesscontrol
@@ -4234,6 +4234,18 @@ rules:
   - groups
   verbs:
   - impersonate
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
 ---
 # Source: headlamp/templates/extra-manifests.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -4241,10 +4253,10 @@ kind: ClusterRoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: ""
     platform.sre-platform.io/access-role: identity-bridge
-    platform.sre-platform.io/access-rule-ids: R-BRIDGE-01,R-BRIDGE-02
+    platform.sre-platform.io/access-rule-ids: R-BRIDGE-01,R-BRIDGE-02,R-BRIDGE-03,R-BRIDGE-04
     platform.sre-platform.io/access-scope: cluster
     platform.sre-platform.io/access-subject-kind: ServiceAccount
   labels:
@@ -4287,7 +4299,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -4480,7 +4492,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -4673,7 +4685,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -4866,7 +4878,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -5059,7 +5071,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -5252,7 +5264,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -5445,7 +5457,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -5638,7 +5650,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -5831,7 +5843,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -6024,7 +6036,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -6217,7 +6229,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -6410,7 +6422,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -6603,7 +6615,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -6796,7 +6808,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -6989,7 +7001,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -7182,7 +7194,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -7375,7 +7387,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -7568,7 +7580,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -7761,7 +7773,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -7954,7 +7966,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8147,7 +8159,7 @@ kind: Role
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8405,7 +8417,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8431,7 +8443,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8459,7 +8471,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8485,7 +8497,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8513,7 +8525,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8539,7 +8551,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8567,7 +8579,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8593,7 +8605,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8621,7 +8633,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8647,7 +8659,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8675,7 +8687,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8701,7 +8713,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8729,7 +8741,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8755,7 +8767,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8783,7 +8795,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8809,7 +8821,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8837,7 +8849,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8863,7 +8875,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8891,7 +8903,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8917,7 +8929,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8945,7 +8957,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8971,7 +8983,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -8999,7 +9011,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9025,7 +9037,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9053,7 +9065,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9079,7 +9091,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9107,7 +9119,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9133,7 +9145,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9161,7 +9173,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9187,7 +9199,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9215,7 +9227,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9241,7 +9253,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9269,7 +9281,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9295,7 +9307,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9323,7 +9335,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9349,7 +9361,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9377,7 +9389,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9403,7 +9415,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9431,7 +9443,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9457,7 +9469,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9485,7 +9497,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9511,7 +9523,7 @@ kind: RoleBinding
 metadata:
   annotations:
     platform.sre-platform.io/access-contract: headlamp-rbac.sre.platform.io/v1alpha1
-    platform.sre-platform.io/access-matrix-digest: sha256:66e3759519f45a55c4c497d4abe948e36f65ddd102c204d0afa45234cf7c561b
+    platform.sre-platform.io/access-matrix-digest: sha256:9e80c7ddea574c8a927d1494f0f83207755ef31a5b2a12d2402a12faeb027141
     platform.sre-platform.io/access-policies: platform-read-only
     platform.sre-platform.io/access-role: viewer
     platform.sre-platform.io/access-rule-ids: R-COMMON-01,R-COMMON-08,R-COMMON-09,R-COMMON-10,R-COMMON-11,R-COMMON-12,R-COMMON-13,R-COMMON-14,R-COMMON-15,R-COMMON-16,R-COMMON-17,R-VIEW-01,R-VIEW-03,R-VIEW-05,R-VIEW-07,R-VIEW-09,R-VIEW-13,R-VIEW-14,R-VIEW-16
@@ -9907,7 +9919,7 @@ spec:
             app.kubernetes.io/name: sre-identity-bridge
       containers:
       - name: bridge
-        image: ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:3932563d524c3ca2bfd691d8ef907b0e14d41856b91443c3c97b63eb87e63b4d
+        image: ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:2d46303f6485a0aea012cc2b4820d1369f4d65cb1b88ddd12ddc87895fb16884
         imagePullPolicy: IfNotPresent
         args:
         - --upstream-url=https://kubernetes.default.svc
@@ -9917,10 +9929,11 @@ spec:
         - --username-header=Remote-User
         - --groups-header=Remote-Groups
         - --listen-addr=:8080
+        - --enable-direct-service-proxy
         - --audit-sink-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
         - --audit-sink-ca-file=/etc/identity-bridge/audit-ca/ca.crt
         - --audit-token-path=/etc/identity-bridge/audit-token/token
-        - --bridge-image-digest=ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:3932563d524c3ca2bfd691d8ef907b0e14d41856b91443c3c97b63eb87e63b4d
+        - --bridge-image-digest=ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:2d46303f6485a0aea012cc2b4820d1369f4d65cb1b88ddd12ddc87895fb16884
         - --audit-impersonating-namespace=headlamp
         - --audit-impersonating-name=sre-identity-bridge
         ports:
