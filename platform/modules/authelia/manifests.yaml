@@ -38,6 +38,19 @@ spec:
           matchLabels:
             kubernetes.io/metadata.name: kube-system
 ---
+# Source: authelia/templates/extraObjects.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+  labels:
+    app.kubernetes.io/managed-by: srectl
+    app.kubernetes.io/part-of: sre-platform
+    sre.platform.io/component: external-secrets
+  name: external-secrets
+  namespace: authelia
+---
 # Source: authelia/templates/configMap.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -168,7 +181,7 @@ data:
         disable: true
         custom_url: ''
       password_change:
-        disable: false
+        disable: true
       refresh_interval: '5 minutes'
       file:
         path: '/config/authelia/users/users_database.yml'
@@ -252,15 +265,17 @@ kind: PersistentVolumeClaim
 metadata:
   name: authelia
   namespace: authelia
-  labels: 
+  labels:
     app.kubernetes.io/name: authelia
     app.kubernetes.io/instance: authelia
     app.kubernetes.io/version: 4.39.24
     app.kubernetes.io/managed-by: Helm
     helm.sh/chart: authelia-0.11.22
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes:
-  - ReadWriteOnce
+    - ReadWriteOnce
   resources:
     requests:
       storage: 1Gi
@@ -301,6 +316,8 @@ metadata:
     app.kubernetes.io/version: 4.39.24
     app.kubernetes.io/managed-by: Helm
     helm.sh/chart: authelia-0.11.22
+  annotations: 
+    argocd.argoproj.io/sync-wave: "10"
 spec:
   selector:
     matchLabels: 
@@ -323,8 +340,9 @@ spec:
         app.kubernetes.io/managed-by: Helm
         helm.sh/chart: authelia-0.11.22
       annotations:
-        authelia.com/checksum-config: 33f05cd330d4f962d5b5144de9a8eeb887b14c4c5f4565270caa9fa70b87e783
+        authelia.com/checksum-config: 8df4fd213b32fc6ac9bc8725502495c75936f93b06c76f3d58ce7ba217a4170c
         
+        argocd.argoproj.io/sync-wave: "10"
     spec:
       hostNetwork: false
       hostPID: false
@@ -446,7 +464,10 @@ spec:
             path: storage.encryption.key
       - name: users-database
         secret:
-          secretName: authelia-users
+          items:
+          - key: users_database.yml
+            path: users_database.yml
+          secretName: authelia-users-database
 ---
 # Source: authelia/templates/ingress.yaml
 apiVersion: networking.k8s.io/v1
@@ -499,3 +520,28 @@ spec:
     - http01:
         ingress:
           ingressClassName: nginx
+---
+# Source: authelia/templates/extraObjects.yaml
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+  labels:
+    app.kubernetes.io/managed-by: srectl
+    app.kubernetes.io/part-of: sre-platform
+    sre.platform.io/component: external-secrets
+  name: platform-secret-store
+  namespace: authelia
+spec:
+  provider:
+    vault:
+      auth:
+        kubernetes:
+          mountPath: kubernetes
+          role: external-secrets-authelia
+          serviceAccountRef:
+            name: external-secrets
+      path: secret
+      server: http://openbao.openbao.svc.cluster.local:8200
+      version: v2

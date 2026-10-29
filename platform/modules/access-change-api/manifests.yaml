@@ -1,0 +1,1317 @@
+---
+# Source: access-change-api/templates/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: access-change-api
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/instance: access-change-api
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: access-change-api
+---
+# Source: access-change-api/templates/networkpolicy.yaml
+# The API accepts submissions and answers status reads; it writes nothing
+# except through its own Git transaction and the audit sink, each tightened by
+# its own validation. Egress is DNS, the Kubernetes API server for the Argo
+# observation, the GitOps repository (https), the review workflow and the
+# audit sink, all reached on the standard TLS port.
+#
+# Ingress is denied entirely by this policy. The only source ever permitted is
+# the ingress controller that publishes the bounded same-origin route, and that
+# allowance is rendered separately - and only when the route is enabled - by
+# internal/resolver/accesschange.go. It is deliberately NOT a same-namespace
+# podSelector: a workflow in this namespace that could reach the API directly
+# would be a trusted identity proxy, and the API's whole identity model is that
+# only the forward-auth proxy may assert Remote-User/Remote-Groups.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: access-change-api
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/instance: access-change-api
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: access-change-api
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  # An empty rule list under an explicit Ingress policy type is deny-all, which
+  # is the intent. Dropping Ingress from policyTypes to make the policy look
+  # empty would leave the pod's ingress unrestricted instead.
+  ingress: []
+  egress:
+    - to: []
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to: []
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
+    # The attribution sink terminates TLS on 8443 (its Service port), which is
+    # not the standard 443 the repository and review workflow use. NetworkPolicy
+    # cannot match a hostname, so this allowance is by port only; the sink is the
+    # only 8443 destination the API is ever configured to reach.
+    - to: []
+      ports:
+        - port: 8443
+          protocol: TCP
+    # OpenBao credential provisioning: in-cluster service only, scoped by
+    # namespace/pod selector and exact port. No 0.0.0.0/0 or CIDR allowance.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: "openbao"
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openbao
+      ports:
+        - port: 8443
+          protocol: TCP
+---
+# Source: access-change-api/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-change-api
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/instance: access-change-api
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: access-change-api
+automountServiceAccountToken: true
+---
+# Source: access-change-api/templates/role.yaml
+# The role exists only to observe the Argo CD Application the API reports
+# convergence from. It carries exactly one verb on exactly one resource: the
+# API never patches, never deletes and never lists other tenants' state.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: access-change-api-argo-observer
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/instance: access-change-api
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: access-change-api
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get"]
+---
+# Source: access-change-api/templates/rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: access-change-api-argo-observer
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/instance: access-change-api
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: access-change-api
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: access-change-api-argo-observer
+subjects:
+  - kind: ServiceAccount
+    name: access-change-api
+    namespace: access-change-api
+---
+# Source: access-change-api/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: access-change-api
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/instance: access-change-api
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: access-change-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/instance: access-change-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Source: access-change-api/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: access-change-api
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/instance: access-change-api
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: access-change-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: access-change-api
+      app.kubernetes.io/instance: access-change-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: access-change-api
+        app.kubernetes.io/instance: access-change-api
+      annotations:
+        sre.platform.io/config-checksum: "sha256:7f3abdcbb6d232e673612d49099cac5deeb7fd7159e1223d9510a2a1791d1fd3"
+    spec:
+      serviceAccountName: access-change-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: access-change-api
+          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:e11acc8ffead986fe51270ee327b3e4ae094e33b8bdbd5bf40d52f2e09e23a58"
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          args:
+            - --config=/etc/access-change/customer.yaml
+            - --listen=:8080
+            - --allowed-origin=https://headlamp.139.162.145.158.nip.io
+            - --argo-application=authelia
+            - --argo-namespace=argocd
+            - --audit-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
+            - --audit-ca-file=/etc/access-change/audit/ca.crt
+            - --audit-token-file=/etc/access-change/audit/token
+            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:e11acc8ffead986fe51270ee327b3e4ae094e33b8bdbd5bf40d52f2e09e23a58
+            - --service-namespace=access-change-api
+            - --service-name=access-change-api
+            - --git-credentials-file=/etc/access-change/git-credentials/credentials
+            - --review-repository=dawid-koldras-home/sre-platform-gitops
+            - --credential-provisioning-enabled
+            - --openbao-address=https://openbao-proxy.openbao.svc:8443
+            - --openbao-kv-mount=secret
+            - --openbao-store-key-prefix=identities
+            - --openbao-property=password
+            - --openbao-token-file=/var/run/secrets/sre-platform/openbao-token/token
+            - --openbao-ca-file=/var/run/secrets/sre-platform/openbao-ca/ca.crt
+            - --openbao-timeout=10s
+          env:
+            - name: HOME
+              value: /tmp
+            - name: GIT_CONFIG_NOSYSTEM
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 25m
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: customer-config
+              mountPath: /etc/access-change/customer.yaml
+              subPath: customer.yaml
+              readOnly: true
+            - name: schema
+              mountPath: /app/installer/schemas/platform-installation.json
+              subPath: platform-installation.json
+              readOnly: true
+            - name: audit-ca
+              mountPath: /etc/access-change/audit/ca.crt
+              subPath: ca.crt
+              readOnly: true
+            - name: audit-token
+              mountPath: /etc/access-change/audit/token
+              subPath: token
+              readOnly: true
+            - name: git-credentials
+              mountPath: /etc/access-change/git-credentials/credentials
+              subPath: credentials
+              readOnly: true
+            - name: openbao-token
+              mountPath: /var/run/secrets/sre-platform/openbao-token
+              readOnly: true
+            - name: openbao-ca
+              mountPath: /var/run/secrets/sre-platform/openbao-ca
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: customer-config
+          configMap:
+            name: access-change-api-config
+            items:
+              - key: customer.yaml
+                path: customer.yaml
+        - name: schema
+          configMap:
+            name: access-change-api-schema
+            items:
+              - key: platform-installation.json
+                path: platform-installation.json
+        - name: audit-ca
+          secret:
+            secretName: audit-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: audit-token
+          secret:
+            secretName: audit-token
+            items:
+              - key: token
+                path: token
+        - name: git-credentials
+          secret:
+            secretName: access-change-api-git-credentials
+            items:
+              - key: credentials
+                path: credentials
+        - name: openbao-token
+          secret:
+            secretName: access-change-openbao-token
+            items:
+              - key: token
+                path: token
+            defaultMode: 0440
+        - name: openbao-ca
+          secret:
+            secretName: access-change-openbao-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+            defaultMode: 0444
+        - name: tmp
+          emptyDir: {}
+
+---
+apiVersion: v1
+data:
+  customer.yaml: |
+    apiVersion: sre.platform.io/v1alpha1
+    kind: PlatformInstallation
+    metadata:
+      customerId: sre-tools
+      environment: dev
+    spec:
+      accessPolicy:
+        policies:
+        - name: platform-admin-access-administrator
+          role: accessAdministrator
+          scope:
+            clusterWide: true
+            clusters:
+            - lke643351
+            environments:
+            - dev
+          subjects:
+          - kind: user
+            name: platform-admin
+            reason: sole access administrator for this installation
+        - name: platform-read-only
+          role: viewer
+          scope:
+            clusters:
+            - lke643351
+            environments:
+            - dev
+            namespaces:
+            - access-change-api
+            - argocd
+            - audit-conformance
+            - authelia
+            - cert-manager
+            - clickstack
+            - cost-explorer
+            - crossplane
+            - gatus
+            - goldilocks
+            - headlamp
+            - holmes
+            - ingress-nginx
+            - kyverno
+            - metrics-server
+            - openbao
+            - openbao-prod
+            - opencost
+            - policy-reporter
+            - prometheus
+            - synthetic-monitoring
+          subjects:
+          - kind: group
+            name: platform-operators
+        privilegeCeiling:
+          roles:
+          - viewer
+          - accessAdministrator
+        version: v1alpha1
+      gitops:
+        authentication:
+          existingSecret: srectl-repository-c72f8b593295
+          mode: existing-secret
+        path: platform
+        repository: https://github.com/dawid-koldras-home/sre-platform-gitops.git
+        revision: task/224-headlamp-user-access-management
+      identity:
+        backend: file
+        identities:
+        - credentialRef:
+            property: password
+            secretKey: sre-tools/identity/platform-admin
+            storeKey: identities/platform-admin
+          displayLabel: Platform Admin
+          groups:
+          - platform-operators
+          id: platform-admin
+          state: enabled
+        scope:
+          customerId: sre-tools
+          environment: dev
+        version: v1alpha1
+      integrations: {}
+      modules:
+        access-change-api:
+          config:
+            allowedOrigin:
+            - https://headlamp.139.162.145.158.nip.io
+            argoApplication: authelia
+            argoNamespace: argocd
+            audit:
+              caSecretName: audit-ca
+              tokenSecretName: audit-token
+              url: https://audit-sink.audit-conformance.svc.cluster.local:8443
+            credentialProvisioning:
+              caSecret:
+                key: ca.crt
+                name: access-change-openbao-ca
+              enabled: true
+              openbao:
+                kvMount: secret
+                namespace: openbao
+                port: 8443
+                property: password
+                serviceName: openbao-proxy
+                storeKeyPrefix: identities
+              timeout: 10s
+              tokenSecret:
+                key: token
+                name: access-change-openbao-token
+            gitCredentialsSecretName: access-change-api-git-credentials
+            image:
+              digest: sha256:e11acc8ffead986fe51270ee327b3e4ae094e33b8bdbd5bf40d52f2e09e23a58
+              repository: ghcr.io/dawid-koldras-home/access-change-api
+            ingress:
+              clusterIssuerName: sre-tools-letsencrypt
+              enabled: true
+              host: headlamp.139.162.145.158.nip.io
+              pathPrefix: /access-change
+              tlsSecretName: access-change-api-sre-tools-tls
+            serviceName: access-change-api
+            serviceNamespace: access-change-api
+          enabled: true
+        argocd:
+          config:
+            ingress:
+              className: nginx
+              host: argocd.139.162.145.158.nip.io
+          enabled: true
+        authelia:
+          config:
+            clusterIssuerName: sre-tools-letsencrypt
+            cookieDomain: 139.162.145.158.nip.io
+            host: auth.139.162.145.158.nip.io
+            ingressClassName: nginx
+            protectedHost: headlamp.139.162.145.158.nip.io
+            secretsExistingSecret: authelia-secrets
+            tlsSecretName: authelia-tls
+          enabled: true
+        external-secrets:
+          config:
+            installCRDs: true
+            openbaoAddress: http://openbao.openbao.svc.cluster.local:8200
+            openbaoAuthMethod: kubernetes
+            provider: openbao
+            refreshInterval: 1h
+            storeName: platform-secret-store
+          enabled: true
+        headlamp:
+          config:
+            aiAssistantImage:
+              pullSecretName: headlamp-registry-pull
+            authProxy:
+              clusterIssuerName: sre-tools-letsencrypt
+              enabled: true
+              providerURL: https://auth.139.162.145.158.nip.io
+              serviceName: authelia
+              serviceNamespace: authelia
+            ingress:
+              className: nginx
+              host: headlamp.139.162.145.158.nip.io
+              tlsSecretName: headlamp-tls
+            plugins:
+              accessControlView:
+                editorEnabled: true
+                enabled: true
+              aiAssistant: true
+              argocd: true
+              maximaBranding: true
+              opencost: true
+              prometheus: true
+            publicURL: https://headlamp.139.162.145.158.nip.io
+          enabled: true
+        openbao:
+          enabled: true
+        opencost:
+          config:
+            metricsSource: managed
+            pricing:
+              cpuUsdPerCoreHour: 0.0135
+              ramUsdPerGiBHour: 0.00675
+              storageUsdPerGiBHour: 0.000147088
+          enabled: true
+        prometheus:
+          enabled: true
+      profile: core
+      target:
+        context: lke643351-ctx
+        mode: existing-cluster
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: access-change-api
+    app.kubernetes.io/managed-by: srectl
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/part-of: sre-platform
+  name: access-change-api-config
+  namespace: access-change-api
+
+---
+apiVersion: v1
+data:
+  platform-installation.json: |-
+    {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "https://sre.platform.io/schemas/v1alpha1/platform-installation.json",
+      "title": "PlatformInstallation",
+      "description": "SRE Platform installation configuration. This is the single source of truth for the platform configuration.",
+      "type": "object",
+      "required": ["apiVersion", "kind", "metadata", "spec"],
+      "properties": {
+        "apiVersion": {
+          "type": "string",
+          "enum": ["sre.platform.io/v1alpha1"],
+          "description": "Configuration API version"
+        },
+        "kind": {
+          "type": "string",
+          "const": "PlatformInstallation",
+          "description": "Resource kind"
+        },
+        "metadata": {
+          "$ref": "#/definitions/metadata"
+        },
+        "spec": {
+          "$ref": "#/definitions/spec"
+        }
+      },
+      "definitions": {
+        "metadata": {
+          "type": "object",
+          "required": ["customerId"],
+          "properties": {
+            "customerId": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$",
+              "description": "Unique customer identifier (lowercase, alphanumeric, hyphens)"
+            },
+            "environment": {
+              "type": "string",
+              "enum": ["dev", "staging", "prod"],
+              "default": "dev",
+              "description": "Target environment"
+            },
+            "name": {
+              "type": "string",
+              "description": "Optional installation name"
+            }
+          }
+        },
+        "spec": {
+          "type": "object",
+          "required": ["profile", "target"],
+          "properties": {
+            "profile": {
+              "$ref": "#/definitions/profile"
+            },
+            "groups": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["gitops", "policy"]
+              },
+              "uniqueItems": true,
+              "description": "Functional groups to enable -- each group activates a set of related modules"
+            },
+            "target": {
+              "$ref": "#/definitions/target"
+            },
+            "gitops": {
+              "$ref": "#/definitions/gitops"
+            },
+            "modules": {
+              "$ref": "#/definitions/modules"
+            },
+            "integrations": {
+              "$ref": "#/definitions/integrations"
+            },
+            "accessPolicy": {
+              "$ref": "#/definitions/accessPolicy"
+            },
+            "identity": {
+              "$ref": "#/definitions/identity"
+            }
+          }
+        },
+        "profile": {
+          "type": "string",
+          "enum": ["core", "full"],
+          "description": "Platform profile — a versioned set of module defaults. core is the only supported profile. full enables the whole integration catalogue for internal testing and is not a supported production deployment. Any other value (for example the retired modernization, external-services or air-gapped profiles) is rejected before any Git or cluster mutation."
+        },
+        "target": {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["existing-cluster", "new-cluster"],
+              "description": "Whether to use an existing cluster or create a new one"
+            },
+            "context": {
+              "type": "string",
+              "description": "Explicit Kubernetes context to use; required by apply to prevent accidental changes to the current context"
+            },
+            "clusterName": {
+              "type": "string",
+              "description": "Cluster name for new-cluster mode"
+            }
+          }
+        },
+        "gitops": {
+          "type": "object",
+          "required": ["repository"],
+          "properties": {
+            "repository": {
+              "type": "string",
+              "format": "uri",
+              "description": "Git repository URL for platform configuration"
+            },
+            "revision": {
+              "type": "string",
+              "default": "main",
+              "description": "Git branch or tag"
+            },
+            "path": {
+              "type": "string",
+              "default": "platform",
+              "description": "Path within the repository for platform manifests"
+            },
+            "authentication": {
+              "type": "object",
+              "description": "Private repository authentication. Secret values never belong in this file.",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": ["public", "github-cli", "existing-secret"],
+                  "default": "public",
+                  "description": "public uses anonymous Argo CD access; github-cli reuses the operator gh session; existing-secret registers a pre-created Secret"
+                },
+                "existingSecret": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+                  "maxLength": 63,
+                  "description": "Secret in the argocd namespace; required only for existing-secret mode"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "modules": {
+          "type": "object",
+          "description": "Module configuration — each key is a module name",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether the module is enabled"
+              },
+              "config": {
+                "type": "object",
+                "description": "Module-specific configuration values"
+              }
+            }
+          }
+        },
+        "integrations": {
+          "type": "object",
+          "properties": {
+            "oidc": {
+              "$ref": "#/definitions/oidc"
+            },
+            "database": {
+              "$ref": "#/definitions/database"
+            },
+            "registry": {
+              "$ref": "#/definitions/registry"
+            },
+            "portal": {
+              "$ref": "#/definitions/portal"
+            }
+          }
+        },
+        "oidc": {
+          "type": "object",
+          "required": ["issuerUrl"],
+          "properties": {
+            "issuerUrl": {
+              "type": "string",
+              "format": "uri",
+              "description": "OIDC issuer URL"
+            },
+            "clientId": {
+              "type": "string",
+              "description": "OIDC client ID (public; not a secret)"
+            },
+            "clientSecretRef": {
+              "$ref": "#/definitions/secretReference",
+              "description": "Reference to the OIDC client secret"
+            },
+            "existingSecret": {
+              "$ref": "#/definitions/kubernetesName",
+              "description": "Existing Kubernetes Secret populated by the configured secret-delivery integration"
+            },
+            "clientSecretKey": {
+              "type": "string",
+              "default": "client-secret"
+            },
+            "sessionSecretKey": {
+              "type": "string",
+              "default": "session-secret"
+            }
+          }
+        },
+        "database": {
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": "string",
+              "description": "External PostgreSQL host Backstage uses instead of an in-cluster database"
+            },
+            "port": {
+              "type": "integer",
+              "default": 5432,
+              "description": "Database port"
+            },
+            "credentialsRef": {
+              "$ref": "#/definitions/secretReference",
+              "description": "Reference to database credentials"
+            },
+            "name": {
+              "type": "string",
+              "default": "backstage"
+            },
+            "user": {
+              "type": "string",
+              "default": "backstage"
+            },
+            "existingSecret": {
+              "$ref": "#/definitions/kubernetesName",
+              "description": "Existing Kubernetes Secret containing the database password"
+            },
+            "passwordKey": {
+              "type": "string",
+              "default": "password"
+            },
+            "sslMode": {
+              "type": "string",
+              "enum": ["require", "verify-ca", "verify-full"],
+              "default": "verify-full"
+            }
+          }
+        },
+        "registry": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Container registry URL"
+            },
+            "credentialsRef": {
+              "$ref": "#/definitions/secretReference",
+              "description": "Reference to registry credentials"
+            }
+          }
+        },
+        "portal": {
+          "type": "object",
+          "required": ["url"],
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://",
+              "description": "Public HTTPS URL of the customer developer portal"
+            },
+            "githubExistingSecret": {
+              "$ref": "#/definitions/kubernetesName",
+              "description": "Existing Kubernetes Secret containing a least-privilege GitHub App or token credential for reviewed pull requests"
+            },
+            "githubTokenKey": {
+              "type": "string",
+              "default": "github-token"
+            },
+            "otlpEndpoint": {
+              "type": "string",
+              "format": "uri",
+              "description": "Optional OTLP/HTTP collector base URL; when omitted the SDK remains disabled"
+            }
+          }
+        },
+        "kubernetesName": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+          "maxLength": 63
+        },
+        "secretReference": {
+          "type": "string",
+          "pattern": "^(env://[A-Z_][A-Z0-9_]*|file://[^|]+|bao://[^|]+)$",
+          "description": "Secret reference — env://ENV_VAR, file:///path/to/file, or bao://path/to/secret. Literal secret values are rejected."
+        },
+        "accessPolicy": {
+          "type": "object",
+          "description": "Optional access-control contract (ADR-024). Carries authorization intent and identity references only; it has no credential-bearing field and cannot express Kubernetes API groups, resources or verbs. Validation and normalization only: TASK-213 renders no RBAC, and enforcement remains the renderer's responsibility. Declaring this section opts the file into strict parsing — unknown fields, a repeated YAML key, and content following the document are all refused — while files without this section keep their previous parsing behaviour.",
+          "required": ["version", "privilegeCeiling", "policies"],
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "type": "string",
+              "enum": ["v1alpha1"],
+              "description": "Access-control contract version. Exact match required; a missing, unknown or future version fails validation rather than being partially applied."
+            },
+            "privilegeCeiling": {
+              "$ref": "#/definitions/accessPolicyPrivilegeCeiling"
+            },
+            "policies": {
+              "type": "array",
+              "uniqueItems": true,
+              "description": "Named grants. An empty array is valid and grants nothing.",
+              "items": {
+                "$ref": "#/definitions/accessPolicyEntry"
+              }
+            }
+          }
+        },
+        "accessPolicyPrivilegeCeiling": {
+          "type": "object",
+          "description": "The explicit set of roles any policy may request, and the upper bound of what this installation can ever grant. A set rather than a rank, because the roles are not totally ordered: accessAdministrator is separation of duties, not a step above operator, and the two administrator roles do not imply each other. A role absent from this list is not merely unrequested, it is unrepresentable.",
+          "required": ["roles"],
+          "additionalProperties": false,
+          "properties": {
+            "roles": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Roles a policy may request. An empty ceiling is rejected as ambiguous rather than treated as deny-all. Every policy role must appear here; the ceiling is declared explicitly so that no role can be granted by omission.",
+              "items": {
+                "$ref": "#/definitions/accessPolicyRole"
+              }
+            }
+          }
+        },
+        "accessPolicyRole": {
+          "type": "string",
+          "enum": ["viewer", "operator", "platformAdministrator", "accessAdministrator", "breakGlass"],
+          "description": "Closed role vocabulary. Permissions per role are defined centrally by the renderer; a policy cannot name an API group, resource, verb or non-resource URL. accessAdministrator is globally mutually exclusive with viewer, operator, platformAdministrator and breakGlass for the same subject, regardless of scope: Kubernetes RBAC unions permissions across bindings, so holding both would let one identity author access policy and exercise the authority it confers, and no scope separation prevents that union."
+        },
+        "accessPolicyEntry": {
+          "type": "object",
+          "required": ["name", "subjects", "role", "scope"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+              "maxLength": 63,
+              "description": "Stable policy identifier, also the handle shown in a 'why can I do this' answer. DNS-1123 label so it stays safe as a derived object name."
+            },
+            "subjects": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Users and groups this policy applies to. Group grants are preferred; a user grant requires a reason. A user and a group of the same name are distinct subjects and never conflict with each other.",
+              "items": {
+                "$ref": "#/definitions/accessPolicySubject"
+              }
+            },
+            "role": {
+              "$ref": "#/definitions/accessPolicyRole"
+            },
+            "scope": {
+              "$ref": "#/definitions/accessPolicyScope"
+            },
+            "conditions": {
+              "$ref": "#/definitions/accessPolicyConditions"
+            },
+            "precedence": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Resolves an otherwise-conflicting overlap. It is meaningful only when two policies grant different roles to the same subject over an exact match on normalized subject, scope and conditions; the higher number wins and the losing grant is omitted entirely from ResolvedAccessPolicy, because Kubernetes RBAC unions bindings and both sides reaching the renderer would silently restore the wider grant. It must be declared on both sides and the two values must differ: a conflict where either side omits precedence, where both sides declare the same value, or where a declared precedence resolves no conflict at all is a validation error, so the field can never appear decisive while deciding nothing. It can never resolve a separation-of-duties conflict, and it can never resolve a partially overlapping scope: applying it there would discard the non-overlapping remainder of the losing grant, so such a conflict fails validation instead."
+            }
+          }
+        },
+        "accessPolicySubject": {
+          "type": "object",
+          "required": ["kind", "name"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["user", "group"],
+              "description": "Whether name identifies an individual or a portal group."
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^[A-Za-z0-9._@-]+$",
+              "allOf": [
+                {
+                  "if": {
+                    "properties": { "kind": { "const": "group" } },
+                    "required": ["kind"]
+                  },
+                  "then": {
+                    "pattern": "^[A-Za-z0-9._-]+$"
+                  }
+                }
+              ],
+              "description": "Identity name as the portal represents it, compared case-insensitively on the canonical lowercase form and exactly otherwise. The accepted set is a closed portable ASCII allowlist rather than a list of rejected characters: A-Z, a-z, 0-9, '.', '_' and '-' for every kind, plus '@' for kind user only, so a group cannot impersonate an individual. Naming the accepted set is deliberate, because a rule that only rejects commas, spaces and control characters still admits an unreviewed Unicode letter, a confusable homoglyph, a combining mark or a zero-width joiner, and every one of those reaches a cluster, lands in a header and is compared against another name. A comma is excluded because the portal transmits groups as a comma-separated header and a comma here would silently become two subjects; a space and a control character are excluded because the name crosses an HTTP header boundary. Because the alphabet is ASCII, one character is one byte, so the 253-character limit is unambiguous. The 'sre-sys-' prefix is reserved for platform-owned identities and is rejected in operator input, the 'sre-grp-' prefix is reserved for groups the platform derives and is rejected on a group, and 'sre-syn-' is reserved for a synthetic conformance identity and is rejected on a group. Identity and group names are separate namespaces: a name used as both a user and a group is rejected."
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Required for kind user, optional for kind group. A per-user grant is an exception to a group-based model and must say why it exists. Human-readable text, never a credential."
+            }
+          }
+        },
+        "accessPolicyScope": {
+          "type": "object",
+          "description": "Exact-match allowlist. No glob, regex or wildcard, so a policy's reach can be read off the file without evaluating a pattern.",
+          "required": ["clusters", "environments"],
+          "additionalProperties": false,
+          "properties": {
+            "clusters": {
+              "$ref": "#/definitions/accessPolicyExactList"
+            },
+            "environments": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Exact environment names. Matching is case-sensitive.",
+              "items": {
+                "type": "string",
+                "enum": ["dev", "staging", "prod"]
+              }
+            },
+            "namespaces": {
+              "$ref": "#/definitions/accessPolicyExactList"
+            },
+            "clusterWide": {
+              "type": "boolean",
+              "default": false,
+              "description": "The only way to express cluster scope. An omitted namespaces list never means 'everything': namespaces is required unless clusterWide is true, and the two together are rejected as contradictory."
+            }
+          }
+        },
+        "accessPolicyExactList": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Exact identifiers only. '*', pattern metacharacters, whitespace and empty entries are rejected, so scope can never widen by accident.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^[^*?\\[\\]{},/\\\\^$|+ \\t]+$"
+          }
+        },
+        "accessPolicyConditions": {
+          "type": "object",
+          "description": "Structural time bounds, supported only for the breakGlass role in v1alpha1. Any other role that carries conditions fails validation: the renderer produces steady-state RBAC and nothing removes a binding when its expiry passes, so a bounded viewer, operator, platformAdministrator or accessAdministrator grant would render as a standing binding and silently outlive its own expiry. Validation never reads the wall clock, so normalized output stays byte-identical over time. breakGlass is additive to any other role the same subject holds and is never precedence-resolved, and it is never rendered as standing RBAC.",
+          "additionalProperties": false,
+          "properties": {
+            "expiry": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+              "description": "Strict RFC3339 with a timezone offset; a local time without an offset is rejected."
+            },
+            "window": {
+              "$ref": "#/definitions/accessPolicyWindow"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Human-readable justification recorded with the grant. Never a credential."
+            }
+          }
+        },
+        "accessPolicyWindow": {
+          "type": "object",
+          "required": ["start", "end"],
+          "additionalProperties": false,
+          "description": "Bounded interval. Both bounds are required because a half-open window is ambiguous about which end is inclusive.",
+          "properties": {
+            "start": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+              "description": "Strict RFC3339 start with a timezone offset."
+            },
+            "end": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+              "description": "Strict RFC3339 end with a timezone offset; must be after start."
+            }
+          }
+        },
+        "identity": {
+          "type": "object",
+          "description": "Optional declarative identity contract (ADR-025). Non-secret metadata only: a stable identity ID, an operator-facing display label, a lifecycle state, group membership, and a structural External Secrets reference naming where the credential lives. There is no field for a password, a hash, a TOTP seed, a recovery code, a cookie or a key, and no field for a real name or an email address, so none of them can be committed by accident. A group named here confers nothing until an accessPolicy references it; this section cannot name a role, a verb, a resource, a namespace or an API group. Validation and normalization only: Phase 2 renders nothing, materializes nothing, reads no Secret and contacts no cluster. Declaring this section opts the file into strict parsing - unknown fields, a repeated YAML key, and content following the document are all refused - while files without this section keep their previous parsing behaviour. The section is optional, but an explicit null is not: 'identity: null' and a bare 'identity:' are both refused with an actionable error, because a declared section with no value means an operator who expected managed identity would otherwise be handed an instance with none and no warning. An absent section is what 'not managed declaratively' looks like. Each record carries one required credentialRef and no per-record enrolment reference: TOTP material belongs to Authelia's own encrypted storage rather than to the static user database, so a per-record field naming it would have no consumer. The section may additionally declare one closed synthetic-conformance enrollment (conformance.synthetic) that phases a bounded TOTP factor for a synthetic 'sre-syn-' identity only, in a non-production environment, referencing a pre-created Secret that never enters this file. Validation order is fixed: version, backend, scope and source-of-truth ownership, then the record-count ceiling before any record is examined, then each record's identifier, state, label, two independent membership ceilings and credential reference, then cross-record collisions (a duplicate ID, a name used as both an ID and a group, one credential target key or source location shared by two records), then the distinct-group ceiling, then the conformance contract.",
+          "required": ["version", "scope", "backend", "identities"],
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "type": "string",
+              "enum": ["v1alpha1"],
+              "description": "Identity contract version. Exact match required; a missing, unknown or future version fails validation rather than being partially applied."
+            },
+            "scope": {
+              "$ref": "#/definitions/identityScope"
+            },
+            "backend": {
+              "type": "string",
+              "enum": ["file"],
+              "description": "First-factor backend that authenticates these identities. Only the static file backend is selectable in v1alpha1. Authelia also supports an LDAP backend, but it is deferred behind a decision gate, and a selector for an unimplemented backend would produce a configuration that validates and then does nothing."
+            },
+            "identities": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "description": "Managed operator records. A configuration with no identity section is a different thing from one with an empty list: the first says nothing about identity, the second is ambiguous between 'nobody is managed' and 'every operator is denied', so an empty list is rejected rather than interpreted. Capacity limit of 64 managed identities, and capacity limit of 64 distinct groups across the whole section; both are platform-owned v1alpha1 product limits rather than measurements of any deployed ingress. Raising either is a contract change requiring a schema-version and compatibility review, not an edit to a constant.",
+              "items": {
+                "$ref": "#/definitions/identityEntry"
+              }
+            },
+            "conformance": {
+              "$ref": "#/definitions/identityConformance"
+            }
+          }
+        },
+        "identityConformance": {
+          "type": "object",
+          "description": "Closed synthetic-conformance contract for a synthetic TOTP enrollment (TASK-216 Phase 6B). Declaring it opts this installation into rendering a bounded enrollment sidecar/init-container that imports a TOTP factor from an external Secret before the Authelia main process starts, or deletes that factor during cleanup. It carries a closed set of fields and no credential material: the seed and the import document live only in a pre-created Secret referenced by name, never in this file, in Git, in a ConfigMap, in an argument, in an environment variable, in logs, in events or in evidence. The block is refused rather than ignored when its consent is absent, its environment is production, its identity does not exist or lacks the reserved synthetic prefix, its reference points inside the namespace the platform owns, or its lifecycle operation is unknown. It confers no role, permission, namespace, access-policy mapping or credential. Declaring conformance toggles the synthetic lifecycle for exactly the referenced identity and never for a human identity.",
+          "required": ["synthetic"],
+          "additionalProperties": false,
+          "properties": {
+            "synthetic": {
+              "$ref": "#/definitions/identityConformanceSynthetic"
+            }
+          }
+        },
+        "identityConformanceSynthetic": {
+          "type": "object",
+          "description": "One synthetic conformance enrollment. The identity must already exist under the reserved 'sre-syn-' prefix in identity.identities, and it must not be used by a human identity. Lifecycle is a closed two-value operation: 'provision' imports the factor before Authelia starts (TOTP import before the main process, single storage writer), and 'cleanup' deletes the factor; a delete that finds no record is a successful cleanup, every other delete failure blocks the render. During provision the referenced identity must be rendered disabled in the same apply; enabling it is a later apply, so an enabled identity is never presented without its factor at startup. Only dev and staging environments may provision; production is refused because a synthetic factor must never be enforced against a real operator login path. source names the pre-created Secret and its data key that hold the import document; the name must not collide with a Secret this platform or the chart owns, and the data key is a single closed-ASCII segment.",
+          "required": ["enabled", "identityId", "lifecycle", "source"],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Opt-in switch. Declaring the block without consent is refused rather than silently inert: if the operator wrote this section they asked for the control, so enabled: false is the same as no synthesis at all and is rejected with the remedy."
+            },
+            "identityId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^[A-Za-z0-9._@-]+$",
+              "description": "Canonical identity ID of the synthetic identity. It must name an existing record in identity.identities whose canonical form carries the reserved 'sre-syn-' prefix; anything else is refused. A human identity is never referenced here, because a synthetic cleanup operation that could target a human factor is exactly the escalation this block exists to prevent."
+            },
+            "lifecycle": {
+              "type": "string",
+              "enum": ["provision", "cleanup"],
+              "description": "Closed lifecycle operation. 'provision' renders the import operation before the Authelia main process starts; 'cleanup' renders the delete operation. Cleanup is idempotent: the pinned Authelia CLI reports a missing record, and that exact outcome is a successful cleanup. During provision the referenced identity is disabled, so a repeated apply can never start Authelia with an enabled identity and no factor."
+            },
+            "source": {
+              "$ref": "#/definitions/identityConformanceSource"
+            }
+          }
+        },
+        "identityConformanceSource": {
+          "type": "object",
+          "description": "Closed reference to the pre-created Secret holding the TOTP import document. It is a location and never a value: the installer neither reads the Secret nor embeds its content, and the value exists only inside the Secret in the Authelia namespace at runtime, mounted into the enrollment container and never into the main Authelia container. The Secret name is a Kubernetes DNS-1123 name and the data key a single closed-ASCII segment, both validated so a rendered value cannot traverse a path or reach a mount point unreviewed.",
+          "required": ["secretName", "key"],
+          "additionalProperties": false,
+          "properties": {
+            "secretName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$",
+              "description": "Kubernetes Secret name in the Authelia namespace. It must not collide with a Secret this platform or the chart renders, because a reference that points at a platform-managed Secret would let the enrollment container read a chart credential and a collision would silently rewired the mount."
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^[A-Za-z0-9._-]+$",
+              "description": "Secret data key holding the import document, a single closed-ASCII segment (no '/'): Kubernetes Secret keys are filesystem names in the mount, and allowing a separator would let a key traverse a path in the projected volume."
+            }
+          }
+        },
+        "identityScope": {
+          "type": "object",
+          "description": "The declared installation scope. An Authelia identity is global to its instance and there is no per-identity tenant field, because a naming prefix is a convention while an instance boundary is not. Isolation is one Authelia instance per (customerId, environment), and this declared scope is what makes a configuration copied between customers fail validation instead of describing identities for the wrong installation.",
+          "required": ["customerId", "environment"],
+          "additionalProperties": false,
+          "properties": {
+            "customerId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 63,
+              "description": "Must equal metadata.customerId. A mismatch is rejected."
+            },
+            "environment": {
+              "type": "string",
+              "enum": ["dev", "staging", "prod"],
+              "description": "Must equal metadata.environment. A mismatch is rejected."
+            }
+          }
+        },
+        "identityEntry": {
+          "type": "object",
+          "description": "One managed operator record. Git may contain synthetic fixture identities only; a real operator is never added to Git.",
+          "required": ["id", "state", "groups", "credentialRef"],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^[A-Za-z0-9._@-]+$",
+              "description": "Stable, opaque identity handle, never reused. The accepted set is the closed portable ASCII user alphabet: A-Z, a-z, 0-9, '.', '_', '@' and '-'. '@' is allowed on an identity and on no group, so a group cannot impersonate an individual. A name is refused rather than sanitized when it contains a comma, a space, a control character, a separator such as '/' or ':', a quote or backslash, or any non-ASCII character, because the name crosses an HTTP header boundary and is compared against a group name: a comma would split one subject into two, a control character is a header-injection primitive, and an unreviewed character such as an accented letter, a non-Latin script, a homoglyph or a zero-width joiner is a way for two names to look equal to a reader and compare unequal in code. Because the alphabet is ASCII, one character is one byte and the 253-character limit is unambiguous. Comparison is case-insensitive on the canonical lowercase form and exact otherwise; two names differing only in case are the same identity and declaring both is rejected. The 'sre-sys-' prefix is reserved for platform-owned identities and is rejected in operator input, as is the 'sre-grp-' prefix on a group."
+            },
+            "displayLabel": {
+              "type": "string",
+              "maxLength": 253,
+              "description": "Optional operator-facing name, and the only field in this contract that is allowed to be prose. Unicode is accepted here deliberately: a display name is a human string, and refusing an accented letter would be refusing a language rather than a risk. What is refused is structural rather than stylistic - invalid UTF-8, C0 controls and DEL, Go template delimiters, and length. maxLength counts Unicode code points, which is what this keyword means, so the Go validator counts code points too and the two agree on multi-byte text; counting bytes instead would let a 100-character label pass a schema that rejects it. Go template delimiters are refused because the label is destined for an Authelia users database document that ESO evaluates as a Go template, and the resolver output reaches the cluster through a Helm pass that evaluates 'extraObjects' with 'tpl'; a label carrying '{{' is an executable template action written by whoever edits this customer-editable file. Only a *pair* is refused: a single '{' or '}' is ordinary prose and stays allowed, so 'Team {platform}' remains a valid label. The two patterns below are written without lookahead because the regex engines used to consume this schema do not all support it; the first admits any string with no '{{', the second any string with no '}}'. The label is never folded, normalized or used for matching, so it cannot select a role, a group, a scope or an identity, and two labels differing in case or accent stay distinct. The schema cannot prove the label is free of real personal data, which is why Git carries synthetic fixtures only; the value is never echoed into a validation error.",
+              "allOf": [
+                {
+                  "pattern": "^(?:[^{]|\\{[^{])*\\{?$",
+                  "description": "Refuses '{{'. A run of non-'{' characters, or a '{' followed by exactly one non-'{' character, with an optional single trailing '{'."
+                },
+                {
+                  "pattern": "^(?:[^}]|\\}[^}])*\\}?$",
+                  "description": "Refuses '}}'. A run of non-'}' characters, or a '}' followed by exactly one non-'}' character, with an optional single trailing '}'."
+                }
+              ]
+            },
+            "state": {
+              "type": "string",
+              "enum": ["enabled", "disabled"],
+              "description": "Lifecycle state. 'disabled' is a record rendered natively as the file backend's own disabled: true — not an emulated removal, and there is no emulation field. A removed identity is an absent record rather than a state value, and 'proposed' is a review-workflow state that lives outside this file."
+            },
+            "groups": {
+              "type": "array",
+              "maxItems": 32,
+              "uniqueItems": true,
+              "description": "This identity's group membership. An empty array is valid and means the identity holds no groups, which confers nothing until an accessPolicy references one. The key is required so that 'holds no groups' is stated rather than forgotten, and a null here is refused for the same reason. Each name uses the closed portable ASCII group alphabet: A-Z, a-z, 0-9, '.', '_' and '-', with no '@' so a group cannot impersonate an individual. Membership is a set: a repeated entry is a mistake rather than an additional grant, and two identities may of course share one group. Case-insensitive on the canonical lowercase form. Two independent ceilings apply to the canonical form and both are enforced, because passing one does not excuse the other: capacity limit of 32 memberships per identity, and portability limit of 4096 bytes for the identity's Remote-Groups value, measured after normalization and sorting as the lowercase group names joined by a single comma with no spaces. The byte ceiling is a conservative platform-owned limit that stays below common single-header buffer sizes and bounds amplification through an identity header; it is not a claim about any deployed ingress configuration. The membership count is checked before the byte count, because a count is the limit an operator can check by counting in the file they are editing. Ceiling order for the section as a whole is: the record count first, before any record is examined, then each record's identifier, state, label and two membership ceilings, then cross-record collisions, then the distinct-group ceiling.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 253,
+                "pattern": "^[A-Za-z0-9._-]+$"
+              }
+            },
+            "credentialRef": {
+              "$ref": "#/definitions/identitySecretRef"
+            }
+          }
+        },
+        "identitySecretRef": {
+          "type": "object",
+          "description": "Structural External Secrets reference naming where the credential hash lives: the key the composed Secret publishes, the key the backing store holds, and optionally the property within that value. This mirrors the ESO reference model already committed in the resolver rather than introducing a second vocabulary. The reference exists because Phase 3 composes the database through ESO target.template, which reads a named store key; it is a location and never a value, and the installer never resolves it. No enrolment-material reference exists in v1alpha1: Authelia keeps TOTP records in its own encrypted storage, and the upstream storage user totp generate/import operations mutate that storage rather than the static user database, so there is no per-record ESO consumer for such a reference. The one exception is the section-level conformance.synthetic enrollment, which names a pre-created Secret directly rather than through ESO; it is a closed reference validated by its own definition. Each string uses a closed portable ASCII allowlist - A-Z, a-z, 0-9, '.', '_' and '-', with '/' separating path segments in secretKey and storeKey and never in property - so there is one unambiguous character and length contract per field and no character can reach a store path unreviewed. env://, file:// and bao:// are absent because no SecretReference.Resolve implementation exists for them: ':' is outside the allowlist, and a scheme a character set recognises is not an implementation. Unlike an identity id or a group name, a reference is never case-folded: every store this platform can target treats 'users/Conformance' and 'users/conformance' as different keys, so folding a location would point at a key that does not exist, and it is passed through byte for byte. For the same reason two records may not name one target key or one source location: one credential location serving two identities would let one operator authenticate with the other's material, and nothing after materialization could detect it. Secrecy is not inferred from the name: a key whose path contains a word like 'password' is no more a secret than one called 'alpha', because what would make it a secret is a value behind it and this contract has no field for a value. Phase 2 treats these strictly as names: it does not check that the key or the store exists, that the value behind it is a usable hash, or that anything has been materialized. A value placed here instead of a key is simply a key no store holds, and it fails closed rather than being used. No value is ever echoed into a validation error, because a reference path is customer structure.",
+          "required": ["secretKey", "storeKey"],
+          "additionalProperties": false,
+          "properties": {
+            "secretKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
+            },
+            "storeKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$"
+            },
+            "property": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^[A-Za-z0-9._-]+$"
+            }
+          }
+        }
+      }
+    }
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: access-change-api
+    app.kubernetes.io/managed-by: srectl
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/part-of: sre-platform
+  name: access-change-api-schema
+  namespace: access-change-api
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: access-change-api-tls
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: srectl
+    sre.platform.io/component: access-change-api
+spec:
+  secretName: access-change-api-sre-tools-tls
+  dnsNames:
+    - headlamp.139.162.145.158.nip.io
+  issuerRef:
+    kind: ClusterIssuer
+    name: sre-tools-letsencrypt
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: access-change-api
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: srectl
+    sre.platform.io/component: access-change-api
+  annotations:
+    sre-platform.io/ingress-type: access-change-api
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-method: GET
+    nginx.ingress.kubernetes.io/auth-url: http://authelia.authelia.svc.cluster.local/api/authz/auth-request
+    nginx.ingress.kubernetes.io/auth-signin: https://auth.139.162.145.158.nip.io?rm=$request_method
+    nginx.ingress.kubernetes.io/auth-response-headers: Remote-User,Remote-Groups,Remote-Email,Remote-Id-Token
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - headlamp.139.162.145.158.nip.io
+      secretName: access-change-api-sre-tools-tls
+  rules:
+    - host: headlamp.139.162.145.158.nip.io
+      http:
+        paths:
+          - path: /access-change(/|$)(api/v1/access/(policies|requests|actions|identities|identity-previews|identity-requests|identity-credentials).*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: access-change-api
+                port:
+                  number: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: access-change-api-ingress
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/name: access-change-api
+    app.kubernetes.io/instance: access-change-api
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: srectl
+    sre.platform.io/component: access-change-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: access-change-api
+      app.kubernetes.io/instance: access-change-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080

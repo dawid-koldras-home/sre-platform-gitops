@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-policy
+  namespace: platform
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: access-change-api
+    app.kubernetes.io/name: access-policy
+    app.kubernetes.io/component: access-change
+  annotations:
+    access.sre.platform.io/customer-id: sre-tools
+    access.sre.platform.io/environment: dev
+data:
+  access-policy.yaml: |
+    version: v1alpha1
+    privilegeCeiling:
+      roles:
+        - viewer
+        - accessAdministrator
+    policies:
+      - name: platform-admin-access-administrator
+        role: accessAdministrator
+        subjects:
+          - kind: user
+            name: platform-admin
+            reason: sole access administrator for this installation
+        scope:
+          clusters:
+            - lke643351
+          environments:
+            - dev
+          clusterWide: true
+      - name: platform-read-only
+        role: viewer
+        subjects:
+          - kind: group
+            name: platform-operators
+        scope:
+          clusters:
+            - lke643351
+          environments:
+            - dev
+          namespaces:
+            - access-change-api
+            - argocd
+            - audit-conformance
+            - authelia
+            - cert-manager
+            - clickstack
+            - cost-explorer
+            - crossplane
+            - gatus
+            - goldilocks
+            - headlamp
+            - holmes
+            - ingress-nginx
+            - kyverno
+            - metrics-server
+            - openbao
+            - openbao-prod
+            - opencost
+            - policy-reporter
+            - prometheus
+            - synthetic-monitoring
