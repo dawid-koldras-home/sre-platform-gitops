@@ -187,7 +187,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:843f00334e2d984c6f4b6328ea8e1b52848a491710a740216e8e3a25fe4c8718"
+        sre.platform.io/config-checksum: "sha256:1d4a7593b98c102b49070831dc124c819b060bed6f1d4ba2c7592d65ee30650f"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -199,7 +199,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: access-change-api
-          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:e11acc8ffead986fe51270ee327b3e4ae094e33b8bdbd5bf40d52f2e09e23a58"
+          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:0e53dfc5100e6cee9f5e52108a6c6fe1a15788e3edc0f8a8603431ef02049d88"
           imagePullPolicy: IfNotPresent
           workingDir: /app
           args:
@@ -211,7 +211,7 @@ spec:
             - --audit-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
             - --audit-ca-file=/etc/access-change/audit/ca.crt
             - --audit-token-file=/etc/access-change/audit/token
-            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:e11acc8ffead986fe51270ee327b3e4ae094e33b8bdbd5bf40d52f2e09e23a58
+            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:0e53dfc5100e6cee9f5e52108a6c6fe1a15788e3edc0f8a8603431ef02049d88
             - --service-namespace=access-change-api
             - --service-name=access-change-api
             - --git-credentials-file=/etc/access-change/git-credentials/credentials
@@ -430,6 +430,7 @@ data:
             secretKey: sre-tools/identity/task224-admin
             storeKey: identities/task224-admin
           displayLabel: Temporary Live Acceptance Admin
+          email: task224-admin@example.invalid
           groups:
           - platform-operators
           id: task224-admin
@@ -468,7 +469,7 @@ data:
                 name: access-change-openbao-token
             gitCredentialsSecretName: access-change-api-git-credentials
             image:
-              digest: sha256:e11acc8ffead986fe51270ee327b3e4ae094e33b8bdbd5bf40d52f2e09e23a58
+              digest: sha256:0e53dfc5100e6cee9f5e52108a6c6fe1a15788e3edc0f8a8603431ef02049d88
               repository: ghcr.io/dawid-koldras-home/access-change-api
             ingress:
               clusterIssuerName: sre-tools-letsencrypt
@@ -1057,7 +1058,7 @@ data:
         },
         "identity": {
           "type": "object",
-          "description": "Optional declarative identity contract (ADR-025). Non-secret metadata only: a stable identity ID, an operator-facing display label, a lifecycle state, group membership, and a structural External Secrets reference naming where the credential lives. There is no field for a password, a hash, a TOTP seed, a recovery code, a cookie or a key, and no field for a real name or an email address, so none of them can be committed by accident. A group named here confers nothing until an accessPolicy references it; this section cannot name a role, a verb, a resource, a namespace or an API group. Validation and normalization only: Phase 2 renders nothing, materializes nothing, reads no Secret and contacts no cluster. Declaring this section opts the file into strict parsing - unknown fields, a repeated YAML key, and content following the document are all refused - while files without this section keep their previous parsing behaviour. The section is optional, but an explicit null is not: 'identity: null' and a bare 'identity:' are both refused with an actionable error, because a declared section with no value means an operator who expected managed identity would otherwise be handed an instance with none and no warning. An absent section is what 'not managed declaratively' looks like. Each record carries one required credentialRef and no per-record enrolment reference: TOTP material belongs to Authelia's own encrypted storage rather than to the static user database, so a per-record field naming it would have no consumer. The section may additionally declare one closed synthetic-conformance enrollment (conformance.synthetic) that phases a bounded TOTP factor for a synthetic 'sre-syn-' identity only, in a non-production environment, referencing a pre-created Secret that never enters this file. Validation order is fixed: version, backend, scope and source-of-truth ownership, then the record-count ceiling before any record is examined, then each record's identifier, state, label, two independent membership ceilings and credential reference, then cross-record collisions (a duplicate ID, a name used as both an ID and a group, one credential target key or source location shared by two records), then the distinct-group ceiling, then the conformance contract.",
+          "description": "Optional declarative identity contract (ADR-025). Non-secret metadata only: a stable identity ID, an operator-facing display label, a lifecycle state, group membership, and a structural External Secrets reference naming where the credential lives. There is no field for a password, a hash, a TOTP seed, a recovery code, a cookie or a key, and no field for a real name; an optional email address is accepted because Authelia needs it to enroll MFA, and it is the only non-secret personal metadata this section allows. A group named here confers nothing until an accessPolicy references it; this section cannot name a role, a verb, a resource, a namespace or an API group. Validation and normalization only: Phase 2 renders nothing, materializes nothing, reads no Secret and contacts no cluster. Declaring this section opts the file into strict parsing - unknown fields, a repeated YAML key, and content following the document are all refused - while files without this section keep their previous parsing behaviour. The section is optional, but an explicit null is not: 'identity: null' and a bare 'identity:' are both refused with an actionable error, because a declared section with no value means an operator who expected managed identity would otherwise be handed an instance with none and no warning. An absent section is what 'not managed declaratively' looks like. Each record carries one required credentialRef and no per-record enrolment reference: TOTP material belongs to Authelia's own encrypted storage rather than to the static user database, so a per-record field naming it would have no consumer. The section may additionally declare one closed synthetic-conformance enrollment (conformance.synthetic) that phases a bounded TOTP factor for a synthetic 'sre-syn-' identity only, in a non-production environment, referencing a pre-created Secret that never enters this file. Validation order is fixed: version, backend, scope and source-of-truth ownership, then the record-count ceiling before any record is examined, then each record's identifier, state, label, two independent membership ceilings and credential reference, then cross-record collisions (a duplicate ID, a name used as both an ID and a group, one credential target key or source location shared by two records), then the distinct-group ceiling, then the conformance contract.",
           "required": ["version", "scope", "backend", "identities"],
           "additionalProperties": false,
           "properties": {
@@ -1194,6 +1195,12 @@ data:
                   "description": "Refuses '}}'. A run of non-'}' characters, or a '}' followed by exactly one non-'}' character, with an optional single trailing '}'."
                 }
               ]
+            },
+            "email": {
+              "type": "string",
+              "maxLength": 254,
+              "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$",
+              "description": "Optional canonical mailbox for this identity. Authelia refuses TOTP registration with 'no email address was found for user' when it is absent, so a new identity created through the access-change API or the Headlamp Users & Access view must carry one; the key stays optional here so every configuration written before TASK-224 keeps validating unchanged. Only a single plain address is accepted: display-name forms such as 'Name <a@b>', comments, address lists, quoted local parts, spaces, control characters, non-ASCII text, consecutive dots, a dotless domain and labels that start or end with a hyphen are all refused rather than stripped, because a value that parses one way in validation and another in Authelia is the failure this contract exists to prevent. The value is normalized to lowercase before it reaches the users database, so two declarations differing only in case describe one mailbox. This is non-secret metadata and is not a credential; a real operator address is customer data and belongs in that customer's installation, not in this repository. The Go validator is authoritative and additionally enforces the 64-byte local-part and 63-byte DNS-label ceilings."
             },
             "state": {
               "type": "string",

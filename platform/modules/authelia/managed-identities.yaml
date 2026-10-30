@@ -49,6 +49,7 @@ spec:
               password: {{ .credential_0 }}
             "task224-admin":
               displayname: "Temporary Live Acceptance Admin"
+              email: "task224-admin@example.invalid"
               disabled: false
               groups:
                 - "platform-operators"

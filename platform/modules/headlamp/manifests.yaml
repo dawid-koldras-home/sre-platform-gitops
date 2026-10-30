@@ -12493,6 +12493,7 @@ data:
     const EMPTY_DRAFT = {
       identityID: '',
       displayLabel: '',
+      email: '',
       groups: '',
       password: '',
       confirmation: ''
@@ -12504,6 +12505,31 @@ data:
         .map(group => group.trim())
         .filter((group, index, all) => group !== '' && all.indexOf(group) === index)
         .sort();
+    }
+
+    // The API and the shared Go validator are authoritative. This is a
+    // deliberately conservative pre-check so a missing or obviously malformed
+    // mailbox is refused before the credential-provisioning request writes anything:
+    // provisioning a password for an identity that cannot register MFA would leave
+    // a usable first factor with no second factor, which is the defect TASK-224
+    // exists to close.
+    const EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+
+    function validEmail(value) {
+      const email = String(value || '').trim();
+      if (email === '' || email.length > 254) {
+        return false;
+      }
+      if (!EMAIL_PATTERN.test(email) || email.includes('..')) {
+        return false;
+      }
+      const [local, domain] = email.split('@');
+      if (local.length > 64 || local.startsWith('.') || local.endsWith('.')) {
+        return false;
+      }
+      return domain
+        .split('.')
+        .every(label => label !== '' && label.length <= 63 && !label.startsWith('-') && !label.endsWith('-'));
     }
 
     function errorText(result, fallback) {
@@ -12529,6 +12555,7 @@ data:
       }
       const destructive = preview.reduces_access === true || request.operation === 'remove';
       const facts = [
+        `email: ${(preview.after && preview.after.email) || 'none'}`,
         `groups added: ${(preview.groups_added || []).join(', ') || 'none'}`,
         `groups removed: ${(preview.groups_removed || []).join(', ') || 'none'}`,
         `roles gained: ${(preview.roles_gained || []).join(', ') || 'none'}`,
@@ -12575,6 +12602,17 @@ data:
             label: 'Display label',
             value: draft.displayLabel,
             onChange: event => setDraft({ ...draft, displayLabel: event.target.value })
+          }),
+          h(TextField, {
+            label: 'Email',
+            type: 'email',
+            value: draft.email,
+            required: creating,
+            helperText: creating
+              ? 'Required before the credential is provisioned; Authelia cannot register MFA without it.'
+              : 'Leave blank to keep the current mailbox.',
+            autoComplete: 'off',
+            onChange: event => setDraft({ ...draft, email: event.target.value })
           }),
           h(TextField, {
             label: 'Groups',
@@ -12675,6 +12713,15 @@ data:
         }
         const identityID = draft.identityID.trim();
         const groups = splitGroups(draft.groups);
+        const email = draft.email.trim();
+        if (mode === 'create' && !validEmail(email)) {
+          setNotice({ severity: 'error', text: 'A valid email address is required before provisioning a credential; Authelia cannot register MFA without one.' });
+          return;
+        }
+        if (mode !== 'create' && email !== '' && !validEmail(email)) {
+          setNotice({ severity: 'error', text: 'The email address is not a valid plain mailbox.' });
+          return;
+        }
         setBusy(true);
         setNotice(null);
         try {
@@ -12693,6 +12740,7 @@ data:
               operation: 'create',
               identity_id: identityID,
               display_label: draft.displayLabel.trim(),
+              email,
               groups,
               credential_ref: credential.payload.credential_ref,
               expected_revision: state.revision
@@ -12712,6 +12760,9 @@ data:
               groups,
               expected_revision: state.revision
             };
+            if (email !== '') {
+              request.email = email;
+            }
             if (await showPreview(request)) {
               clearForm();
             }
@@ -12781,6 +12832,7 @@ data:
           TableRow,
           { key: identity.id, hover: true },
           h(TableCell, null, h(Typography, { variant: 'body2' }, identity.display_label || identity.id), h(Typography, { variant: 'caption' }, identity.id)),
+          h(TableCell, null, identity.email || 'not set'),
           h(TableCell, null, h(Chip, { size: 'small', label: identity.state, color: stateTone(identity.state) })),
           h(TableCell, null, (identity.groups || []).join(', ') || 'none'),
           h(TableCell, null, (identity.effective_roles || []).join(', ') || 'none'),
@@ -12794,7 +12846,7 @@ data:
               ? h(
                   Box,
                   { sx: { display: 'flex', gap: 0.5, flexWrap: 'wrap' } },
-                  h(Button, { size: 'small', disabled: busy, onClick: () => { setMode('edit'); setPreview(null); setDraft({ ...EMPTY_DRAFT, identityID: identity.id, displayLabel: identity.display_label || '', groups: (identity.groups || []).join(', ') }); } }, 'Edit'),
+                  h(Button, { size: 'small', disabled: busy, onClick: () => { setMode('edit'); setPreview(null); setDraft({ ...EMPTY_DRAFT, identityID: identity.id, displayLabel: identity.display_label || '', email: identity.email || '', groups: (identity.groups || []).join(', ') }); } }, 'Edit'),
                   h(Button, { size: 'small', disabled: busy, onClick: () => previewLifecycle(identity.state === 'enabled' ? 'disable' : 'enable', identity) }, identity.state === 'enabled' ? 'Disable' : 'Enable'),
                   h(Button, { size: 'small', color: 'error', disabled: busy, onClick: () => previewLifecycle('remove', identity) }, 'Remove')
                 )
@@ -12850,8 +12902,8 @@ data:
               h(
                 Table,
                 { size: 'small' },
-                h(TableHead, null, h(TableRow, null, ['User', 'State', 'Groups', 'Effective roles', 'Credential', 'MFA', 'Reconciliation', 'Actions'].map(label => h(TableCell, { key: label }, label)))),
-                h(TableBody, null, rows.length > 0 ? rows : h(TableRow, null, h(TableCell, { colSpan: 8 }, 'No managed identities are declared.')))
+                h(TableHead, null, h(TableRow, null, ['User', 'Email', 'State', 'Groups', 'Effective roles', 'Credential', 'MFA', 'Reconciliation', 'Actions'].map(label => h(TableCell, { key: label }, label)))),
+                h(TableBody, null, rows.length > 0 ? rows : h(TableRow, null, h(TableCell, { colSpan: 9 }, 'No managed identities are declared.')))
               )
             ),
         canSubmit
@@ -12873,7 +12925,7 @@ data:
       );
     }
 
-    { splitGroups };
+    { splitGroups, validEmail };
 
       // ---- src/rbacobs.js ----
     // The observed-RBAC read: what the API server currently holds for the objects
@@ -14291,7 +14343,7 @@ data:
   package.json: |
     {
       "name": "@sre-platform/headlamp-access-control-view",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "description": "Access control and managed-user view with bounded GitOps editors for the Headlamp operator console",
       "private": true,
       "license": "Apache-2.0",
@@ -14299,7 +14351,7 @@ data:
       "type": "module",
       "scripts": {
         "build": "node build.mjs",
-        "test": "node --test test/payload.test.mjs test/effective.test.mjs test/status.test.mjs test/schema.test.mjs test/preview.test.mjs test/requeststatus.test.mjs"
+        "test": "node --test test/payload.test.mjs test/effective.test.mjs test/status.test.mjs test/schema.test.mjs test/preview.test.mjs test/requeststatus.test.mjs test/users.test.mjs"
       },
       "devDependencies": {
         "@kinvolk/headlamp-plugin": "0.13.1"
