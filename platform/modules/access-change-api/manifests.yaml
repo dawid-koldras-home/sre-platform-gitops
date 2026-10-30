@@ -187,7 +187,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:7f3abdcbb6d232e673612d49099cac5deeb7fd7159e1223d9510a2a1791d1fd3"
+        sre.platform.io/config-checksum: "sha256:843f00334e2d984c6f4b6328ea8e1b52848a491710a740216e8e3a25fe4c8718"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -357,6 +357,18 @@ data:
           - kind: user
             name: platform-admin
             reason: sole access administrator for this installation
+        - name: task224-temporary-access-administrator
+          role: accessAdministrator
+          scope:
+            clusterWide: true
+            clusters:
+            - lke643351
+            environments:
+            - dev
+          subjects:
+          - kind: user
+            name: task224-admin
+            reason: temporary live acceptance administrator for TASK-224
         - name: platform-read-only
           role: viewer
           scope:
@@ -412,6 +424,15 @@ data:
           groups:
           - platform-operators
           id: platform-admin
+          state: enabled
+        - credentialRef:
+            property: password
+            secretKey: sre-tools/identity/task224-admin
+            storeKey: identities/task224-admin
+          displayLabel: Temporary Live Acceptance Admin
+          groups:
+          - platform-operators
+          id: task224-admin
           state: enabled
         scope:
           customerId: sre-tools
