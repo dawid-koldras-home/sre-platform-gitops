@@ -4200,7 +4200,7 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/component: headlamp-identity-bridge
 data:
-  allow-list.json: '{"users":["platform-admin"],"groups":["platform-operators"]}'
+  allow-list.json: '{"users":["platform-admin","task224-admin"],"groups":["platform-operators"]}'
 ---
 # Source: headlamp/templates/extra-manifests.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -4222,6 +4222,7 @@ rules:
   - ""
   resourceNames:
   - platform-admin
+  - task224-admin
   resources:
   - users
   verbs:
