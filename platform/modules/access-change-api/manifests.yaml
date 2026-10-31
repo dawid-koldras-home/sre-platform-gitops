@@ -187,7 +187,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:b433c844024af2b55f58730191f4f0703795d0ad1541185e93a83399c34f313b"
+        sre.platform.io/config-checksum: "sha256:1a5382f6b5df88da46ae57aee965759ebf81dde2278f803b3d27bb040d733e2f"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -584,6 +584,7 @@ data:
           enabled: true
       profile: core
       target:
+        clusterName: lke643351
         context: lke643351-ctx
         mode: existing-cluster
 kind: ConfigMap
