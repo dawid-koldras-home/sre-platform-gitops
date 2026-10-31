@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: access-change-api-sink-ingress
+  namespace: audit-conformance
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: srectl
+    app.kubernetes.io/component: audit-sink
+    sre.platform.io/acceptance: task-224
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: sink
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: access-change-api
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: access-change-api
+              app.kubernetes.io/instance: access-change-api
+      ports:
+        - protocol: TCP
+          port: 8443
