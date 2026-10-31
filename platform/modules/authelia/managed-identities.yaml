@@ -64,7 +64,7 @@ spec:
             "task224-e2e-20261031130914":
               displayname: "Task224 Idempotent Label"
               email: "task224-e2e-20261031130914.edited@example.invalid"
-              disabled: false
+              disabled: true
               groups:
                 - "platform-operators"
               password: {{ .credential_2 }}
