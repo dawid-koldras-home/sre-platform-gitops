@@ -9932,7 +9932,7 @@ spec:
             app.kubernetes.io/name: sre-identity-bridge
       containers:
       - name: bridge
-        image: ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:3f4bb9bb189f274a6ba0e53fdb407715b155bdadf4c57dea3678ae229e806f4a
+        image: ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b
         imagePullPolicy: IfNotPresent
         args:
         - --upstream-url=https://kubernetes.default.svc
@@ -9942,11 +9942,12 @@ spec:
         - --username-header=Remote-User
         - --groups-header=Remote-Groups
         - --listen-addr=:8080
+        - --identity-state-file=/etc/identity-bridge-identities/identities.json
         - --enable-direct-service-proxy
         - --audit-sink-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
         - --audit-sink-ca-file=/etc/identity-bridge/audit-ca/ca.crt
         - --audit-token-path=/etc/identity-bridge/audit-token/token
-        - --bridge-image-digest=ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:3f4bb9bb189f274a6ba0e53fdb407715b155bdadf4c57dea3678ae229e806f4a
+        - --bridge-image-digest=ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b
         - --audit-impersonating-namespace=headlamp
         - --audit-impersonating-name=sre-identity-bridge
         ports:
@@ -9992,6 +9993,9 @@ spec:
         - name: allow-list
           mountPath: /etc/identity-bridge
           readOnly: true
+        - name: identity-state
+          mountPath: /etc/identity-bridge-identities
+          readOnly: true
         - name: audit-sink-ca
           mountPath: /etc/identity-bridge/audit-ca
           readOnly: true
@@ -10019,6 +10023,13 @@ spec:
       - name: allow-list
         configMap:
           name: sre-identity-bridge-allow-list
+      - name: identity-state
+        configMap:
+          name: sre-identity-bridge-identities
+          optional: true
+          items:
+          - key: identities.json
+            path: identities.json
       - name: audit-sink-ca
         secret:
           secretName: audit-ca

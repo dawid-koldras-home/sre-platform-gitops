@@ -187,7 +187,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:1d4a7593b98c102b49070831dc124c819b060bed6f1d4ba2c7592d65ee30650f"
+        sre.platform.io/config-checksum: "sha256:b433c844024af2b55f58730191f4f0703795d0ad1541185e93a83399c34f313b"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -199,7 +199,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: access-change-api
-          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:0e53dfc5100e6cee9f5e52108a6c6fe1a15788e3edc0f8a8603431ef02049d88"
+          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:4391ab25bc57defa3df498060ba8aa6db6d3461d72418a3ad3874df4f4c9a9e8"
           imagePullPolicy: IfNotPresent
           workingDir: /app
           args:
@@ -211,7 +211,7 @@ spec:
             - --audit-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
             - --audit-ca-file=/etc/access-change/audit/ca.crt
             - --audit-token-file=/etc/access-change/audit/token
-            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:0e53dfc5100e6cee9f5e52108a6c6fe1a15788e3edc0f8a8603431ef02049d88
+            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:4391ab25bc57defa3df498060ba8aa6db6d3461d72418a3ad3874df4f4c9a9e8
             - --service-namespace=access-change-api
             - --service-name=access-change-api
             - --git-credentials-file=/etc/access-change/git-credentials/credentials
@@ -468,8 +468,12 @@ data:
                 key: token
                 name: access-change-openbao-token
             gitCredentialsSecretName: access-change-api-git-credentials
+            identityBridge:
+              allowedGroups:
+              - platform-operators
+              enabled: true
             image:
-              digest: sha256:0e53dfc5100e6cee9f5e52108a6c6fe1a15788e3edc0f8a8603431ef02049d88
+              digest: sha256:4391ab25bc57defa3df498060ba8aa6db6d3461d72418a3ad3874df4f4c9a9e8
               repository: ghcr.io/dawid-koldras-home/access-change-api
             ingress:
               clusterIssuerName: sre-tools-letsencrypt
@@ -507,6 +511,42 @@ data:
           enabled: true
         headlamp:
           config:
+            accessIdentity:
+              apiEgressCIDRs:
+              - 85.90.247.96/32
+              apiEgressPorts:
+              - 6443
+              audit:
+                caSecretName: audit-ca
+                peer:
+                  app.kubernetes.io/name: audit-sink
+                peerNamespaceSelector:
+                  kubernetes.io/metadata.name: audit-conformance
+                port: 8443
+                tokenSecretName: audit-token
+                url: https://audit-sink.audit-conformance.svc.cluster.local:8443
+              bridgeImage:
+                digest: sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b
+              clusterAdminUsers:
+              - platform-admin
+              dnsPeers:
+              - namespaceSelector:
+                  kubernetes.io/metadata.name: kube-system
+                podSelector:
+                  k8s-app: kube-dns
+              dynamicIdentityAuthorization: true
+              enabled: true
+              omitUnboundClusterRoles: true
+              serviceProxyPeers:
+              - namespace: gatus
+                podSelector:
+                  app.kubernetes.io/instance: gatus
+                  app.kubernetes.io/name: gatus
+                port: 8080
+              - namespace: holmes
+                podSelector:
+                  app: holmes
+                port: 5050
             aiAssistantImage:
               pullSecretName: headlamp-registry-pull
             authProxy:
