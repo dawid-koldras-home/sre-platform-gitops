@@ -11,7 +11,7 @@ metadata:
   annotations:
     platform.sre-platform.io/source: managed-identities
 data:
-  identities.json: '{"users":["platform-admin","task224-admin"]}'
+  identities.json: '{"users":["platform-admin","task224-admin","task224-e2e-20261031130234"]}'
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -30,6 +30,7 @@ rules:
   resourceNames:
   - platform-admin
   - task224-admin
+  - task224-e2e-20261031130234
   resources:
   - users
   verbs:
