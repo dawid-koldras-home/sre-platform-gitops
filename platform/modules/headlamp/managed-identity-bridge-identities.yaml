@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sre-identity-bridge-identities
+  namespace: headlamp
+  labels:
+    app.kubernetes.io/name: sre-identity-bridge
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/component: headlamp-identity-bridge
+    app.kubernetes.io/managed-by: access-change-api
+  annotations:
+    platform.sre-platform.io/source: managed-identities
+data:
+  identities.json: '{"users":["platform-admin"]}'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    platform.sre-platform.io/source: managed-identities
+  labels:
+    app.kubernetes.io/component: headlamp-identity-bridge
+    app.kubernetes.io/managed-by: access-change-api
+    app.kubernetes.io/name: sre-identity-bridge
+    app.kubernetes.io/part-of: sre-platform
+  name: sre-acl-managed-identity-bridge-users
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - platform-admin
+  resources:
+  - users
+  verbs:
+  - impersonate
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  annotations:
+    platform.sre-platform.io/source: managed-identities
+  labels:
+    app.kubernetes.io/component: headlamp-identity-bridge
+    app.kubernetes.io/managed-by: access-change-api
+    app.kubernetes.io/name: sre-identity-bridge
+    app.kubernetes.io/part-of: sre-platform
+  name: sre-acl-managed-identity-bridge-users
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sre-acl-managed-identity-bridge-users
+subjects:
+- kind: ServiceAccount
+  name: sre-identity-bridge
+  namespace: headlamp
