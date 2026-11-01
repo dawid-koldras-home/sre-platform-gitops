@@ -62,8 +62,8 @@ spec:
                 - "platform-operators"
               password: {{ .credential_1 }}
             "task224-e2e-20261101133350":
-              displayname: "Task224 Live Acceptance Synthetic"
-              email: "task224-e2e-20261101133350@example.invalid"
+              displayname: "Task224 Live Acceptance Edited"
+              email: "task224-e2e-20261101133350.edited@example.invalid"
               disabled: false
               groups:
                 - "platform-operators"
