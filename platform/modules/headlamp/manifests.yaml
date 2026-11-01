@@ -10578,6 +10578,128 @@ data:
     const PLUGIN_PATH = ROUTE_PATH;
     const PLUGIN_SIDEBAR = SIDEBAR_NAME;
 
+      // ---- src/errors.js ----
+    // One safe error normalizer for every failure the Headlamp request wrapper and
+    // the access-change API can produce.
+    //
+    // The wrapper rejects with different shapes depending on where the failure came
+    // from (a Headlamp transport error, a JSON refusal from the access-change API,
+    // a bare non-2xx), and none of those shapes is guaranteed to carry a readable
+    // message. This module reduces them all to one shape with a guaranteed non-empty
+    // message, so the UI can never render "undefined", "null" or "[object Object]".
+    //
+    // It is also the last line of defence against leaking secret material: it never
+    // surfaces an OpenBao response, a token, a credential path, a hash or a
+    // password, and an unrecognised object yields a fixed fallback instead of a
+    // stringified body.
+
+    const UNREADABLE = new Set(['', 'undefined', 'null', '[object object]']);
+
+    /** The first non-empty, readable string among the candidates. */
+    function firstString(...values) {
+      for (const value of values) {
+        if (typeof value !== 'string') {
+          continue;
+        }
+        const trimmed = value.trim();
+        if (trimmed !== '' && !UNREADABLE.has(trimmed.toLowerCase())) {
+          return trimmed;
+        }
+      }
+      return '';
+    }
+
+    /** Reduce an arbitrary value to a readable string or the empty string. */
+    function readable(value) {
+      if (value === undefined || value === null) {
+        return '';
+      }
+      if (typeof value === 'string') {
+        return value.trim();
+      }
+      if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+      }
+      if (typeof value === 'object') {
+        return firstString(value.error, value.message);
+      }
+      return '';
+    }
+
+    /** The numeric HTTP status carried anywhere on an error shape. */
+    function statusOf(value) {
+      if (Number.isInteger(value)) {
+        return value;
+      }
+      if (!value || typeof value !== 'object') {
+        return 0;
+      }
+      if (Number.isInteger(value.status)) {
+        return value.status;
+      }
+      if (Number.isInteger(value.statusCode)) {
+        return value.statusCode;
+      }
+      return 0;
+    }
+
+    /**
+     * Reduce one thrown/rejected value to a safe normalized shape.
+     *
+     * The message is selected in priority order from the shapes the API and the
+     * wrapper actually produce: the plugin's own envelope, a Headlamp `response`
+     * with `data`/`body`, a bare `data`/`body`, a direct `error`/`message`, then a
+     * fixed fallback. A missing or unreadable message never becomes "undefined".
+     */
+    function normalizeRequestError(value) {
+      const response =
+        value && typeof value === 'object' && (value.response || value.payload);
+      const status = statusOf(value);
+
+      const message = firstString(
+        readable(value && value.payload && value.payload.error),
+        readable(value && value.payload && value.payload.message),
+        readable(value && value.error),
+        readable(value && value.message),
+        readable(response && response.data && (response.data.error || response.data.message)),
+        readable(response && response.body && (response.body.error || response.body.message)),
+        readable(value && value.data && (value.data.error || value.data.message)),
+        readable(value && value.body && (value.body.error || value.body.message)),
+        readable(typeof value === 'string' ? value : undefined),
+        'request failed'
+      );
+
+      const code = firstString(
+        readable(value && value.payload && value.payload.code),
+        readable(value && value.code),
+        readable(response && response.data && response.data.code),
+        readable(response && response.body && response.body.code)
+      );
+
+      const requestID = firstString(
+        readable(value && value.payload && value.payload.request_id),
+        readable(value && value.request_id),
+        readable(value && value.requestId),
+        readable(response && response.data && response.data.request_id),
+        readable(response && response.body && response.body.request_id)
+      );
+
+      return { status, code, requestID, message };
+    }
+
+    /**
+     * The friendly text for a failed credential provisioning request. The raw API
+     * message is deliberately not shown here: a 503 provisioning failure means the
+     * credential store (OpenBao) is unreachable or unauthorized, which is an
+     * operator action, not a user error.
+     */
+    function provisioningErrorMessage(normalized) {
+      if (normalized && normalized.status === 503) {
+        return 'Credential provisioning is unavailable. Contact an operator.';
+      }
+      return normalized && normalized.message ? normalized.message : 'request failed';
+    }
+
       // ---- src/fetch.js ----
     // The single call site for every request this plugin makes.
     //
@@ -10657,10 +10779,10 @@ data:
       try {
         path = applyPathParams(entry, opts.pathParams);
         if (hasPathPlaceholder(path)) {
-          return failed(entry, 0, 'unavailable', 'the request path still carries an unsubstituted placeholder');
+          return failed(entry, 0, 'unavailable', '', '', 'the request path still carries an unsubstituted placeholder');
         }
       } catch (error) {
-        return failed(entry, 0, 'invalid', error && error.message ? String(error.message) : 'invalid path');
+        return failed(entry, 0, 'invalid', '', '', error && error.message ? String(error.message) : 'invalid path');
       }
 
       const init = {
@@ -10672,16 +10794,16 @@ data:
 
       if (entry.method === 'POST') {
         if (typeof opts.body !== 'string' || opts.body === '') {
-          return failed(entry, 0, 'invalid', `request "${entry.id}" is a POST and requires a body`);
+          return failed(entry, 0, 'invalid', '', '', `request "${entry.id}" is a POST and requires a body`);
         }
         if (typeof opts.idempotencyKey !== 'string' || opts.idempotencyKey === '') {
-          return failed(entry, 0, 'invalid', `request "${entry.id}" requires an idempotency key`);
+          return failed(entry, 0, 'invalid', '', '', `request "${entry.id}" requires an idempotency key`);
         }
         init.body = opts.body;
         init.headers['Content-Type'] = 'application/json';
         init.headers['Idempotency-Key'] = opts.idempotencyKey;
       } else if (opts.body !== undefined) {
-        return failed(entry, 0, 'invalid', `request "${entry.id}" is a read and must carry no body`);
+        return failed(entry, 0, 'invalid', '', '', `request "${entry.id}" is a read and must carry no body`);
       }
 
       // Only the access-change API is reached on the console origin without the
@@ -10694,35 +10816,27 @@ data:
         const payload = sameOrigin
           ? await sameOriginRequest(path, init, queryParams)
           : await clusterAwareRequest(path, init, queryParams);
-        return { ok: true, id: entry.id, status: 200, reason: '', payload };
+        return { ok: true, id: entry.id, status: 200, reason: '', requestID: '', payload };
       } catch (error) {
-        const status = Number.isInteger(error && error.status) ? error.status : 0;
+        const normalized = normalizeRequestError(error);
         let reason = 'unavailable';
-        if (status === 400 || status === 422) {
+        if (normalized.status === 400 || normalized.status === 422) {
           reason = 'invalid';
-        } else if (status === 401 || status === 403) {
+        } else if (normalized.status === 401 || normalized.status === 403) {
           reason = 'unauthorized';
-        } else if (status === 404) {
+        } else if (normalized.status === 404) {
           reason = 'missing';
-        } else if (status === 409) {
+        } else if (normalized.status === 409) {
           reason = 'conflict';
-        } else if (status === 429) {
+        } else if (normalized.status === 429) {
           reason = 'rate_limited';
         }
-        const message =
-          error && error.payload && typeof error.payload.error === 'string'
-            ? error.payload.error
-            : error && error.message
-              ? String(error.message)
-              : 'request failed';
-        return failed(entry, status, reason, message, error);
+        return failed(entry, normalized.status, reason, normalized.code, normalized.requestID, normalized.message);
       }
     }
 
-    function failed(entry, status, reason, message, error) {
-      const code =
-        error && error.payload && typeof error.payload.code === 'string' ? error.payload.code : '';
-      return { ok: false, id: entry.id, status, reason, code, payload: null, message };
+    function failed(entry, status, reason, code, requestID, message) {
+      return { ok: false, id: entry.id, status, reason, code, requestID, payload: null, message };
     }
 
     /**
@@ -12744,7 +12858,7 @@ data:
             secretDraft.current.confirmation = '';
             setDraft(previous => ({ ...previous, password: '', confirmation: '' }));
             if (!credential.ok) {
-              setNotice({ severity: 'error', text: errorText(credential, 'Credential provisioning failed. No identity request was submitted.') });
+              setNotice({ severity: 'error', text: provisioningErrorMessage(credential) });
               return;
             }
             const request = {
@@ -14354,7 +14468,7 @@ data:
   package.json: |
     {
       "name": "@sre-platform/headlamp-access-control-view",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "description": "Access control and managed-user view with bounded GitOps editors for the Headlamp operator console",
       "private": true,
       "license": "Apache-2.0",
@@ -14362,7 +14476,7 @@ data:
       "type": "module",
       "scripts": {
         "build": "node build.mjs",
-        "test": "node --test test/payload.test.mjs test/effective.test.mjs test/status.test.mjs test/schema.test.mjs test/preview.test.mjs test/requeststatus.test.mjs test/users.test.mjs"
+        "test": "node --test test/payload.test.mjs test/effective.test.mjs test/status.test.mjs test/schema.test.mjs test/preview.test.mjs test/requeststatus.test.mjs test/users.test.mjs test/errors.test.mjs"
       },
       "devDependencies": {
         "@kinvolk/headlamp-plugin": "0.13.1"
