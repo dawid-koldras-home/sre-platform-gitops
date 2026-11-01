@@ -31,6 +31,18 @@ data:
           environments:
             - dev
           clusterWide: true
+      - name: task224-temporary-access-administrator
+        role: accessAdministrator
+        subjects:
+          - kind: user
+            name: task224-admin
+            reason: temporary live acceptance administrator for TASK-224
+        scope:
+          clusters:
+            - lke643351
+          environments:
+            - dev
+          clusterWide: true
       - name: platform-read-only
         role: viewer
         subjects:
