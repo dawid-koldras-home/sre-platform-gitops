@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: task224-temporary-viewer-cluster
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    sre.platform.io/acceptance: task-224
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sre-acl-v1alpha1-viewer-cluster
+subjects:
+  - kind: User
+    name: task224-admin
+    apiGroup: rbac.authorization.k8s.io
