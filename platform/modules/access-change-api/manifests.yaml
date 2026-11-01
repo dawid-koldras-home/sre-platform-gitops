@@ -187,7 +187,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:8d7abd266b4d29c23c749f1d701b4129ce61bc3a717953a6a33e0b7fd1cef3ad"
+        sre.platform.io/config-checksum: "sha256:acbee1e87bf7d1d7024d269997aa8d6defacc1b5b36c009a33eec7830b2b1459"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -199,7 +199,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: access-change-api
-          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:a2d9a4f606264867eef1b7ec24e4f18c70265654e37926a715aa5f096dee38e1"
+          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:1c5116595422fa8639a916053e4845b5ab7fbd2ef86578e1393a2d98707078e6"
           imagePullPolicy: IfNotPresent
           workingDir: /app
           args:
@@ -211,7 +211,7 @@ spec:
             - --audit-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
             - --audit-ca-file=/etc/access-change/audit/ca.crt
             - --audit-token-file=/etc/access-change/audit/token
-            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:a2d9a4f606264867eef1b7ec24e4f18c70265654e37926a715aa5f096dee38e1
+            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:1c5116595422fa8639a916053e4845b5ab7fbd2ef86578e1393a2d98707078e6
             - --service-namespace=access-change-api
             - --service-name=access-change-api
             - --git-credentials-file=/etc/access-change/git-credentials/credentials
@@ -442,7 +442,7 @@ data:
               - platform-operators
               enabled: true
             image:
-              digest: sha256:a2d9a4f606264867eef1b7ec24e4f18c70265654e37926a715aa5f096dee38e1
+              digest: sha256:1c5116595422fa8639a916053e4845b5ab7fbd2ef86578e1393a2d98707078e6
               repository: ghcr.io/dawid-koldras-home/access-change-api
             ingress:
               clusterIssuerName: sre-tools-letsencrypt
