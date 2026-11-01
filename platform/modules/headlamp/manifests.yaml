@@ -14604,7 +14604,7 @@ data:
   package.json: |
     {
       "name": "@sre-platform/headlamp-sso-logout",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Ends the Authelia forward-auth session when Headlamp logs out",
       "private": true,
       "license": "Apache-2.0",
@@ -14613,6 +14613,9 @@ data:
       "scripts": {
         "build": "node build.mjs",
         "test": "node --test test/payload.test.mjs"
+      },
+      "devDependencies": {
+        "@kinvolk/headlamp-plugin": "0.13.1"
       }
     }
 kind: ConfigMap
