@@ -9814,6 +9814,9 @@ spec:
             - mountPath: /headlamp/plugins/access-control-view
               name: plugin-access-control-view
               readOnly: true
+            - mountPath: /headlamp/plugins/sso-logout
+              name: plugin-sso-logout
+              readOnly: true
             - mountPath: /headlamp/config
               name: headlamp-kubeconfig
               readOnly: true
@@ -9887,6 +9890,15 @@ spec:
               path: package.json
             name: headlamp-plugin-access-control-view
           name: plugin-access-control-view
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: main.js
+              path: main.js
+            - key: package.json
+              path: package.json
+            name: headlamp-plugin-sso-logout
+          name: plugin-sso-logout
         - configMap:
             name: headlamp-kubeconfig
           name: headlamp-kubeconfig
@@ -14504,4 +14516,111 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     sre.platform.io/plugin-name: accessControlView
   name: headlamp-access-policy-inventory
+  namespace: headlamp
+---
+apiVersion: v1
+data:
+  main.js: |
+    // sso-logout: end the Authelia forward-auth session when Headlamp logs out.
+    //
+    // Headlamp's own logout clears only its local session. Behind Authelia
+    // forward-auth the authelia_session cookie remains valid, so the next request
+    // is re-authenticated by the ingress and the user appears to stay logged in.
+    // This plugin overrides the console's setToken hook. When the console clears
+    // the token, it clears the local Headlamp token and then navigates the browser
+    // to the validated Authelia /logout endpoint injected at render time.
+    //
+    // The payload is self-contained: Headlamp 0.43.0 evaluates a plugin with
+    // new Function(source)(), so it must not reference module, exports, require or
+    // an AMD define. It resolves the registry from globalThis.pluginLib.
+    (function () {
+      'use strict';
+
+      var lib = (typeof globalThis !== 'undefined' && globalThis.pluginLib)
+        ? globalThis.pluginLib
+        : null;
+      if (!lib) return;
+
+      var target = lib.registerSetTokenFunction ? lib : (lib.Headlamp || null);
+      if (!target || typeof target.registerSetTokenFunction !== 'function') return;
+
+      // Replaced with the validated Authelia /logout URL by the resolver at render
+      // time. It is never a placeholder in a rendered installation, and an
+      // unreplaced value fails closed instead of navigating to an arbitrary URL.
+      var LOGOUT_URL = "https://auth.139.162.145.158.nip.io/logout";
+
+      function headlampHeaders() {
+        try {
+          var getHeaders = lib.getHeadlampAPIHeaders ||
+            (lib.Headlamp && lib.Headlamp.getHeadlampAPIHeaders);
+          return typeof getHeaders === 'function' ? getHeaders() : {};
+        } catch (error) {
+          return {};
+        }
+      }
+
+      function postToken(cluster, token) {
+        var headers = { 'Content-Type': 'application/json' };
+        var extra = headlampHeaders();
+        for (var key in extra) {
+          if (Object.prototype.hasOwnProperty.call(extra, key)) {
+            headers[key] = extra[key];
+          }
+        }
+        var path = '/clusters/' + encodeURIComponent(cluster) + '/set-token';
+        return fetch(path, {
+          method: 'POST',
+          credentials: 'include',
+          headers: headers,
+          body: JSON.stringify({ token: token })
+        });
+      }
+
+      function setToken(cluster, token) {
+        var request;
+        try {
+          request = postToken(cluster, token);
+        } catch (error) {
+          request = Promise.reject(error);
+        }
+        if (token !== null && typeof token !== 'undefined') {
+          return request;
+        }
+        return request.catch(function () {}).then(function () {
+          if (LOGOUT_URL && LOGOUT_URL.indexOf('__') !== 0) {
+            window.location.assign(LOGOUT_URL);
+          }
+        });
+      }
+
+      target.registerSetTokenFunction(function (cluster, token) {
+        try {
+          return setToken(cluster, token);
+        } catch (error) {
+          return undefined;
+        }
+      });
+    })();
+  package.json: |
+    {
+      "name": "@sre-platform/headlamp-sso-logout",
+      "version": "0.1.0",
+      "description": "Ends the Authelia forward-auth session when Headlamp logs out",
+      "private": true,
+      "license": "Apache-2.0",
+      "main": "main.js",
+      "type": "module",
+      "scripts": {
+        "build": "node build.mjs",
+        "test": "node --test test/payload.test.mjs"
+      }
+    }
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: plugin
+    app.kubernetes.io/name: headlamp
+    app.kubernetes.io/part-of: sre-platform
+    sre.platform.io/plugin-name: ssoLogout
+  name: headlamp-plugin-sso-logout
   namespace: headlamp
