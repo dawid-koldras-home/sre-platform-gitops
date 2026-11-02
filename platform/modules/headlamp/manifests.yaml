@@ -12676,6 +12676,37 @@ data:
       return fallback;
     }
 
+    // Delivery watching is bounded on purpose: the panel never spins forever and
+    // never claims a change is usable when Argo CD has not applied it.
+    const DELIVERY_POLL_MS = 5000;
+    const DELIVERY_WATCH_MS = 5 * 60 * 1000;
+
+    function deliveryNotice(delivery) {
+      const state = delivery && typeof delivery.state === 'string' ? delivery.state : '';
+      if (state === 'applied') {
+        return {
+          severity: 'info',
+          text:
+            'Argo CD has applied the commit carrying this identity declaration. Authelia reloads its user database within about a minute of that, so a newly created or changed password works from then on.'
+        };
+      }
+      if (state === 'pending') {
+        return {
+          severity: 'warning',
+          text:
+            'Committed to Git, not applied yet: Argo CD has not synced the commit that carries this identity declaration. A new user cannot sign in to Authelia until it is applied, so do not hand the password over before this banner clears.'
+        };
+      }
+      if (state === 'unavailable') {
+        return {
+          severity: 'warning',
+          text:
+            'The GitOps application state could not be read, so this panel cannot tell you whether the change reached the cluster. Treat the change as not yet delivered and check Argo CD.'
+        };
+      }
+      return null;
+    }
+
     function stateTone(value) {
       if (value === 'enabled' || value === 'declared' || value === 'verified') {
         return 'success';
@@ -12786,14 +12817,17 @@ data:
     }
 
     function UsersSection({ canSubmit, onChanged, mfaSelfServiceURL }) {
-      const [state, setState] = useState({ loading: true, identities: [], revision: '', error: '' });
+      const [state, setState] = useState({ loading: true, identities: [], revision: '', delivery: null, error: '' });
       const [mode, setMode] = useState('');
       const [draft, setDraft] = useState({ ...EMPTY_DRAFT });
       const [preview, setPreview] = useState(null);
       const [pendingRequest, setPendingRequest] = useState(null);
       const [busy, setBusy] = useState(false);
       const [notice, setNotice] = useState(null);
+      const [watching, setWatching] = useState(false);
       const secretDraft = useRef({ password: '', confirmation: '' });
+      const watchTimer = useRef(null);
+      const watchBusy = useRef(false);
 
       useEffect(() => {
         secretDraft.current.password = draft.password;
@@ -12805,11 +12839,33 @@ data:
         secretDraft.current.confirmation = '';
       }, []);
 
+      const stopDeliveryWatch = useCallback(() => {
+        if (watchTimer.current) {
+          clearInterval(watchTimer.current);
+          watchTimer.current = null;
+        }
+        watchBusy.current = false;
+        setWatching(false);
+      }, []);
+
+      // The watcher is a plain interval that reads the existing identity list. It
+      // holds no request state and is cleared on unmount, so leaving the page never
+      // leaves a poll running.
+      useEffect(
+        () => () => {
+          if (watchTimer.current) {
+            clearInterval(watchTimer.current);
+            watchTimer.current = null;
+          }
+        },
+        []
+      );
+
       const load = useCallback(async () => {
         setState(previous => ({ ...previous, loading: true, error: '' }));
         const result = await fetchIdentities();
         if (!result.ok) {
-          setState({ loading: false, identities: [], revision: '', error: errorText(result, 'The identity list is unavailable.') });
+          setState({ loading: false, identities: [], revision: '', delivery: null, error: errorText(result, 'The identity list is unavailable.') });
           return;
         }
         const payload = result.payload || {};
@@ -12817,9 +12873,54 @@ data:
           loading: false,
           identities: Array.isArray(payload.identities) ? payload.identities : [],
           revision: typeof payload.revision === 'string' ? payload.revision : '',
+          delivery: payload.delivery && typeof payload.delivery === 'object' ? payload.delivery : null,
           error: ''
         });
       }, []);
+
+      const startDeliveryWatch = useCallback(() => {
+        stopDeliveryWatch();
+        const deadline = Date.now() + DELIVERY_WATCH_MS;
+        setWatching(true);
+        watchTimer.current = setInterval(async () => {
+          if (watchBusy.current) {
+            return;
+          }
+          watchBusy.current = true;
+          try {
+            const result = await fetchIdentities();
+            if (result.ok) {
+              const payload = result.payload || {};
+              const delivery = payload.delivery && typeof payload.delivery === 'object' ? payload.delivery : null;
+              setState({
+                loading: false,
+                identities: Array.isArray(payload.identities) ? payload.identities : [],
+                revision: typeof payload.revision === 'string' ? payload.revision : '',
+                delivery,
+                error: ''
+              });
+              if (delivery && delivery.state === 'applied') {
+                stopDeliveryWatch();
+                setNotice({
+                  severity: 'success',
+                  text:
+                    'Applied by Argo CD. Authelia reloads its user database within about a minute; the new password works from then on.'
+                });
+              }
+            }
+          } finally {
+            watchBusy.current = false;
+          }
+          if (Date.now() > deadline) {
+            stopDeliveryWatch();
+            setNotice({
+              severity: 'warning',
+              text:
+                'Still not applied after five minutes. The change is committed to Git and will be applied automatically; check Argo CD before asking the new user to sign in.'
+            });
+          }
+        }, DELIVERY_POLL_MS);
+      }, [stopDeliveryWatch]);
 
       useEffect(() => {
         load();
@@ -12939,17 +13040,18 @@ data:
         }
         const record = result.payload && result.payload.request ? result.payload.request : {};
         setNotice({
-          severity: 'success',
-          text: `Identity request ${record.request_id || ''} is ${record.state || 'submitted'}; reconciliation ${record.reconciliation || 'pending'}; session revocation ${record.session_revocation || 'not_required'}.`
+          severity: 'info',
+          text: `Identity request ${record.request_id || ''} is ${record.state || 'submitted'}. It is committed to Git, not yet usable: the panel now watches Argo CD until the commit is applied.`
         });
         setPreview(null);
         setPendingRequest(null);
         await load();
+        startDeliveryWatch();
         if (typeof onChanged === 'function') {
           onChanged();
         }
         setBusy(false);
-      }, [load, onChanged, pendingRequest]);
+      }, [load, onChanged, pendingRequest, startDeliveryWatch]);
 
       const retryPendingPreview = useCallback(async () => {
         if (!pendingRequest) {
@@ -13031,6 +13133,16 @@ data:
         ),
         notice ? h(Alert, { severity: notice.severity, sx: { mb: 2 } }, notice.text) : null,
         state.error ? h(Alert, { severity: 'error', sx: { mb: 2 } }, state.error) : null,
+        watching
+          ? h(Box, { sx: { display: 'flex', gap: 1, alignItems: 'center', mb: 2 } }, h(CircularProgress, { size: 18 }), h(Typography, { variant: 'body2' }, 'Waiting for Argo CD to apply the change…'))
+          : null,
+        deliveryNotice(state.delivery)
+          ? h(
+              Alert,
+              { severity: deliveryNotice(state.delivery).severity, sx: { mb: 2 } },
+              deliveryNotice(state.delivery).text
+            )
+          : null,
         state.loading
           ? h(Box, { sx: { display: 'flex', gap: 1, alignItems: 'center' } }, h(CircularProgress, { size: 20 }), h(Typography, { variant: 'body2' }, 'Loading users…'))
           : h(
@@ -14480,7 +14592,7 @@ data:
   package.json: |
     {
       "name": "@sre-platform/headlamp-access-control-view",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "description": "Access control and managed-user view with bounded GitOps editors for the Headlamp operator console",
       "private": true,
       "license": "Apache-2.0",
