@@ -149,7 +149,7 @@ data:
   server.rbac.log.enforce.enable: "false"
   statusbadge.enabled: "false"
   timeout.hard.reconciliation: 0s
-  timeout.reconciliation: 180s
+  timeout.reconciliation: 60s
   url: https://argocd.139.162.145.158.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-cmd-params-cm.yaml
