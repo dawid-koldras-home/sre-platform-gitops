@@ -24,7 +24,7 @@ spec:
       key: identities/probe-1793613208
       metadataPolicy: None
       property: password
-      version: 1
+      version: "1"
     secretKey: credential_1
   - remoteRef:
       conversionStrategy: Default
