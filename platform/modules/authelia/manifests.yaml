@@ -184,7 +184,7 @@ data:
         disable: true
       refresh_interval: '5 minutes'
       file:
-        path: '/config/authelia/users/users_database.yml'
+        path: '/config/authelia/live/users_database.yml'
         watch: true
         search:
           email: false
@@ -340,7 +340,7 @@ spec:
         app.kubernetes.io/managed-by: Helm
         helm.sh/chart: authelia-0.11.22
       annotations:
-        authelia.com/checksum-config: 8df4fd213b32fc6ac9bc8725502495c75936f93b06c76f3d58ce7ba217a4170c
+        authelia.com/checksum-config: 5110f72c1f143e2b0c264720039f7c4e700edb1de16774173c11e28788da1972
         
         argocd.argoproj.io/sync-wave: "10"
     spec:
@@ -364,7 +364,10 @@ spec:
         image: ghcr.io/authelia/authelia:4.39.24
         imagePullPolicy: IfNotPresent
         command:
-        - 'authelia'
+        - '/bin/sh'
+        - '-c'
+        args:
+        - 'set -u; src=/config/authelia/users/users_database.yml; dst=/config/authelia/live/users_database.yml; until [ -s "$src" ]; do sleep 1; done; cat "$src" > "$dst"; ( while :; do sleep 5; if [ -s "$src" ] && ! cmp -s "$src" "$dst"; then cat "$src" > "$dst"; fi; done ) & exec authelia'
         resources: 
           limits:
             cpu: 500m
@@ -433,6 +436,8 @@ spec:
         - mountPath: /config/authelia/users
           name: users-database
           readOnly: true
+        - mountPath: /config/authelia/live
+          name: users-database-live
         securityContext: 
           allowPrivilegeEscalation: false
           capabilities:
@@ -468,6 +473,8 @@ spec:
           - key: users_database.yml
             path: users_database.yml
           secretName: authelia-users-database
+      - emptyDir: {}
+        name: users-database-live
 ---
 # Source: authelia/templates/ingress.yaml
 apiVersion: networking.k8s.io/v1
