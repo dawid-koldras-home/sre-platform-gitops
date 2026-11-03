@@ -44,19 +44,6 @@ spec:
       - ipBlock:
           cidr: 0.0.0.0/0
 ---
-# Source: authelia/templates/extraObjects.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "-10"
-  labels:
-    app.kubernetes.io/managed-by: srectl
-    app.kubernetes.io/part-of: sre-platform
-    sre.platform.io/component: external-secrets
-  name: external-secrets
-  namespace: authelia
----
 # Source: authelia/templates/configMap.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -551,28 +538,3 @@ spec:
     - http01:
         ingress:
           ingressClassName: nginx
----
-# Source: authelia/templates/extraObjects.yaml
-apiVersion: external-secrets.io/v1
-kind: SecretStore
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "-5"
-  labels:
-    app.kubernetes.io/managed-by: srectl
-    app.kubernetes.io/part-of: sre-platform
-    sre.platform.io/component: external-secrets
-  name: platform-secret-store
-  namespace: authelia
-spec:
-  provider:
-    vault:
-      auth:
-        kubernetes:
-          mountPath: kubernetes
-          role: external-secrets-authelia
-          serviceAccountRef:
-            name: external-secrets
-      path: secret
-      server: http://openbao.openbao.svc.cluster.local:8200
-      version: v2
