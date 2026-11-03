@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:038e178826b35d84eaddc2cf44ce19fa87b645fd5a1a18900e67bc6a341d1af1"
+        sre.platform.io/config-checksum: "sha256:0c0312698c064e5b747f51568573a1672fa1e3b17f7fca5777a98864aebd3135"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -488,14 +488,7 @@ data:
             tlsSecretName: authelia-tls
           enabled: true
         external-secrets:
-          config:
-            installCRDs: true
-            openbaoAddress: http://openbao.openbao.svc.cluster.local:8200
-            openbaoAuthMethod: kubernetes
-            provider: openbao
-            refreshInterval: 1h
-            storeName: platform-secret-store
-          enabled: true
+          enabled: false
         headlamp:
           config:
             accessIdentity:
@@ -558,7 +551,7 @@ data:
             publicURL: https://headlamp.139.162.145.158.nip.io
           enabled: true
         openbao:
-          enabled: true
+          enabled: false
         opencost:
           config:
             metricsSource: managed
