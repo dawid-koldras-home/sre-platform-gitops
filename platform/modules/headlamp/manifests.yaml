@@ -8452,7 +8452,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: e47d273fdc76f0cfcfd6288fc92223b7c36e3979b6d39bbd1db0615d04b009c4
+        sre.platform.io/headlamp-plugins-sha256: 7d1f078a84c2cc506e0ea19869170c3b0d229c8d3c86e67e4e4a4b938fd6cc05
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
@@ -8856,6 +8856,7 @@ spec:
                  port:
                    number: 80
 ---
+# Source: headlamp/templates/extra-manifests.yaml
 apiVersion: v1
 data:
   main.js: |
@@ -11401,6 +11402,15 @@ data:
       confirmation: ''
     };
 
+    // A credential rotation is not an identity change: the declaration in Git already
+    // carries the credential reference, so only the hash in the store moves. Keeping it
+    // in its own small draft is what makes that visible in the UI - the password never
+    // enters the form that produces a Git commit.
+    const EMPTY_CREDENTIAL_DRAFT = {
+      password: '',
+      confirmation: ''
+    };
+
     function splitGroups(value) {
       return String(value)
         .split(/[\n,]/)
@@ -11581,6 +11591,61 @@ data:
       );
     }
 
+    // CredentialForm sets or replaces the first factor of an identity that already
+    // exists in the declaration.
+    //
+    // It is a separate form from IdentityForm on purpose. Provisioning a credential does
+    // not commit to Git - the declaration already names the credential reference - so a
+    // password typed here must never be able to reach the identity-preview or
+    // identity-submit routes. The two fields are cleared by the caller as soon as the
+    // request settles, whatever it returned.
+    function CredentialForm({ identity, draft, setDraft, busy, onSubmit, onCancel }) {
+      if (!identity) {
+        return null;
+      }
+      return h(
+        Paper,
+        { variant: 'outlined', sx: { p: 2, mt: 2 } },
+        h(Typography, { variant: 'h6', gutterBottom: true }, `Set password for ${identity.id}`),
+        h(
+          Typography,
+          { variant: 'body2', sx: { mb: 2 } },
+          'The password is written straight to the credential store as a hash. It is never sent to Git, never stored in the browser and never shown again. The identity declaration in Git does not change.'
+        ),
+        identity.email
+          ? null
+          : h(
+              Alert,
+              { severity: 'warning', sx: { mb: 2 } },
+              'This identity has no mailbox, so Authelia cannot register a second factor for it. Set an email on the identity before this password is used for sign-in.'
+            ),
+        h(
+          Box,
+          { sx: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(220px, 1fr))', gap: 2 } },
+          h(TextField, {
+            label: 'New password',
+            type: 'password',
+            value: draft.password,
+            autoComplete: 'new-password',
+            onChange: event => setDraft({ ...draft, password: event.target.value })
+          }),
+          h(TextField, {
+            label: 'Confirm new password',
+            type: 'password',
+            value: draft.confirmation,
+            autoComplete: 'new-password',
+            onChange: event => setDraft({ ...draft, confirmation: event.target.value })
+          })
+        ),
+        h(
+          Box,
+          { sx: { display: 'flex', gap: 1, mt: 2 } },
+          h(Button, { variant: 'contained', disabled: busy, onClick: onSubmit }, busy ? 'Writing…' : 'Set password'),
+          h(Button, { disabled: busy, onClick: onCancel }, 'Cancel')
+        )
+      );
+    }
+
     function UsersSection({ canSubmit, onChanged, mfaSelfServiceURL }) {
       const [state, setState] = useState({ loading: true, identities: [], revision: '', delivery: null, error: '' });
       const [mode, setMode] = useState('');
@@ -11590,7 +11655,10 @@ data:
       const [busy, setBusy] = useState(false);
       const [notice, setNotice] = useState(null);
       const [watching, setWatching] = useState(false);
+      const [credentialTarget, setCredentialTarget] = useState(null);
+      const [credentialDraft, setCredentialDraft] = useState({ ...EMPTY_CREDENTIAL_DRAFT });
       const secretDraft = useRef({ password: '', confirmation: '' });
+      const credentialDraftRef = useRef({ password: '', confirmation: '' });
       const watchTimer = useRef(null);
       const watchBusy = useRef(false);
 
@@ -11599,9 +11667,16 @@ data:
         secretDraft.current.confirmation = draft.confirmation;
       }, [draft.password, draft.confirmation]);
 
+      useEffect(() => {
+        credentialDraftRef.current.password = credentialDraft.password;
+        credentialDraftRef.current.confirmation = credentialDraft.confirmation;
+      }, [credentialDraft.password, credentialDraft.confirmation]);
+
       useEffect(() => () => {
         secretDraft.current.password = '';
         secretDraft.current.confirmation = '';
+        credentialDraftRef.current.password = '';
+        credentialDraftRef.current.confirmation = '';
       }, []);
 
       const stopDeliveryWatch = useCallback(() => {
@@ -11697,6 +11772,49 @@ data:
         setDraft({ ...EMPTY_DRAFT });
         setMode('');
       }, []);
+
+      const clearCredentialForm = useCallback(() => {
+        credentialDraftRef.current.password = '';
+        credentialDraftRef.current.confirmation = '';
+        setCredentialDraft({ ...EMPTY_CREDENTIAL_DRAFT });
+        setCredentialTarget(null);
+      }, []);
+
+      // submitCredential rotates the first factor of an existing identity.
+      //
+      // It calls exactly one route and intentionally does not follow the identity
+      // preview/submit path: the declaration is unchanged, so there is nothing to
+      // preview and nothing to commit. The fields are wiped before the notice is shown so
+      // a rejected request cannot leave a password in component state.
+      const submitCredential = useCallback(async () => {
+        if (!credentialTarget) {
+          return;
+        }
+        const password = credentialDraftRef.current.password;
+        const confirmation = credentialDraftRef.current.confirmation;
+        if (password === '' || password !== confirmation) {
+          setNotice({ severity: 'error', text: 'The two password fields must match and must not be empty.' });
+          return;
+        }
+        setBusy(true);
+        setNotice(null);
+        try {
+          const credential = await provisionIdentityCredential(credentialTarget.id, password, confirmation, newIdempotencyKey());
+          clearCredentialForm();
+          if (!credential.ok) {
+            setNotice({ severity: 'error', text: provisioningErrorMessage(credential) });
+            return;
+          }
+          setNotice({
+            severity: 'success',
+            text: `Password written for ${credentialTarget.id}. The stored hash is the only record of it; Authelia accepts it from the next sign-in, and no Git change is involved.`
+          });
+          await load();
+          onChanged();
+        } finally {
+          setBusy(false);
+        }
+      }, [clearCredentialForm, credentialTarget, load, onChanged]);
 
       const showPreview = useCallback(async request => {
         const result = await previewIdentityChange(request);
@@ -11851,6 +11969,7 @@ data:
                   Box,
                   { sx: { display: 'flex', gap: 0.5, flexWrap: 'wrap' } },
                   h(Button, { size: 'small', disabled: busy, onClick: () => { setMode('edit'); setPreview(null); setDraft({ ...EMPTY_DRAFT, identityID: identity.id, displayLabel: identity.display_label || '', email: identity.email || '', groups: (identity.groups || []).join(', ') }); } }, 'Edit'),
+                  h(Button, { size: 'small', disabled: busy, onClick: () => { setMode(''); setPreview(null); setPendingRequest(null); setCredentialTarget(identity); setCredentialDraft({ ...EMPTY_CREDENTIAL_DRAFT }); } }, 'Set password'),
                   h(Button, { size: 'small', disabled: busy, onClick: () => previewLifecycle(identity.state === 'enabled' ? 'disable' : 'enable', identity) }, identity.state === 'enabled' ? 'Disable' : 'Enable'),
                   h(Button, { size: 'small', color: 'error', disabled: busy, onClick: () => previewLifecycle('remove', identity) }, 'Remove')
                 )
@@ -11924,6 +12043,14 @@ data:
           ? h(Button, { variant: 'outlined', sx: { mt: 2 }, disabled: busy, onClick: () => { setPreview(null); setMode('create'); setDraft({ ...EMPTY_DRAFT }); } }, 'Add user')
           : h(Alert, { severity: 'info', sx: { mt: 2 } }, 'This session can view users but cannot submit identity changes.'),
         h(IdentityForm, { mode, draft, setDraft, busy, onPreview: previewForm, onCancel: clearForm }),
+        h(CredentialForm, {
+          identity: credentialTarget,
+          draft: credentialDraft,
+          setDraft: setCredentialDraft,
+          busy,
+          onSubmit: submitCredential,
+          onCancel: clearCredentialForm
+        }),
         pendingRequest && !preview
           ? h(
               Paper,
