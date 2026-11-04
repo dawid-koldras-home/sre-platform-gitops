@@ -171,7 +171,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: sre-identity-bridge-sink-ingress
-  namespace: audit-conformance
+  namespace: audit-sink
   labels:
     app.kubernetes.io/name: sre-identity-bridge
     app.kubernetes.io/part-of: sre-platform
