@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:2b8b4b2d890f0766edeb41782cde3ba277fcb358afbfda1e473e3e31100a9b20"
+        sre.platform.io/config-checksum: "sha256:20eec8d0b7f25dba966528a602040141a6d707daf352ff96f4976edcf89ede0a"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -249,7 +249,7 @@ spec:
             - --allowed-origin=https://headlamp.139.162.145.158.nip.io
             - --argo-application=authelia
             - --argo-namespace=argocd
-            - --audit-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
+            - --audit-url=https://audit-sink.audit-sink.svc.cluster.local:8443
             - --audit-ca-file=/etc/access-change/audit/ca.crt
             - --audit-token-file=/etc/access-change/audit/token
             - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:60668ea0dc57254cde4f87c25891576be78c4c23f40afd8089c58a1aee8aa955
@@ -448,7 +448,7 @@ data:
             audit:
               caSecretName: audit-ca
               tokenSecretName: audit-token
-              url: https://audit-sink.audit-conformance.svc.cluster.local:8443
+              url: https://audit-sink.audit-sink.svc.cluster.local:8443
             credentialProvisioning:
               enabled: true
               identityDatabase:
@@ -477,6 +477,24 @@ data:
               className: nginx
               host: argocd.139.162.145.158.nip.io
           enabled: true
+        audit-sink:
+          config:
+            image:
+              digest: sha256:0c6391c3736cb3713ac4c07ce116848ffe55f277aadacc78d37da9ac262b20d2
+              repository: ghcr.io/dawid-koldras-home/sre-platform-audit-attribution-sink
+            networkPolicy:
+              ingressPeers:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: access-change-api
+                podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: access-change-api
+            postgres:
+              storageSize: 10Gi
+            sink:
+              mode: read-write
+          enabled: true
         authelia:
           config:
             clusterIssuerName: sre-tools-letsencrypt
@@ -501,10 +519,10 @@ data:
                 peer:
                   app.kubernetes.io/name: audit-sink
                 peerNamespaceSelector:
-                  kubernetes.io/metadata.name: audit-conformance
+                  kubernetes.io/metadata.name: audit-sink
                 port: 8443
                 tokenSecretName: audit-token
-                url: https://audit-sink.audit-conformance.svc.cluster.local:8443
+                url: https://audit-sink.audit-sink.svc.cluster.local:8443
               bridgeImage:
                 digest: sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b
               clusterAdminUsers:
