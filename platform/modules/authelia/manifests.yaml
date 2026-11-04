@@ -228,9 +228,9 @@ data:
       expiration: '1 hour'
       remember_me: '8 hours'
       cookies:
-        - domain: '139.162.145.158.nip.io'
-          authelia_url: 'https://auth.139.162.145.158.nip.io'
-          default_redirection_url: 'https://headlamp.139.162.145.158.nip.io'
+        - domain: '139.162.171.100.nip.io'
+          authelia_url: 'https://auth.139.162.171.100.nip.io'
+          default_redirection_url: 'https://headlamp.139.162.171.100.nip.io'
     regulation:
       modes:
       - 'user'
@@ -263,7 +263,7 @@ data:
       rules:
         - policy: two_factor
           domain:
-            - 'headlamp.139.162.145.158.nip.io'
+            - 'headlamp.139.162.171.100.nip.io'
     ...
 ---
 # Source: authelia/templates/persistentVolumeClaim.yaml
@@ -506,7 +506,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: 'auth.139.162.145.158.nip.io'
+  - host: 'auth.139.162.171.100.nip.io'
     http:
       paths:
         - path: '/'
@@ -518,7 +518,7 @@ spec:
                 number: 80
   tls:
     - hosts:
-        - 'auth.139.162.145.158.nip.io'
+        - 'auth.139.162.171.100.nip.io'
       secretName: authelia-tls
 ---
 # Source: authelia/templates/extraObjects.yaml

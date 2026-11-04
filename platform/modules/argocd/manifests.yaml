@@ -150,7 +150,7 @@ data:
   statusbadge.enabled: "false"
   timeout.hard.reconciliation: 0s
   timeout.reconciliation: 60s
-  url: https://argocd.139.162.145.158.nip.io
+  url: https://argocd.139.162.171.100.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-cmd-params-cm.yaml
 apiVersion: v1
@@ -229,7 +229,7 @@ metadata:
     app.kubernetes.io/version: "v2.11.7"
 data:
   context: |
-    argocdUrl: https://argocd.139.162.145.158.nip.io
+    argocdUrl: https://argocd.139.162.171.100.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-rbac-cm.yaml
 apiVersion: v1
@@ -23466,7 +23466,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: argocd.139.162.145.158.nip.io
+    - host: argocd.139.162.171.100.nip.io
       http:
         paths:
           - path: /

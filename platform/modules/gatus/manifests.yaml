@@ -34,7 +34,7 @@ data:
       interval: 1m
       method: GET
       name: Argo CD
-      url: http://argocd.139.162.145.158.nip.io/
+      url: http://argocd.139.162.171.100.nip.io/
     - alerts: []
       conditions:
       - '[STATUS] == 200'
@@ -42,7 +42,7 @@ data:
       interval: 1m
       method: GET
       name: Authelia
-      url: https://auth.139.162.145.158.nip.io/
+      url: https://auth.139.162.171.100.nip.io/
     - alerts: []
       conditions:
       - '[STATUS] == 200'
@@ -61,7 +61,7 @@ data:
       interval: 1m
       method: GET
       name: Headlamp public route
-      url: https://headlamp.139.162.145.158.nip.io/
+      url: https://headlamp.139.162.171.100.nip.io/
     - alerts: []
       conditions:
       - '[STATUS] == any(200, 429)'
@@ -69,7 +69,7 @@ data:
       interval: 1m
       method: GET
       name: OpenBao API
-      url: https://openbao.139.162.145.158.nip.io/v1/sys/health
+      url: https://openbao.139.162.171.100.nip.io/v1/sys/health
     - alerts: []
       conditions:
       - '[STATUS] == 200'
@@ -77,7 +77,7 @@ data:
       interval: 1m
       method: GET
       name: Policy Reporter UI
-      url: http://policy-reporter.139.162.145.158.nip.io/
+      url: http://policy-reporter.139.162.171.100.nip.io/
     metrics: true
     storage:
       type: memory
