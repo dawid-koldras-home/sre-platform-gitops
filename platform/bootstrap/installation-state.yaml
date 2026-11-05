@@ -6,12 +6,12 @@ pending:
   modules:
     access-change-api:
       chartVersion: 0.1.0
-      manifestDigest: f35969a7a63111833272a7645989c6bfa99bdcf34cbaefc44fda4e5a117bea47
+      manifestDigest: 6f7a5c90d630fafdd9749cc27d407d19e7c39d9c7d3143e34553910bc7d23853
       version: 0.1.0
     argocd:
       chartVersion: 7.3.11
       imageVersion: v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
-      manifestDigest: d959488e32dd4594d79d1361828f9d13dc3f17661e4566bfbc4deefe72747b34
+      manifestDigest: c50a55f5ce5945d0cbb9368f0390b2a0fdbe8c6ff07d76343cd2230ea85a690c
       version: 2.11.7
     audit-sink:
       chartVersion: 0.1.0
@@ -19,7 +19,7 @@ pending:
       version: 0.1.0
     authelia:
       chartVersion: 0.11.22
-      manifestDigest: 33982f79be38ce4936773d67a0ec6712c75a2eb3099b0312cf269fb05065913e
+      manifestDigest: fbac58afa31238d66a3f48b551a6d1712b70398b493e94d657a0883aa503e046
       version: 4.39.24
     cert-manager:
       chartVersion: v1.15.0
@@ -31,7 +31,7 @@ pending:
       version: 1.5.0
     headlamp:
       chartVersion: 0.43.0
-      manifestDigest: f0284e562b9d06225764d7f7b8a9c4306735a6fcdf8ef0f351567c9b812b1f94
+      manifestDigest: a9fd7060073900341dea4908b98619a0427ad49ac22f26c4fea254b5494bcce3
       version: 0.43.0
     holmes:
       chartVersion: 0.42.0
