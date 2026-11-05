@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:4fb536d98629650db763f16b9e1c7413d77fbf52c0fd09b8431405813c00dc50"
+        sre.platform.io/config-checksum: "sha256:534b79cb38a46349c5c97d905fd2e3afe3f5abf3a0c29cf9a95db85e27751805"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -249,7 +249,7 @@ spec:
             - --allowed-origin=https://headlamp.139-162-171-100.nip.io
             - --argo-application=authelia
             - --argo-namespace=argocd
-            - --audit-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
+            - --audit-url=https://audit-sink.audit-sink.svc.cluster.local:8443
             - --audit-ca-file=/etc/access-change/audit/ca.crt
             - --audit-token-file=/etc/access-change/audit/token
             - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:4ec521bfc0ceb28496546edfd62e1e6ff19413837298d17b26f65b6535f43d6d
@@ -442,7 +442,7 @@ data:
             audit:
               caSecretName: audit-ca
               tokenSecretName: audit-token
-              url: https://audit-sink.audit-conformance.svc.cluster.local:8443
+              url: https://audit-sink.audit-sink.svc.cluster.local:8443
             credentialProvisioning:
               enabled: true
               identityDatabase:
@@ -549,10 +549,10 @@ data:
                 peer:
                   app.kubernetes.io/name: audit-sink
                 peerNamespaceSelector:
-                  kubernetes.io/metadata.name: audit-conformance
+                  kubernetes.io/metadata.name: audit-sink
                 port: 8443
                 tokenSecretName: audit-token
-                url: https://audit-sink.audit-conformance.svc.cluster.local:8443
+                url: https://audit-sink.audit-sink.svc.cluster.local:8443
               bridgeImage:
                 digest: sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b
               clusterAdminUsers:

@@ -55,7 +55,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          kubernetes.io/metadata.name: audit-conformance
+          kubernetes.io/metadata.name: audit-sink
       podSelector:
         matchLabels:
             app.kubernetes.io/name: audit-sink
@@ -171,7 +171,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: sre-identity-bridge-sink-ingress
-  namespace: audit-conformance
+  namespace: audit-sink
   labels:
     app.kubernetes.io/name: sre-identity-bridge
     app.kubernetes.io/part-of: sre-platform
@@ -12341,7 +12341,7 @@ spec:
         - --listen-addr=:8080
         - --identity-state-file=/etc/identity-bridge-identities/identities.json
         - --enable-direct-service-proxy
-        - --audit-sink-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
+        - --audit-sink-url=https://audit-sink.audit-sink.svc.cluster.local:8443
         - --audit-sink-ca-file=/etc/identity-bridge/audit-ca/ca.crt
         - --audit-token-path=/etc/identity-bridge/audit-token/token
         - --bridge-image-digest=ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b

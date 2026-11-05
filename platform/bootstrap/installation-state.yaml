@@ -6,7 +6,7 @@ pending:
   modules:
     access-change-api:
       chartVersion: 0.1.0
-      manifestDigest: 7a378212d015e16b24bc42e921f68f0a09d85abde3d1c54ddeba06259fd847a2
+      manifestDigest: f8f14aa9183777f9f98e42744492cd5fac94c2420b02521a3f41c5e463686211
       version: 0.1.0
     argocd:
       chartVersion: 7.3.11
@@ -31,7 +31,7 @@ pending:
       version: 1.5.0
     headlamp:
       chartVersion: 0.43.0
-      manifestDigest: ada21619d1b9e50af3877dd7f868678ab84f235bf4dbbd133dc7effe46ede354
+      manifestDigest: 7eb2d7e9bb011eccd1a6809747860ead77735b412e5af4c22b43bafa83febdca
       version: 0.43.0
     holmes:
       chartVersion: 0.42.0
