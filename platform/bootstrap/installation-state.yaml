@@ -15,7 +15,7 @@ pending:
       version: 2.11.7
     audit-sink:
       chartVersion: 0.1.0
-      manifestDigest: da2eecdf2d30f831580e66083781ef2d9830151d347fb9ec016a781d0cff40c2
+      manifestDigest: f2f347bbc7d574763302ba87ec86b5b569566e98f09f907c0d48f61f8428c58b
       version: 0.1.0
     authelia:
       chartVersion: 0.11.22

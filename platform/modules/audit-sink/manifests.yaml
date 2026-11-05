@@ -643,9 +643,15 @@ metadata:
     # hook would deadlock: the sink Deployment cannot become ready before it is
     # migrated, and Argo CD runs PostSync only after the Application is healthy.
     argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    # A failed hook must stay inspectable: the first clean rebuild of this platform lost
+    # its only migration evidence because BeforeHookCreation replaced the failed Job
+    # before anyone could read the log. Successful hooks are still garbage-collected,
+    # and a failed one is bounded by the Job TTL below rather than surviving forever.
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
     argocd.argoproj.io/sync-wave: "-4"
 spec:
+  # Bounds how long a failed hook remains for diagnosis.
+  ttlSecondsAfterFinished: 900
   backoffLimit: 0
   activeDeadlineSeconds: 300
   template:
@@ -736,9 +742,15 @@ metadata:
     # previous run, so repeated syncs do not collide on an immutable Job spec;
     # the migration itself is versioned and re-running it is a no-op.
     argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    # A failed hook must stay inspectable: the first clean rebuild of this platform lost
+    # its only migration evidence because BeforeHookCreation replaced the failed Job
+    # before anyone could read the log. Successful hooks are still garbage-collected,
+    # and a failed one is bounded by the Job TTL below rather than surviving forever.
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
     argocd.argoproj.io/sync-wave: "-5"
 spec:
+  # Bounds how long a failed hook remains for diagnosis.
+  ttlSecondsAfterFinished: 900
   backoffLimit: 0
   activeDeadlineSeconds: 300
   template:
