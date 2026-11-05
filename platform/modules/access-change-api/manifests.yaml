@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:bb25690a37638f5ab9efaed0c095a124df51e71aa8e104ef5730ba9b95ad4f84"
+        sre.platform.io/config-checksum: "sha256:4fb536d98629650db763f16b9e1c7413d77fbf52c0fd09b8431405813c00dc50"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -387,23 +387,17 @@ data:
             namespaces:
             - access-change-api
             - argocd
-            - audit-conformance
             - authelia
             - cert-manager
-            - clickstack
             - cost-explorer
-            - crossplane
             - gatus
-            - goldilocks
             - headlamp
             - holmes
             - ingress-nginx
             - kyverno
             - metrics-server
             - openbao
-            - openbao-prod
             - opencost
-            - policy-reporter
             - prometheus
             - synthetic-monitoring
           subjects:
