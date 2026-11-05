@@ -1,4 +1,26 @@
 ---
+# Source: kyverno/templates/admission-controller/poddisruptionbudget.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kyverno-admission-controller
+  namespace: kyverno
+  labels:
+    app.kubernetes.io/component: admission-controller
+    app.kubernetes.io/instance: kyverno
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: kyverno
+    app.kubernetes.io/version: 3.2.0
+    helm.sh/chart: kyverno-3.2.0
+spec:
+  
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: admission-controller
+      app.kubernetes.io/instance: kyverno
+      app.kubernetes.io/part-of: kyverno
+---
 # Source: kyverno/templates/admission-controller/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -52680,7 +52702,7 @@ metadata:
     app.kubernetes.io/version: 3.2.0
     helm.sh/chart: kyverno-3.2.0
 spec:
-  replicas: 
+  replicas: 2
   revisionHistoryLimit: 10
   strategy:
     rollingUpdate:
@@ -52718,7 +52740,7 @@ spec:
       serviceAccountName: kyverno-admission-controller
       initContainers:
         - name: kyverno-pre
-          image: "ghcr.io/kyverno/kyvernopre:v1.12.0"
+          image: "ghcr.io/kyverno/kyvernopre:v1.12.0@sha256:0f241e033f4a815b7fc5a6f0aecaa7972baa30e08332840d5e213cac4f5bd8d5"
           imagePullPolicy: IfNotPresent
           args:
             - --loggingFormat=text
@@ -52761,7 +52783,7 @@ spec:
             value: kyverno-svc
       containers:
         - name: kyverno
-          image: "ghcr.io/kyverno/kyverno:v1.12.0"
+          image: "ghcr.io/kyverno/kyverno:v1.12.0@sha256:5cb36611b0342b61fe819d0eccd51ff192f9d1cfdc8f17ca9d99380be5728177"
           imagePullPolicy: IfNotPresent
           args:
             - --caSecretName=kyverno-svc.kyverno.svc.kyverno-tls-ca
@@ -52882,7 +52904,7 @@ metadata:
     app.kubernetes.io/version: 3.2.0
     helm.sh/chart: kyverno-3.2.0
 spec:
-  replicas: 
+  replicas: 1
   revisionHistoryLimit: 10
   strategy:
     rollingUpdate:
@@ -52920,7 +52942,7 @@ spec:
       serviceAccountName: kyverno-background-controller
       containers:
         - name: controller
-          image: "ghcr.io/kyverno/background-controller:v1.12.0"
+          image: "ghcr.io/kyverno/background-controller:v1.12.0@sha256:50f0189f23740b881d13380316854dcdcb11179f97594ac79be9d7d60bf8eb27"
           imagePullPolicy: IfNotPresent
           ports:
           - containerPort: 9443
@@ -52961,10 +52983,11 @@ spec:
                 fieldPath: metadata.namespace
           resources:
             limits:
-              memory: 128Mi
+              cpu: 500m
+              memory: 256Mi
             requests:
               cpu: 100m
-              memory: 64Mi
+              memory: 128Mi
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -52990,7 +53013,7 @@ metadata:
     app.kubernetes.io/version: 3.2.0
     helm.sh/chart: kyverno-3.2.0
 spec:
-  replicas: 
+  replicas: 1
   revisionHistoryLimit: 10
   strategy:
     rollingUpdate:
@@ -53028,7 +53051,7 @@ spec:
       serviceAccountName: kyverno-cleanup-controller
       containers:
         - name: controller
-          image: "ghcr.io/kyverno/cleanup-controller:v1.12.0"
+          image: "ghcr.io/kyverno/cleanup-controller:v1.12.0@sha256:bd5bab4d54f0b0b21482949d65b2d0ca4d1c58b0fdf20ec631f07675de8e7fd7"
           imagePullPolicy: IfNotPresent
           ports:
           - containerPort: 9443
@@ -53076,10 +53099,11 @@ spec:
             value: kyverno-cleanup-controller
           resources:
             limits:
-              memory: 128Mi
+              cpu: 500m
+              memory: 256Mi
             requests:
               cpu: 100m
-              memory: 64Mi
+              memory: 128Mi
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -53171,7 +53195,7 @@ spec:
       serviceAccountName: kyverno-reports-controller
       containers:
         - name: controller
-          image: "ghcr.io/kyverno/reports-controller:v1.12.0"
+          image: "ghcr.io/kyverno/reports-controller:v1.12.0@sha256:e47bfbe3ff5ee11559f74c645ecd4fb1a84e331a5657330ff3d383f5f43104a0"
           imagePullPolicy: IfNotPresent
           ports:
           - containerPort: 9443
@@ -53225,10 +53249,11 @@ spec:
             value: /.sigstore
           resources:
             limits:
-              memory: 128Mi
+              cpu: 500m
+              memory: 512Mi
             requests:
               cpu: 100m
-              memory: 64Mi
+              memory: 128Mi
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -53454,7 +53479,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test
-      image: busybox:1.35
+      image: docker.io/library/busybox:1.35@sha256:98ad9d1a2be345201bb0709b0d38655eb1b370145c7d94ca1fe9c421f76e245a
       imagePullPolicy: IfNotPresent
       resources:
         limits:
@@ -53499,7 +53524,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test
-      image: busybox:1.35
+      image: docker.io/library/busybox:1.35@sha256:98ad9d1a2be345201bb0709b0d38655eb1b370145c7d94ca1fe9c421f76e245a
       imagePullPolicy: IfNotPresent
       resources:
         limits:
@@ -53544,7 +53569,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test
-      image: busybox:1.35
+      image: docker.io/library/busybox:1.35@sha256:98ad9d1a2be345201bb0709b0d38655eb1b370145c7d94ca1fe9c421f76e245a
       imagePullPolicy: IfNotPresent
       resources:
         limits:
@@ -53589,7 +53614,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test
-      image: busybox:1.35
+      image: docker.io/library/busybox:1.35@sha256:98ad9d1a2be345201bb0709b0d38655eb1b370145c7d94ca1fe9c421f76e245a
       imagePullPolicy: IfNotPresent
       resources:
         limits:
@@ -53634,7 +53659,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test
-      image: busybox:1.35
+      image: docker.io/library/busybox:1.35@sha256:98ad9d1a2be345201bb0709b0d38655eb1b370145c7d94ca1fe9c421f76e245a
       imagePullPolicy: IfNotPresent
       resources:
         limits:
@@ -53679,7 +53704,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test
-      image: busybox:1.35
+      image: docker.io/library/busybox:1.35@sha256:98ad9d1a2be345201bb0709b0d38655eb1b370145c7d94ca1fe9c421f76e245a
       imagePullPolicy: IfNotPresent
       resources:
         limits:
@@ -53724,7 +53749,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: test
-      image: busybox:1.35
+      image: docker.io/library/busybox:1.35@sha256:98ad9d1a2be345201bb0709b0d38655eb1b370145c7d94ca1fe9c421f76e245a
       imagePullPolicy: IfNotPresent
       resources:
         limits:
@@ -53843,7 +53868,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: kubectl
-          image: "ghcr.io/kyverno/kyverno-cli:v1.12.0"
+          image: "ghcr.io/kyverno/kyverno-cli:v1.12.0@sha256:eabda82c1d4645e7d542e6166142d227ff9f2de3684348bb02b3247b37d15ce5"
           imagePullPolicy: IfNotPresent
           args:
             - migrate
@@ -53934,7 +53959,7 @@ spec:
 ---
 # Kyverno baseline policy pack v1
 # Versioned, audit-first starter pack for new platform installs.
-# Provides immediate Policy Reporter visibility without disruptive enforcement.
+# Provides immediate PolicyReport visibility through Kyverno's reports controller without disruptive enforcement.
 #
 # Policy selection rationale:
 #   - disallow-privileged: Prevents container breakout via privileged mode.
@@ -54197,3 +54222,97 @@ spec:
               - securityContext:
                   capabilities:
                     drop: ["ALL"]
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: baseline-restrict-identity-bridge-rbac
+  annotations:
+    policies.kyverno.io/title: Restrict Identity Bridge RBAC
+    policies.kyverno.io/category: Access Control
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      The identity bridge is a transport, not a console role. Its ClusterRole
+      may hold exactly the impersonate verb on the users and groups resources
+      with non-empty, wildcard-free allow-lists. When the direct Service proxy
+      path is enabled it may additionally hold create on subjectaccessreviews
+      in the authorization.k8s.io group and get on services in the core group,
+      and nothing else. Its ClusterRoleBinding must bind exactly one platform
+      ServiceAccount. Any other grant on a bridge role would let the bridge
+      confer authority that the rendered access policy never approved. This
+      policy reports violations in audit mode only; it never mutates or
+      deletes a resource.
+    policies.kyverno.io/policy-pack: baseline-v1
+    policies.kyverno.io/policy-pack-version: "1"
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: bridge-role-holds-only-impersonation
+      match:
+        any:
+          - resources:
+              kinds:
+                - rbac.authorization.k8s.io/v1/ClusterRole
+              annotations:
+                platform.sre-platform.io/access-role: identity-bridge
+      validate:
+        message: >-
+          An identity bridge ClusterRole may hold exactly the impersonate verb
+          on the users and groups resources with non-empty named allow-lists,
+          plus (when the direct Service proxy path is enabled) create on
+          subjectaccessreviews and get on services, and no other rule. Report
+          the offending role instead of mutating it.
+        cel:
+          expressions:
+            - expression: >-
+                object.rules.size() > 0 &&
+                object.rules.all(rule,
+                  (
+                    rule.verbs == ['impersonate'] &&
+                    rule.apiGroups == [''] &&
+                    (rule.resources == ['users'] || rule.resources == ['groups']) &&
+                    !has(rule.nonResourceURLs) &&
+                    has(rule.resourceNames) &&
+                    rule.resourceNames.size() > 0 &&
+                    rule.resourceNames.all(name, name != '*')
+                  ) || (
+                    rule.verbs == ['create'] &&
+                    rule.apiGroups == ['authorization.k8s.io'] &&
+                    rule.resources == ['subjectaccessreviews'] &&
+                    !has(rule.nonResourceURLs) &&
+                    !has(rule.resourceNames)
+                  ) || (
+                    rule.verbs == ['get'] &&
+                    rule.apiGroups == [''] &&
+                    rule.resources == ['services'] &&
+                    !has(rule.nonResourceURLs) &&
+                    !has(rule.resourceNames)
+                  )
+                )
+    - name: bridge-binding-targets-the-platform-service-account
+      match:
+        any:
+          - resources:
+              kinds:
+                - rbac.authorization.k8s.io/v1/ClusterRoleBinding
+              annotations:
+                platform.sre-platform.io/access-role: identity-bridge
+      validate:
+        message: >-
+          An identity bridge ClusterRoleBinding may bind exactly the one
+          platform ServiceAccount the renderer approved, never a User, a Group,
+          or an anonymous subject. Report the offending binding instead of
+          mutating it.
+        cel:
+          expressions:
+            - expression: >-
+                object.subjects.size() == 1 &&
+                object.subjects.all(subject,
+                  subject.kind == 'ServiceAccount' &&
+                  has(subject.namespace) &&
+                  subject.namespace != ''
+                ) &&
+                has(object.roleRef) &&
+                object.roleRef.kind == 'ClusterRole'

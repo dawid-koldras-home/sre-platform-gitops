@@ -392,6 +392,8 @@ metadata:
     app.kubernetes.io/part-of: prometheus
   name: prometheus-server
   namespace: prometheus
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes:
     - ReadWriteOnce

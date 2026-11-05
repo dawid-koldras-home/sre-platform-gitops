@@ -9094,7 +9094,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: cert-manager-cainjector
-          image: "quay.io/jetstack/cert-manager-cainjector:v1.15.0"
+          image: "quay.io/jetstack/cert-manager-cainjector@sha256:001ccf30ce45cc214e293b570090e0ac1d22c364cfccc081f22311b28cdbbda8"
           imagePullPolicy: IfNotPresent
           args:
           - --v=2
@@ -9153,13 +9153,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: cert-manager-controller
-          image: "quay.io/jetstack/cert-manager-controller:v1.15.0"
+          image: "quay.io/jetstack/cert-manager-controller@sha256:d3e33a240db1be4076d1d1766fbaddd8a2dc7533d89b9f85e2b65b5419dd36a9"
           imagePullPolicy: IfNotPresent
           args:
           - --v=2
           - --cluster-resource-namespace=$(POD_NAMESPACE)
           - --leader-election-namespace=kube-system
-          - --acme-http01-solver-image=quay.io/jetstack/cert-manager-acmesolver:v1.15.0
+          - --acme-http01-solver-image=quay.io/jetstack/cert-manager-acmesolver@sha256:feb7f20bbe553a7d22ada91578b118b5fbf8d030facd15612d735f18e6b27aac
           - --max-concurrent-challenges=60
           ports:
           - containerPort: 9402
@@ -9235,7 +9235,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: cert-manager-webhook
-          image: "quay.io/jetstack/cert-manager-webhook:v1.15.0"
+          image: "quay.io/jetstack/cert-manager-webhook@sha256:d1538a5e566247c690b656531908da4eadb501d9cc4a367a8d45a9ef6e46e9c1"
           imagePullPolicy: IfNotPresent
           args:
           - --v=2
@@ -9487,7 +9487,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: cert-manager-startupapicheck
-          image: "quay.io/jetstack/cert-manager-startupapicheck:v1.15.0"
+          image: "quay.io/jetstack/cert-manager-startupapicheck@sha256:ac602d5b0196f98324e8711828f2077a6b4823b157dd23fba662c892026f9c7e"
           imagePullPolicy: IfNotPresent
           args:
           - check

@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:58c981a264955f613c7cdfa335738bbafdc0596255abd24a9a96ba3a403614c3"
+        sre.platform.io/config-checksum: "sha256:2a579df16da35a411f6ebb786bde57171bb088aef683c0187366280fad831ef2"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -240,19 +240,19 @@ spec:
           type: RuntimeDefault
       containers:
         - name: access-change-api
-          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:60668ea0dc57254cde4f87c25891576be78c4c23f40afd8089c58a1aee8aa955"
+          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:4ec521bfc0ceb28496546edfd62e1e6ff19413837298d17b26f65b6535f43d6d"
           imagePullPolicy: IfNotPresent
           workingDir: /app
           args:
             - --config=/etc/access-change/customer.yaml
             - --listen=:8080
-            - --allowed-origin=https://headlamp.139.162.171.100.nip.io
+            - --allowed-origin=https://headlamp.139.162.145.158.nip.io
             - --argo-application=authelia
             - --argo-namespace=argocd
-            - --audit-url=https://audit-sink.audit-sink.svc.cluster.local:8443
+            - --audit-url=https://audit-sink.audit-conformance.svc.cluster.local:8443
             - --audit-ca-file=/etc/access-change/audit/ca.crt
             - --audit-token-file=/etc/access-change/audit/token
-            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:60668ea0dc57254cde4f87c25891576be78c4c23f40afd8089c58a1aee8aa955
+            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:4ec521bfc0ceb28496546edfd62e1e6ff19413837298d17b26f65b6535f43d6d
             - --service-namespace=access-change-api
             - --service-name=access-change-api
             - --git-credentials-file=/etc/access-change/git-credentials/credentials
@@ -387,17 +387,23 @@ data:
             namespaces:
             - access-change-api
             - argocd
-            - audit-sink
+            - audit-conformance
             - authelia
             - cert-manager
+            - clickstack
             - cost-explorer
+            - crossplane
             - gatus
+            - goldilocks
             - headlamp
             - holmes
             - ingress-nginx
             - kyverno
             - metrics-server
+            - openbao
+            - openbao-prod
             - opencost
+            - policy-reporter
             - prometheus
             - synthetic-monitoring
           subjects:
@@ -436,13 +442,13 @@ data:
         access-change-api:
           config:
             allowedOrigin:
-            - https://headlamp.139.162.171.100.nip.io
+            - https://headlamp.139.162.145.158.nip.io
             argoApplication: authelia
             argoNamespace: argocd
             audit:
               caSecretName: audit-ca
               tokenSecretName: audit-token
-              url: https://audit-sink.audit-sink.svc.cluster.local:8443
+              url: https://audit-sink.audit-conformance.svc.cluster.local:8443
             credentialProvisioning:
               enabled: true
               identityDatabase:
@@ -454,12 +460,12 @@ data:
               - platform-operators
               enabled: true
             image:
-              digest: sha256:60668ea0dc57254cde4f87c25891576be78c4c23f40afd8089c58a1aee8aa955
+              digest: sha256:4ec521bfc0ceb28496546edfd62e1e6ff19413837298d17b26f65b6535f43d6d
               repository: ghcr.io/dawid-koldras-home/access-change-api
             ingress:
               clusterIssuerName: sre-tools-letsencrypt
               enabled: true
-              host: headlamp.139.162.171.100.nip.io
+              host: headlamp.139.162.145.158.nip.io
               pathPrefix: /access-change
               tlsSecretName: access-change-api-sre-tools-tls
             serviceName: access-change-api
@@ -469,38 +475,74 @@ data:
           config:
             ingress:
               className: nginx
-              host: argocd.139.162.171.100.nip.io
-          enabled: true
-        audit-sink:
-          config:
-            image:
-              digest: sha256:0c6391c3736cb3713ac4c07ce116848ffe55f277aadacc78d37da9ac262b20d2
-              repository: ghcr.io/dawid-koldras-home/sre-platform-audit-attribution-sink
-            networkPolicy:
-              ingressPeers:
-              - namespaceSelector:
-                  matchLabels:
-                    kubernetes.io/metadata.name: access-change-api
-                podSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: access-change-api
-            postgres:
-              storageSize: 10Gi
-            sink:
-              mode: read-write
+              host: argocd.139.162.145.158.nip.io
           enabled: true
         authelia:
           config:
             clusterIssuerName: sre-tools-letsencrypt
-            cookieDomain: 139.162.171.100.nip.io
-            host: auth.139.162.171.100.nip.io
+            cookieDomain: 139.162.145.158.nip.io
+            host: auth.139.162.145.158.nip.io
             ingressClassName: nginx
-            protectedHost: headlamp.139.162.171.100.nip.io
+            protectedHost: headlamp.139.162.145.158.nip.io
             secretsExistingSecret: authelia-secrets
             tlsSecretName: authelia-tls
           enabled: true
-        external-secrets:
+        cost-explorer:
+          config:
+            pricing:
+              cpuUsdPerCoreHour: 0.0135
+              currency: USD
+              provider: linode
+              ramUsdPerGiBHour: 0.00675
+              storageUsdPerGiBHour: 0.000147088
           enabled: false
+        external-secrets:
+          config:
+            installCRDs: true
+            openbaoAddress: http://openbao.openbao.svc.cluster.local:8200
+            openbaoAuthMethod: kubernetes
+            provider: openbao
+            refreshInterval: 1h
+            storeName: platform-secret-store
+          enabled: false
+        gatus:
+          config:
+            endpoints:
+            - allowInsecureHttp: true
+              group: Platform
+              id: argo-cd
+              interval: 1m
+              name: Argo CD
+              url: http://argocd.139.162.171.100.nip.io/
+            - group: Identity
+              id: authelia
+              interval: 1m
+              name: Authelia
+              url: https://auth.139.162.171.100.nip.io/
+            - allowClusterInternal: true
+              allowInsecureHttp: true
+              group: Platform
+              id: headlamp-backend-health
+              interval: 1m
+              name: Headlamp backend health
+              url: http://headlamp.headlamp.svc.cluster.local/
+            - group: Platform
+              id: headlamp-public-route
+              interval: 1m
+              name: Headlamp public route
+              url: https://headlamp.139.162.171.100.nip.io/
+            - group: Secrets
+              id: openbao-api
+              interval: 1m
+              name: OpenBao API
+              url: https://openbao.139.162.171.100.nip.io/v1/sys/health
+            - allowInsecureHttp: true
+              group: Security
+              id: policy-reporter-ui
+              interval: 1m
+              name: Policy Reporter UI
+              url: http://policy-reporter.139.162.171.100.nip.io/
+          enabled: true
         headlamp:
           config:
             accessIdentity:
@@ -513,10 +555,10 @@ data:
                 peer:
                   app.kubernetes.io/name: audit-sink
                 peerNamespaceSelector:
-                  kubernetes.io/metadata.name: audit-sink
+                  kubernetes.io/metadata.name: audit-conformance
                 port: 8443
                 tokenSecretName: audit-token
-                url: https://audit-sink.audit-sink.svc.cluster.local:8443
+                url: https://audit-sink.audit-conformance.svc.cluster.local:8443
               bridgeImage:
                 digest: sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b
               clusterAdminUsers:
@@ -544,12 +586,12 @@ data:
             authProxy:
               clusterIssuerName: sre-tools-letsencrypt
               enabled: true
-              providerURL: https://auth.139.162.171.100.nip.io
+              providerURL: https://auth.139.162.145.158.nip.io
               serviceName: authelia
               serviceNamespace: authelia
             ingress:
               className: nginx
-              host: headlamp.139.162.171.100.nip.io
+              host: headlamp.139.162.145.158.nip.io
               tlsSecretName: headlamp-tls
             plugins:
               accessControlView:
@@ -560,7 +602,11 @@ data:
               maximaBranding: true
               opencost: true
               prometheus: true
-            publicURL: https://headlamp.139.162.171.100.nip.io
+            publicURL: https://headlamp.139.162.145.158.nip.io
+          enabled: true
+        holmes:
+          config:
+            providerSecretName: holmes-provider
           enabled: true
         openbao:
           enabled: false
@@ -574,7 +620,8 @@ data:
           enabled: true
         prometheus:
           enabled: true
-      profile: core
+      profile: platform
+      profileAcknowledgement: preview
       target:
         clusterName: lke643351
         context: lke643351-ctx
@@ -668,6 +715,21 @@ data:
             "integrations": {
               "$ref": "#/definitions/integrations"
             },
+            "endpoint": {
+              "type": "object",
+              "description": "The one address this installation is served from. When declared, it is the single source for every Ingress host, TLS DNS name, OAuth redirect and console URL; a module hostname that disagrees with it is refused.",
+              "additionalProperties": false,
+              "required": ["mode"],
+              "properties": {
+                "mode": { "enum": ["stable", "auto"], "description": "stable uses the customer-owned hostname verbatim; auto derives the name from the ingress LoadBalancer address and refuses to install while no address is assigned." },
+                "hostname": { "type": "string", "minLength": 1, "maxLength": 253, "description": "Customer-owned DNS suffix. Required for mode stable and forbidden for mode auto." }
+              }
+            },
+            "profileAcknowledgement": {
+              "type": "string",
+              "enum": ["preview"],
+              "description": "Records that the operator accepted a profile whose support status is not supported. It must equal the selected profile's declared acknowledgement value; an unrecognised value is refused."
+            },
             "accessPolicy": {
               "$ref": "#/definitions/accessPolicy"
             },
@@ -678,8 +740,8 @@ data:
         },
         "profile": {
           "type": "string",
-          "enum": ["core", "full"],
-          "description": "Platform profile — a versioned set of module defaults. core is the only supported profile. full enables the whole integration catalogue for internal testing and is not a supported production deployment. Any other value (for example the retired modernization, external-services or air-gapped profiles) is rejected before any Git or cluster mutation."
+          "enum": ["core", "platform", "full"],
+          "description": "Platform profile - a versioned set of module defaults. core is supported. platform is the complete delivered platform with support status preview pending live acceptance: it requires spec.profileAcknowledgement: preview, because selecting a profile that has not completed its live acceptance is a decision the operator must record. full enables the integration catalogue for internal testing and is never a supported production deployment. Any other value is rejected before any Git or cluster mutation."
         },
         "target": {
           "type": "object",
@@ -894,7 +956,22 @@ data:
           "pattern": "^(env://[A-Z_][A-Z0-9_]*|file://[^|]+|bao://[^|]+)$",
           "description": "Secret reference — env://ENV_VAR, file:///path/to/file, or bao://path/to/secret. Literal secret values are rejected."
         },
-        "accessPolicy": {
+        "endpoint": {
+              "type": "object",
+              "description": "The one address this installation is served from. When declared, it is the single source for every Ingress host, TLS DNS name, OAuth redirect and console URL; a module hostname that disagrees with it is refused.",
+              "additionalProperties": false,
+              "required": ["mode"],
+              "properties": {
+                "mode": { "enum": ["stable", "auto"], "description": "stable uses the customer-owned hostname verbatim; auto derives the name from the ingress LoadBalancer address and refuses to install while no address is assigned." },
+                "hostname": { "type": "string", "minLength": 1, "maxLength": 253, "description": "Customer-owned DNS suffix. Required for mode stable and forbidden for mode auto." }
+              }
+            },
+            "profileAcknowledgement": {
+              "type": "string",
+              "enum": ["preview"],
+              "description": "Records that the operator accepted a profile whose support status is not supported. It must equal the selected profile's declared acknowledgement value; an unrecognised value is refused."
+            },
+            "accessPolicy": {
           "type": "object",
           "description": "Optional access-control contract (ADR-024). Carries authorization intent and identity references only; it has no credential-bearing field and cannot express Kubernetes API groups, resources or verbs. Validation and normalization only: TASK-213 renders no RBAC, and enforcement remains the renderer's responsibility. Declaring this section opts the file into strict parsing — unknown fields, a repeated YAML key, and content following the document are all refused — while files without this section keep their previous parsing behaviour.",
           "required": ["version", "privilegeCeiling", "policies"],
@@ -1308,7 +1385,7 @@ metadata:
 spec:
   secretName: access-change-api-sre-tools-tls
   dnsNames:
-    - headlamp.139.162.171.100.nip.io
+    - headlamp.139.162.145.158.nip.io
   issuerRef:
     kind: ClusterIssuer
     name: sre-tools-letsencrypt
@@ -1328,7 +1405,7 @@ metadata:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/auth-method: GET
     nginx.ingress.kubernetes.io/auth-url: http://authelia.authelia.svc.cluster.local/api/authz/auth-request
-    nginx.ingress.kubernetes.io/auth-signin: https://auth.139.162.171.100.nip.io?rm=$request_method
+    nginx.ingress.kubernetes.io/auth-signin: https://auth.139.162.145.158.nip.io?rm=$request_method
     nginx.ingress.kubernetes.io/auth-response-headers: Remote-User,Remote-Groups,Remote-Email,Remote-Id-Token
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
@@ -1336,10 +1413,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - headlamp.139.162.171.100.nip.io
+        - headlamp.139.162.145.158.nip.io
       secretName: access-change-api-sre-tools-tls
   rules:
-    - host: headlamp.139.162.171.100.nip.io
+    - host: headlamp.139.162.145.158.nip.io
       http:
         paths:
           - path: /access-change(/|$)(api/v1/access/(policies|requests|actions|identities|identity-previews|identity-requests|identity-credentials).*)

@@ -13,7 +13,7 @@ metadata:
     app.kubernetes.io/component: application-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 ---
 # Source: argo-cd/templates/argocd-applicationset/serviceaccount.yaml
 apiVersion: v1
@@ -29,7 +29,7 @@ metadata:
     app.kubernetes.io/component: applicationset-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 ---
 # Source: argo-cd/templates/argocd-notifications/serviceaccount.yaml
 apiVersion: v1
@@ -45,7 +45,7 @@ metadata:
     app.kubernetes.io/component: notifications-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 ---
 # Source: argo-cd/templates/argocd-repo-server/serviceaccount.yaml
 apiVersion: v1
@@ -61,7 +61,7 @@ metadata:
     app.kubernetes.io/component: repo-server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 ---
 # Source: argo-cd/templates/argocd-server/serviceaccount.yaml
 apiVersion: v1
@@ -77,7 +77,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 ---
 # Source: argo-cd/templates/dex/serviceaccount.yaml
 apiVersion: v1
@@ -93,7 +93,7 @@ metadata:
     app.kubernetes.io/component: dex-server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-notifications-secret.yaml
 apiVersion: v1
@@ -108,7 +108,7 @@ metadata:
     app.kubernetes.io/component: notifications-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 type: Opaque
 stringData:
 ---
@@ -125,7 +125,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 type: Opaque
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-cm.yaml
@@ -141,7 +141,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 data:
   admin.enabled: "true"
   application.instanceLabelKey: argocd.argoproj.io/instance
@@ -150,7 +150,7 @@ data:
   statusbadge.enabled: "false"
   timeout.hard.reconciliation: 0s
   timeout.reconciliation: 60s
-  url: https://argocd.139.162.171.100.nip.io
+  url: https://argocd.139.162.145.158.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-cmd-params-cm.yaml
 apiVersion: v1
@@ -165,7 +165,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 data:
   application.namespaces: ""
   applicationsetcontroller.enable.leader.election: "false"
@@ -211,7 +211,7 @@ metadata:
     app.kubernetes.io/instance: argocd
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-notifications-cm.yaml
 apiVersion: v1
@@ -226,10 +226,10 @@ metadata:
     app.kubernetes.io/component: notifications-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 data:
   context: |
-    argocdUrl: https://argocd.139.162.171.100.nip.io
+    argocdUrl: https://argocd.139.162.145.158.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-rbac-cm.yaml
 apiVersion: v1
@@ -244,7 +244,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 data:
   policy.csv: ""
   policy.default: ""
@@ -263,7 +263,7 @@ metadata:
     app.kubernetes.io/instance: argocd
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 data:
   ssh_known_hosts: |
     [ssh.github.com]:443 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
@@ -293,7 +293,7 @@ metadata:
     app.kubernetes.io/instance: argocd
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 ---
 # Source: argo-cd/templates/redis/health-configmap.yaml
 apiVersion: v1
@@ -308,7 +308,7 @@ metadata:
     app.kubernetes.io/component: redis
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 data:
   redis_liveness.sh: |
     response=$(
@@ -21025,7 +21025,7 @@ metadata:
     app.kubernetes.io/component: application-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 rules:
   - apiGroups:
     - '*'
@@ -21050,7 +21050,7 @@ metadata:
     app.kubernetes.io/component: notifications-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 rules:
   - apiGroups:
     - argoproj.io
@@ -21100,7 +21100,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 rules:
   - apiGroups:
       - '*'
@@ -21160,7 +21160,7 @@ metadata:
     app.kubernetes.io/component: application-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -21182,7 +21182,7 @@ metadata:
     app.kubernetes.io/component: notifications-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -21204,7 +21204,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -21227,7 +21227,7 @@ metadata:
     app.kubernetes.io/component: application-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 rules:
 - apiGroups:
   - ""
@@ -21280,7 +21280,7 @@ metadata:
     app.kubernetes.io/component: applicationset-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 rules:
   - apiGroups:
     - argoproj.io
@@ -21375,7 +21375,7 @@ metadata:
     app.kubernetes.io/component: notifications-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 rules:
 - apiGroups:
   - argoproj.io
@@ -21426,7 +21426,7 @@ metadata:
     app.kubernetes.io/component: repo-server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 rules:
 ---
 # Source: argo-cd/templates/argocd-server/role.yaml
@@ -21442,7 +21442,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 rules:
 - apiGroups:
   - ""
@@ -21492,7 +21492,7 @@ metadata:
     app.kubernetes.io/component: dex-server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 rules:
 - apiGroups:
   - ""
@@ -21517,7 +21517,7 @@ metadata:
     app.kubernetes.io/component: application-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -21540,7 +21540,7 @@ metadata:
     app.kubernetes.io/component: applicationset-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -21563,7 +21563,7 @@ metadata:
     app.kubernetes.io/component: notifications-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -21586,7 +21586,7 @@ metadata:
     app.kubernetes.io/component: repo-server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -21609,7 +21609,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -21632,7 +21632,7 @@ metadata:
     app.kubernetes.io/component: dex-server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -21655,7 +21655,7 @@ metadata:
     app.kubernetes.io/component: applicationset-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   type: ClusterIP  
   ports:
@@ -21677,7 +21677,7 @@ metadata:
     app.kubernetes.io/component: repo-server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
   name: argocd-repo-server
   namespace: argocd
 spec:  
@@ -21703,7 +21703,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   type: ClusterIP  
   sessionAffinity: None
@@ -21733,7 +21733,7 @@ metadata:
     app.kubernetes.io/component: dex-server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:  
   ports:
   - name: http
@@ -21761,7 +21761,7 @@ metadata:
     app.kubernetes.io/component: redis
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:  
   ports:
   - name: redis
@@ -21784,7 +21784,7 @@ metadata:
     app.kubernetes.io/component: applicationset-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   replicas: 1
   revisionHistoryLimit: 3
@@ -21795,7 +21795,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cmd-params: 4ac1307cc9b15d118ba69713c1a089398f44cf6b1fe337af979da063a8acf74d
+        checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-applicationset-controller
@@ -21803,14 +21803,14 @@ spec:
         app.kubernetes.io/component: applicationset-controller
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: "v2.11.7"
+        app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
     spec:
       terminationGracePeriodSeconds: 30
       serviceAccountName: argocd-applicationset-controller
       automountServiceAccountToken: true
       containers:
         - name: applicationset-controller
-          image: quay.io/argoproj/argocd:v2.11.7
+          image: quay.io/argoproj/argocd:v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
           imagePullPolicy: IfNotPresent
           args:
             - /usr/local/bin/argocd-applicationset-controller
@@ -22031,7 +22031,7 @@ metadata:
     app.kubernetes.io/component: notifications-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   replicas: 1
   revisionHistoryLimit: 3
@@ -22050,14 +22050,14 @@ spec:
         app.kubernetes.io/component: notifications-controller
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: "v2.11.7"
+        app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
     spec:
       terminationGracePeriodSeconds: 30
       serviceAccountName: argocd-notifications-controller
       automountServiceAccountToken: true
       containers:
         - name: notifications-controller
-          image: quay.io/argoproj/argocd:v2.11.7
+          image: quay.io/argoproj/argocd:v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
           imagePullPolicy: IfNotPresent
           args:
             - /usr/local/bin/argocd-notifications
@@ -22152,7 +22152,7 @@ metadata:
     app.kubernetes.io/component: repo-server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   replicas: 2
   revisionHistoryLimit: 3
@@ -22163,8 +22163,8 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cmd-params: 4ac1307cc9b15d118ba69713c1a089398f44cf6b1fe337af979da063a8acf74d
-        checksum/cm: be17bc38a5f1ddcd1a764d38c6b38203313ca09f7917a12f85ba2d14e35c0710
+        checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
+        checksum/cm: a12011774e5d4f905529389c221da4d5a911a8082eb7e5791825ef0435e7e176
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-repo-server
@@ -22172,14 +22172,14 @@ spec:
         app.kubernetes.io/component: repo-server
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: "v2.11.7"
+        app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
     spec:
       terminationGracePeriodSeconds: 30
       serviceAccountName: argocd-repo-server
       automountServiceAccountToken: true
       containers:
       - name: repo-server
-        image: quay.io/argoproj/argocd:v2.11.7
+        image: quay.io/argoproj/argocd:v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
         imagePullPolicy: IfNotPresent
         args:
         - /usr/local/bin/argocd-repo-server
@@ -22451,7 +22451,7 @@ spec:
         - -n
         - /usr/local/bin/argocd
         - /var/run/argocd/argocd-cmp-server
-        image: quay.io/argoproj/argocd:v2.11.7
+        image: quay.io/argoproj/argocd:v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
         imagePullPolicy: IfNotPresent
         name: copyutil
         resources:
@@ -22523,7 +22523,7 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   replicas: 2
   revisionHistoryLimit: 3
@@ -22534,8 +22534,8 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cmd-params: 4ac1307cc9b15d118ba69713c1a089398f44cf6b1fe337af979da063a8acf74d
-        checksum/cm: be17bc38a5f1ddcd1a764d38c6b38203313ca09f7917a12f85ba2d14e35c0710
+        checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
+        checksum/cm: a12011774e5d4f905529389c221da4d5a911a8082eb7e5791825ef0435e7e176
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-server
@@ -22543,14 +22543,14 @@ spec:
         app.kubernetes.io/component: server
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: "v2.11.7"
+        app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
     spec:
       terminationGracePeriodSeconds: 30
       serviceAccountName: argocd-server
       automountServiceAccountToken: true
       containers:
       - name: server
-        image: quay.io/argoproj/argocd:v2.11.7
+        image: quay.io/argoproj/argocd:v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
         imagePullPolicy: IfNotPresent
         args:
         - /usr/local/bin/argocd-server
@@ -22927,7 +22927,7 @@ metadata:
     app.kubernetes.io/component: dex-server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   replicas: 1
   revisionHistoryLimit: 3
@@ -22938,7 +22938,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cmd-params: 4ac1307cc9b15d118ba69713c1a089398f44cf6b1fe337af979da063a8acf74d
+        checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-dex-server
@@ -22946,14 +22946,14 @@ spec:
         app.kubernetes.io/component: dex-server
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: "v2.11.7"
+        app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
     spec:
       terminationGracePeriodSeconds: 30
       serviceAccountName: argocd-dex-server
       automountServiceAccountToken: true
       containers:
       - name: dex-server
-        image: ghcr.io/dexidp/dex:v2.38.0
+        image: ghcr.io/dexidp/dex:v2.38.0@sha256:b1d793440a98d7ecde7fa5dbc8cee1204ef0e8918d9e51ef6201f50d12d55925
         imagePullPolicy: IfNotPresent
         command:
         - /shared/argocd-dex
@@ -22998,7 +22998,7 @@ spec:
           mountPath: /tls
       initContainers:
       - name: copyutil
-        image: quay.io/argoproj/argocd:v2.11.7
+        image: quay.io/argoproj/argocd:v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
         imagePullPolicy: IfNotPresent
         command:
         - /bin/cp
@@ -23061,7 +23061,7 @@ metadata:
     app.kubernetes.io/component: redis
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   replicas: 1
   revisionHistoryLimit: 3
@@ -23077,7 +23077,7 @@ spec:
         app.kubernetes.io/component: redis
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: "v2.11.7"
+        app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
     spec:
       securityContext:
         runAsNonRoot: true
@@ -23089,7 +23089,7 @@ spec:
       automountServiceAccountToken: true
       containers:
       - name: redis
-        image: public.ecr.aws/docker/library/redis:7.2.4-alpine
+        image: docker.io/library/redis:7.2.4-alpine@sha256:c8bb255c3559b3e458766db810aa7b3c7af1235b204cfdb304e79ff388fe1a5a
         imagePullPolicy: IfNotPresent
         args:
         - --save
@@ -23147,7 +23147,7 @@ metadata:
     app.kubernetes.io/component: application-controller
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   replicas: 1
   revisionHistoryLimit: 5
@@ -23159,8 +23159,8 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cmd-params: 4ac1307cc9b15d118ba69713c1a089398f44cf6b1fe337af979da063a8acf74d
-        checksum/cm: be17bc38a5f1ddcd1a764d38c6b38203313ca09f7917a12f85ba2d14e35c0710
+        checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
+        checksum/cm: a12011774e5d4f905529389c221da4d5a911a8082eb7e5791825ef0435e7e176
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-application-controller
@@ -23168,7 +23168,7 @@ spec:
         app.kubernetes.io/component: application-controller
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: "v2.11.7"
+        app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
     spec:
       terminationGracePeriodSeconds: 30
       serviceAccountName: argocd-application-controller
@@ -23177,7 +23177,7 @@ spec:
       - args:
         - /usr/local/bin/argocd-application-controller
         - --metrics-port=8082
-        image: quay.io/argoproj/argocd:v2.11.7
+        image: quay.io/argoproj/argocd:v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
         imagePullPolicy: IfNotPresent
         name: application-controller
         env:
@@ -23462,11 +23462,11 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   ingressClassName: nginx
   rules:
-    - host: argocd.139.162.171.100.nip.io
+    - host: argocd.139.162.145.158.nip.io
       http:
         paths:
           - path: /
@@ -23494,7 +23494,7 @@ metadata:
     app.kubernetes.io/component: redis-secret-init
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 ---
 # Source: argo-cd/templates/redis-secret-init/role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -23510,7 +23510,7 @@ metadata:
     app.kubernetes.io/component: redis-secret-init
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
   name: argocd-redis-secret-init
   namespace: "argocd"
 rules:
@@ -23543,7 +23543,7 @@ metadata:
     app.kubernetes.io/component: redis-secret-init
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
   name: argocd-redis-secret-init
   namespace: "argocd"
 roleRef:
@@ -23570,7 +23570,7 @@ metadata:
     app.kubernetes.io/component: redis-secret-init
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: "v2.11.7"
+    app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 spec:
   template:
     metadata:
@@ -23581,14 +23581,14 @@ spec:
         app.kubernetes.io/component: redis-secret-init
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: "v2.11.7"
+        app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
     spec:
       containers:
       - command:
           - argocd
           - admin
           - redis-initial-password
-        image: quay.io/argoproj/argocd:v2.11.7
+        image: quay.io/argoproj/argocd:v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
         imagePullPolicy: IfNotPresent
         name: secret-init
         resources:

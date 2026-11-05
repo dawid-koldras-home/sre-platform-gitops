@@ -3,6 +3,9 @@ kind: Application
 metadata:
   name: audit-sink
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/refresh: hard
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
   labels:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: srectl
@@ -23,7 +26,6 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
       - ServerSideApply=true
       - SkipDryRunOnMissingResource=true
       - RespectIgnoreDifferences=true

@@ -1,20 +1,4 @@
 ---
-# Source: audit-sink/templates/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: audit-sink
-  labels:
-    app.kubernetes.io/name: audit-sink
-    app.kubernetes.io/instance: audit-sink
-    app.kubernetes.io/version: "0.1.0"
-    app.kubernetes.io/part-of: sre-platform
-    app.kubernetes.io/managed-by: Helm
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/audit: restricted
-    pod-security.kubernetes.io/warn: restricted
----
 # Source: audit-sink/templates/network-policies.yaml
 # Default-deny plus the conversations the sink actually needs.
 #
@@ -94,18 +78,7 @@ spec:
     - Ingress
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: access-change-api
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: access-change-api
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: headlamp
-          podSelector:
-            matchLabels:
-              app: sre-identity-bridge
+        []
       ports:
         - protocol: TCP
           port: 8443
@@ -260,6 +233,13 @@ data:
 # Explicit, separately reviewable claim bound to a single named volume. An
 # empty storageClassName selects the cluster default; a production install
 # should name a Delete-reclaim class so removal leaves no billable volume.
+#
+# The retention annotation is not decoration. Argo CD deletes what it created
+# when an Application is removed, and the measured TASK-227 rebuild lost this
+# claim exactly once: the namespace went away, the volume was Released, and the
+# first rebind attempt created a new, empty volume. A claim that carries the
+# audit history must not be prunable or deletable by a sync, so removing the
+# module preserves the data and deleting it stays a separate, confirmed action.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -272,6 +252,8 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: postgres
+  annotations:
+    argocd.argoproj.io/sync-options: "Prune=false,Delete=false"
 spec:
   accessModes:
     - ReadWriteOnce
@@ -655,9 +637,15 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: grants
+  annotations:
+    # Same phase as the migration Job, one wave later, so the schema exists
+    # before the grants are applied without a second manual step. A PostSync
+    # hook would deadlock: the sink Deployment cannot become ready before it is
+    # migrated, and Argo CD runs PostSync only after the Application is healthy.
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-4"
 spec:
-  # Unsuspended only after the migration Job has completed.
-  suspend: true
   backoffLimit: 0
   activeDeadlineSeconds: 300
   template:
@@ -737,11 +725,20 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: migrate
+  annotations:
+    # Runs before the rest of the sync, so a fresh deployment is migrated
+    # without an operator: the previous phased design left both Jobs suspended
+    # and nothing in the install path ever unsuspended them, so the sink never
+    # became ready and Argo CD reported the Application Suspended/Unknown.
+    #
+    # Ordering inside the phase is by wave, not by name: the grants Job that
+    # needs this schema carries the next wave. BeforeHookCreation replaces the
+    # previous run, so repeated syncs do not collide on an immutable Job spec;
+    # the migration itself is versioned and re-running it is a no-op.
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-5"
 spec:
-  # Phased: the operator runs the premigration probe against an unmigrated
-  # schema first, then unsuspends this Job (spec.suspend=false) and waits for
-  # completion. Applying the manifests alone never migrates.
-  suspend: true
   backoffLimit: 0
   activeDeadlineSeconds: 300
   template:

@@ -29,7 +29,7 @@ data:
       "RAM": "0.00675",
       "additionalForwardingRuleCost": "0",
       "description": "SRE Platform explicit customer pricing allocation; not an official cloud invoice",
-      "firstFiveForwardingRulesCost": "0.0136986",
+      "firstFiveForwardingRulesCost": "0",
       "internetNetworkEgress": "0.12",
       "regionNetworkEgress": "0.01",
       "spotCPU": "0.006655",
@@ -274,7 +274,7 @@ metadata:
     app.kubernetes.io/part-of: opencost
     app.kubernetes.io/managed-by: Helm
   annotations:
-    checksum/configs: baacb86acbdd5e9c10ad579405de0f82a267cbe59c2db24bb1d1c127ca97de10
+    checksum/configs: e73d50156ab0fd860da255e76ca37f94a9adcb7c96cc77e2da8aedef511f0467
 spec:
   replicas: 1
   selector:
