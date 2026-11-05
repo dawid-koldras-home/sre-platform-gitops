@@ -31,7 +31,7 @@ pending:
       version: 1.5.0
     headlamp:
       chartVersion: 0.43.0
-      manifestDigest: a9fd7060073900341dea4908b98619a0427ad49ac22f26c4fea254b5494bcce3
+      manifestDigest: 217c9da46a53e3c3f7f03866db22aac3654dcb2e49891dab7748653d31af38e4
       version: 0.43.0
     holmes:
       chartVersion: 0.42.0
