@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:848d29cd445b2a051e34303e090258bb91c13a37bbe8fcd59e539fbe93a4c017"
+        sre.platform.io/config-checksum: "sha256:4be5897609083367295a8ab518e1d7ef25005694fd9f862ad4d982a531c427e6"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -408,6 +408,11 @@ data:
           - viewer
           - accessAdministrator
         version: v1alpha1
+      expectedDrift:
+      - application: ingress-nginx
+        cause: comparison-artefact
+        reason: Argo CD 2.11.7 cannot deserialise the Kubernetes 1.36 status.terminatingReplicas
+          and spec.podReplacementPolicy fields of the live controller objects
       gitops:
         authentication:
           existingSecret: srectl-repository-c72f8b593295
@@ -709,7 +714,20 @@ data:
             "integrations": {
               "$ref": "#/definitions/integrations"
             },
-            "endpoint": {
+            "expectedDrift": {
+              "type": "array",
+              "description": "Named comparison drift an apply may tolerate. Only a comparison artefact can be accepted, every entry needs a reason, and any Application not listed still fails the drift gate.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["application", "cause", "reason"],
+                "properties": {
+                  "application": { "type": "string", "minLength": 1, "maxLength": 253 },
+                  "cause": { "const": "comparison-artefact" },
+                  "reason": { "type": "string", "minLength": 1, "maxLength": 240 }
+                }
+              }
+            },        "endpoint": {
               "type": "object",
               "description": "The one address this installation is served from. When declared, it is the single source for every Ingress host, TLS DNS name, OAuth redirect and console URL; a module hostname that disagrees with it is refused.",
               "additionalProperties": false,
