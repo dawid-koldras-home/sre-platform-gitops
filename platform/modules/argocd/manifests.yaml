@@ -150,7 +150,7 @@ data:
   statusbadge.enabled: "false"
   timeout.hard.reconciliation: 0s
   timeout.reconciliation: 60s
-  url: https://argocd.139-162-171-100.nip.io
+  url: https://argocd.139.162.171.100.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-cmd-params-cm.yaml
 apiVersion: v1
@@ -229,7 +229,7 @@ metadata:
     app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 data:
   context: |
-    argocdUrl: https://argocd.139-162-171-100.nip.io
+    argocdUrl: https://argocd.139.162.171.100.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-rbac-cm.yaml
 apiVersion: v1
@@ -22164,7 +22164,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
-        checksum/cm: 8c3c0afadafa520f0ede0fd7701a90367ed9e6835d1508ceea71b8725a0787f2
+        checksum/cm: 4c9314fb198f32bcb237e318ffdf50b2e288bfefd6f748b58f41b7ffe7659992
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-repo-server
@@ -22535,7 +22535,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
-        checksum/cm: 8c3c0afadafa520f0ede0fd7701a90367ed9e6835d1508ceea71b8725a0787f2
+        checksum/cm: 4c9314fb198f32bcb237e318ffdf50b2e288bfefd6f748b58f41b7ffe7659992
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-server
@@ -23160,7 +23160,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
-        checksum/cm: 8c3c0afadafa520f0ede0fd7701a90367ed9e6835d1508ceea71b8725a0787f2
+        checksum/cm: 4c9314fb198f32bcb237e318ffdf50b2e288bfefd6f748b58f41b7ffe7659992
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-application-controller
@@ -23466,7 +23466,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: argocd.139-162-171-100.nip.io
+    - host: argocd.139.162.171.100.nip.io
       http:
         paths:
           - path: /

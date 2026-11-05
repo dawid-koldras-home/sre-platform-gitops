@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:534b79cb38a46349c5c97d905fd2e3afe3f5abf3a0c29cf9a95db85e27751805"
+        sre.platform.io/config-checksum: "sha256:848d29cd445b2a051e34303e090258bb91c13a37bbe8fcd59e539fbe93a4c017"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -246,7 +246,7 @@ spec:
           args:
             - --config=/etc/access-change/customer.yaml
             - --listen=:8080
-            - --allowed-origin=https://headlamp.139-162-171-100.nip.io
+            - --allowed-origin=https://headlamp.139.162.171.100.nip.io
             - --argo-application=authelia
             - --argo-namespace=argocd
             - --audit-url=https://audit-sink.audit-sink.svc.cluster.local:8443
@@ -436,7 +436,7 @@ data:
         access-change-api:
           config:
             allowedOrigin:
-            - https://headlamp.139-162-171-100.nip.io
+            - https://headlamp.139.162.171.100.nip.io
             argoApplication: authelia
             argoNamespace: argocd
             audit:
@@ -459,7 +459,7 @@ data:
             ingress:
               clusterIssuerName: sre-tools-letsencrypt
               enabled: true
-              host: headlamp.139-162-171-100.nip.io
+              host: headlamp.139.162.171.100.nip.io
               pathPrefix: /access-change
               tlsSecretName: access-change-api-sre-tools-tls
             serviceName: access-change-api
@@ -469,15 +469,15 @@ data:
           config:
             ingress:
               className: nginx
-              host: argocd.139-162-171-100.nip.io
+              host: argocd.139.162.171.100.nip.io
           enabled: true
         authelia:
           config:
             clusterIssuerName: sre-tools-letsencrypt
-            cookieDomain: 139-162-171-100.nip.io
-            host: auth.139-162-171-100.nip.io
+            cookieDomain: 139.162.171.100.nip.io
+            host: auth.139.162.171.100.nip.io
             ingressClassName: nginx
-            protectedHost: headlamp.139-162-171-100.nip.io
+            protectedHost: headlamp.139.162.171.100.nip.io
             secretsExistingSecret: authelia-secrets
             tlsSecretName: authelia-tls
           enabled: true
@@ -580,12 +580,12 @@ data:
             authProxy:
               clusterIssuerName: sre-tools-letsencrypt
               enabled: true
-              providerURL: https://auth.139-162-171-100.nip.io
+              providerURL: https://auth.139.162.171.100.nip.io
               serviceName: authelia
               serviceNamespace: authelia
             ingress:
               className: nginx
-              host: headlamp.139-162-171-100.nip.io
+              host: headlamp.139.162.171.100.nip.io
               tlsSecretName: headlamp-tls
             plugins:
               accessControlView:
@@ -596,7 +596,7 @@ data:
               maximaBranding: true
               opencost: true
               prometheus: true
-            publicURL: https://headlamp.139-162-171-100.nip.io
+            publicURL: https://headlamp.139.162.171.100.nip.io
           enabled: true
         holmes:
           config:
@@ -1379,7 +1379,7 @@ metadata:
 spec:
   secretName: access-change-api-sre-tools-tls
   dnsNames:
-    - headlamp.139-162-171-100.nip.io
+    - headlamp.139.162.171.100.nip.io
   issuerRef:
     kind: ClusterIssuer
     name: sre-tools-letsencrypt
@@ -1399,7 +1399,7 @@ metadata:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/auth-method: GET
     nginx.ingress.kubernetes.io/auth-url: http://authelia.authelia.svc.cluster.local/api/authz/auth-request
-    nginx.ingress.kubernetes.io/auth-signin: https://auth.139-162-171-100.nip.io?rm=$request_method
+    nginx.ingress.kubernetes.io/auth-signin: https://auth.139.162.171.100.nip.io?rm=$request_method
     nginx.ingress.kubernetes.io/auth-response-headers: Remote-User,Remote-Groups,Remote-Email,Remote-Id-Token
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
@@ -1407,10 +1407,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - headlamp.139-162-171-100.nip.io
+        - headlamp.139.162.171.100.nip.io
       secretName: access-change-api-sre-tools-tls
   rules:
-    - host: headlamp.139-162-171-100.nip.io
+    - host: headlamp.139.162.171.100.nip.io
       http:
         paths:
           - path: /access-change(/|$)(api/v1/access/(policies|requests|actions|identities|identity-previews|identity-requests|identity-credentials).*)
