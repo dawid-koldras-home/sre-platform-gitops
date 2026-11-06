@@ -34,7 +34,7 @@ data:
       interval: 1m
       method: GET
       name: Argo CD
-      url: http://argocd.139.162.171.100.nip.io/
+      url: http://argocd.172.104.159.107.nip.io/
     - alerts: []
       conditions:
       - '[STATUS] == 200'
@@ -42,7 +42,7 @@ data:
       interval: 1m
       method: GET
       name: Authelia
-      url: https://auth.139.162.171.100.nip.io/
+      url: https://auth.172.104.159.107.nip.io/
     - alerts: []
       conditions:
       - '[STATUS] == 200'
@@ -58,7 +58,7 @@ data:
       interval: 1m
       method: GET
       name: Headlamp public route
-      url: https://headlamp.139.162.171.100.nip.io/
+      url: https://headlamp.172.104.159.107.nip.io/
     - alerts: []
       conditions:
       - '[STATUS] == 200'
@@ -66,7 +66,7 @@ data:
       interval: 1m
       method: GET
       name: OpenBao API
-      url: https://openbao.139.162.171.100.nip.io/v1/sys/health
+      url: https://openbao.172.104.159.107.nip.io/v1/sys/health
     - alerts: []
       conditions:
       - '[STATUS] == 200'
@@ -74,7 +74,7 @@ data:
       interval: 1m
       method: GET
       name: Policy Reporter UI
-      url: http://policy-reporter.139.162.171.100.nip.io/
+      url: http://policy-reporter.172.104.159.107.nip.io/
     metrics: true
     storage:
       type: memory
@@ -129,7 +129,7 @@ spec:
         app.kubernetes.io/name: gatus
         app.kubernetes.io/instance: gatus
       annotations:
-        checksum/config: 468272e604d55b3707fdb03fc0a88ddb00545a82e9b23c3905dd858884307b11
+        checksum/config: a33aafcaaabde06d84357be1451b00a024ba848189a1debe6eb189192b1519d5
     spec:
       
       serviceAccountName: gatus
