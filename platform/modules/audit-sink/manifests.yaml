@@ -16,6 +16,16 @@ kind: NetworkPolicy
 metadata:
   name: audit-sink-default-deny
   namespace: audit-sink
+  annotations:
+    # Every policy this module owns is applied in the earliest wave, before the
+    # database and the jobs that dial it. Kubernetes NetworkPolicies are
+    # additive: once any policy selects a pod for a direction, only the union of
+    # all policies allows traffic. The identity bridge renders an ingress policy
+    # that selects every pod labelled app.kubernetes.io/name=audit-sink (the
+    # database included) and allows only port 8443, so until this module's own
+    # 5432 allow exists the migration cannot reach PostgreSQL and fails closed
+    # after the connect timeout (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-13"
   labels:
     app.kubernetes.io/name: audit-sink
     app.kubernetes.io/instance: audit-sink
@@ -34,6 +44,16 @@ kind: NetworkPolicy
 metadata:
   name: audit-sink-allow-dns
   namespace: audit-sink
+  annotations:
+    # Every policy this module owns is applied in the earliest wave, before the
+    # database and the jobs that dial it. Kubernetes NetworkPolicies are
+    # additive: once any policy selects a pod for a direction, only the union of
+    # all policies allows traffic. The identity bridge renders an ingress policy
+    # that selects every pod labelled app.kubernetes.io/name=audit-sink (the
+    # database included) and allows only port 8443, so until this module's own
+    # 5432 allow exists the migration cannot reach PostgreSQL and fails closed
+    # after the connect timeout (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-13"
   labels:
     app.kubernetes.io/name: audit-sink
     app.kubernetes.io/instance: audit-sink
@@ -61,6 +81,16 @@ kind: NetworkPolicy
 metadata:
   name: audit-sink-sink-ingress
   namespace: audit-sink
+  annotations:
+    # Every policy this module owns is applied in the earliest wave, before the
+    # database and the jobs that dial it. Kubernetes NetworkPolicies are
+    # additive: once any policy selects a pod for a direction, only the union of
+    # all policies allows traffic. The identity bridge renders an ingress policy
+    # that selects every pod labelled app.kubernetes.io/name=audit-sink (the
+    # database included) and allows only port 8443, so until this module's own
+    # 5432 allow exists the migration cannot reach PostgreSQL and fails closed
+    # after the connect timeout (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-13"
   labels:
     app.kubernetes.io/name: audit-sink
     app.kubernetes.io/instance: audit-sink
@@ -89,6 +119,16 @@ kind: NetworkPolicy
 metadata:
   name: audit-sink-sink-egress
   namespace: audit-sink
+  annotations:
+    # Every policy this module owns is applied in the earliest wave, before the
+    # database and the jobs that dial it. Kubernetes NetworkPolicies are
+    # additive: once any policy selects a pod for a direction, only the union of
+    # all policies allows traffic. The identity bridge renders an ingress policy
+    # that selects every pod labelled app.kubernetes.io/name=audit-sink (the
+    # database included) and allows only port 8443, so until this module's own
+    # 5432 allow exists the migration cannot reach PostgreSQL and fails closed
+    # after the connect timeout (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-13"
   labels:
     app.kubernetes.io/name: audit-sink
     app.kubernetes.io/instance: audit-sink
@@ -124,6 +164,16 @@ kind: NetworkPolicy
 metadata:
   name: audit-sink-postgres-ingress
   namespace: audit-sink
+  annotations:
+    # Every policy this module owns is applied in the earliest wave, before the
+    # database and the jobs that dial it. Kubernetes NetworkPolicies are
+    # additive: once any policy selects a pod for a direction, only the union of
+    # all policies allows traffic. The identity bridge renders an ingress policy
+    # that selects every pod labelled app.kubernetes.io/name=audit-sink (the
+    # database included) and allows only port 8443, so until this module's own
+    # 5432 allow exists the migration cannot reach PostgreSQL and fails closed
+    # after the connect timeout (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-13"
   labels:
     app.kubernetes.io/name: audit-sink
     app.kubernetes.io/instance: audit-sink
