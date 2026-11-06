@@ -20,6 +20,13 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: "audit-sink"
+  ignoreDifferences:
+    - group: ""
+      kind: PersistentVolumeClaim
+      name: audit-sink-postgres-data
+      jsonPointers:
+        - /spec/volumeName
+        - /spec/storageClassName
   syncPolicy:
     automated:
       prune: true
