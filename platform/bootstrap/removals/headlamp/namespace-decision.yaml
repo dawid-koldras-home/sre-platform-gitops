@@ -1,0 +1,22 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: headlamp
+namespace: headlamp
+declaredPolicy: fail-closed
+decision: fail-closed
+reason: the namespace does not carry this installation ownership labels, so it is not the installer to delete
+snapshot:
+    exists: true
+    owned: false
+    operatorSecretKeys:
+        - headlamp/audit-ca
+        - headlamp/audit-token
+        - headlamp/headlamp-registry-pull
+    workloadKinds:
+        - Deployment
+        - Pod
+        - ReplicaSet
+snapshotDigest: sha256:087c7a133fd1f8a189451d0078574edb81829f6432d15f3762f117dda554b02c
+digest: sha256:ca4c72df457b20d44e0fc917c6c692b4b9f8c2149b69039cabcd7ecfc71eb227

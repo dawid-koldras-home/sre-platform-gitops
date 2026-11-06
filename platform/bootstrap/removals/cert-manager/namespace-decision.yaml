@@ -1,0 +1,18 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: cert-manager
+namespace: cert-manager
+declaredPolicy: fail-closed
+decision: fail-closed
+reason: the namespace does not carry this installation ownership labels, so it is not the installer to delete
+snapshot:
+    exists: true
+    owned: false
+    workloadKinds:
+        - Deployment
+        - Pod
+        - ReplicaSet
+snapshotDigest: sha256:dcbc4079d2d8ea45d369f655c324f26ebe3aabdffd73faca98d51179f83bc40d
+digest: sha256:0cb2f6b55c2a3d139fd3b82a54e0887c90022c72f89a5a96e9e4029732a4fb30

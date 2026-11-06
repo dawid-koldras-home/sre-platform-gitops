@@ -1,0 +1,26 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: authelia
+namespace: authelia
+declaredPolicy: preserve
+decision: preserve
+reason: the namespace holds a claim the module declares as retained data; remove the module and keep the namespace, or delete the claim in a separate confirmed action
+snapshot:
+    exists: true
+    owned: true
+    tenant: sre-tools
+    ownerModule: authelia
+    operatorSecretKeys:
+        - authelia/authelia-identity-hashes
+        - authelia/authelia-secrets
+        - authelia/authelia-users-database
+    workloadKinds:
+        - Deployment
+        - Pod
+        - ReplicaSet
+    retainedPVCs:
+        - authelia
+snapshotDigest: sha256:9f243ace57cb04f85248f73b67c54e2be3335cf3e0625ccb764b6ce9aee625a3
+digest: sha256:b97de74be2368fc44fca49d36f45e15c628c5af4dd4aef2379c4fc354a674757

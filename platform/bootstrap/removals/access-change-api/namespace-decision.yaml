@@ -1,0 +1,22 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: access-change-api
+namespace: access-change-api
+declaredPolicy: fail-closed
+decision: fail-closed
+reason: the namespace does not carry this installation ownership labels, so it is not the installer to delete
+snapshot:
+    exists: true
+    owned: false
+    operatorSecretKeys:
+        - access-change-api/access-change-api-git-credentials
+        - access-change-api/audit-ca
+        - access-change-api/audit-token
+    workloadKinds:
+        - Deployment
+        - Pod
+        - ReplicaSet
+snapshotDigest: sha256:d5aa32c417c2ce0a41473508c77b50e6eb2ebbe2959ca5669d79ff2fd729e963
+digest: sha256:5976f69eefcd35ae17576276745d4377ab9a2e81ea17bea3aa17dca119908cea

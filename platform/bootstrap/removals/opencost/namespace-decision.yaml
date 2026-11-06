@@ -1,0 +1,21 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: opencost
+namespace: opencost
+declaredPolicy: delete-when-empty
+decision: fail-closed
+reason: the module declares delete-when-empty but the namespace still holds workloads; wait for reconciliation or investigate
+snapshot:
+    exists: true
+    owned: true
+    tenant: sre-tools
+    ownerModule: opencost
+    posture: baseline
+    workloadKinds:
+        - Deployment
+        - Pod
+        - ReplicaSet
+snapshotDigest: sha256:4e0948bb99fccd1860bd7efe4e32a48be8c7ef491d7f0fb7a3846fa9bef687f7
+digest: sha256:84420c89ae8e88d6ba7a01334f46b4584b005c218e3c4bdfbd09628bc5afe771

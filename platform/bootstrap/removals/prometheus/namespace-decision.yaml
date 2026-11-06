@@ -1,0 +1,24 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: prometheus
+namespace: prometheus
+declaredPolicy: preserve
+decision: preserve
+reason: the namespace holds a claim the module declares as retained data; remove the module and keep the namespace, or delete the claim in a separate confirmed action
+snapshot:
+    exists: true
+    owned: true
+    tenant: sre-tools
+    ownerModule: prometheus
+    posture: privileged
+    workloadKinds:
+        - DaemonSet
+        - Deployment
+        - Pod
+        - ReplicaSet
+    retainedPVCs:
+        - prometheus-server
+snapshotDigest: sha256:f4e30eb82bf7799f46536577cb483b804f4dd1c840ab41e4ce16f751af9fd713
+digest: sha256:a38feaf7e0e257d9bdd91d5eabcc3bcfe3ae6e3f159af7bfd6dc2586836c4ecf

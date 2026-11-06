@@ -1,0 +1,20 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: kyverno
+namespace: kyverno
+declaredPolicy: fail-closed
+decision: fail-closed
+reason: the namespace does not carry this installation ownership labels, so it is not the installer to delete
+snapshot:
+    exists: true
+    owned: false
+    workloadKinds:
+        - CronJob
+        - Deployment
+        - Job
+        - Pod
+        - ReplicaSet
+snapshotDigest: sha256:3b940ccc1be222bef10a068b2182a6089fe78d55d3bff315439b51cf027b3ea7
+digest: sha256:65beac062bc8349d58b4ff30f64d6a5e477793dd234343a7c4b4bd52176218a3

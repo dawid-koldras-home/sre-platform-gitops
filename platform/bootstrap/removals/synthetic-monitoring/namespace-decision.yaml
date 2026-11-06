@@ -1,0 +1,21 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: synthetic-monitoring
+namespace: synthetic-monitoring
+declaredPolicy: delete-when-empty
+decision: fail-closed
+reason: the module declares delete-when-empty but the namespace still holds workloads; wait for reconciliation or investigate
+snapshot:
+    exists: true
+    owned: true
+    tenant: sre-tools
+    ownerModule: synthetic-monitoring
+    posture: restricted
+    workloadKinds:
+        - CronJob
+        - Job
+        - Pod
+snapshotDigest: sha256:163fc33cca4a6d44033dffc189a6d2bf1f3363880327a7b7761528b3b8aa798c
+digest: sha256:7ae86d22cb142fb0fbe2128e9d1a57a7d18fefa35b78db8eaf3796b74e82daea

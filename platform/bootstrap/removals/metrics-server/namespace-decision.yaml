@@ -1,0 +1,21 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: metrics-server
+namespace: metrics-server
+declaredPolicy: delete-when-empty
+decision: fail-closed
+reason: the module declares delete-when-empty but the namespace still holds workloads; wait for reconciliation or investigate
+snapshot:
+    exists: true
+    owned: true
+    tenant: sre-tools
+    ownerModule: metrics-server
+    posture: baseline
+    workloadKinds:
+        - Deployment
+        - Pod
+        - ReplicaSet
+snapshotDigest: sha256:78b1feb8c5118fba0be4ddf38d980af15b618305aa043102df2bbadfa03c361b
+digest: sha256:469867963eb9faa8a533d83c82ed51e7320dba76f1a2c81ca92e59c86181f512

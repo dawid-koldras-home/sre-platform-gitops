@@ -1,0 +1,18 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: ingress-nginx
+namespace: ingress-nginx
+declaredPolicy: fail-closed
+decision: fail-closed
+reason: the namespace does not carry this installation ownership labels, so it is not the installer to delete
+snapshot:
+    exists: true
+    owned: false
+    workloadKinds:
+        - Deployment
+        - Pod
+        - ReplicaSet
+snapshotDigest: sha256:dcbc4079d2d8ea45d369f655c324f26ebe3aabdffd73faca98d51179f83bc40d
+digest: sha256:60c05cb67f7cdef7e46d96abf39cfd30843a7baed8cb7a6c614d3312c3d7d662

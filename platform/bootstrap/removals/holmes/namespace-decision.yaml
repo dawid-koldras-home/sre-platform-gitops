@@ -1,0 +1,20 @@
+apiVersion: sre.platform.io/v1alpha1
+kind: NamespaceRemovalTransaction
+customerId: sre-tools
+sourceRevision: fa1e061664098170acba73f59a9dcbff0589a66b
+module: holmes
+namespace: holmes
+declaredPolicy: fail-closed
+decision: fail-closed
+reason: the namespace does not carry this installation ownership labels, so it is not the installer to delete
+snapshot:
+    exists: true
+    owned: false
+    operatorSecretKeys:
+        - holmes/holmes-provider
+    workloadKinds:
+        - Deployment
+        - Pod
+        - ReplicaSet
+snapshotDigest: sha256:6a65b853ca9794877f20d0dbbd1ebea505fb69766584a2035085f170e1415233
+digest: sha256:7c1a1db7b45730978128d3d774ddb8bbadfd24d49cc6b3cd72956ece0f4419e7
