@@ -1,0 +1,65 @@
+customerId: sre-tools
+installerVersion: 0.1.0-rc.19
+lastSucceeded:
+  modules: {}
+pending:
+  modules:
+    access-change-api:
+      chartVersion: 0.1.0
+      manifestDigest: d36d587a64c8e6579499a3b9bc9125f2a5400a8a316fbf4c687d21c89a578056
+      version: 0.1.0
+    argocd:
+      chartVersion: 7.3.11
+      imageVersion: v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
+      manifestDigest: 2754e266a91cb06024c95b52b994e3b11263186fe472cdd36809450d52bfe8fe
+      version: 2.11.7
+    audit-sink:
+      chartVersion: 0.1.0
+      manifestDigest: 9c98b9a52454bbd1845275a7545f401e235ed564fdb84422037dd72ab6ea3f63
+      version: 0.1.0
+    authelia:
+      chartVersion: 0.11.22
+      manifestDigest: e8a7b55286043b327b4e96197a2770e9f3c029f75c1997e6e6f1f03793d3c100
+      version: 4.39.24
+    cert-manager:
+      chartVersion: v1.15.0
+      manifestDigest: eaff493e8271f19feb84886fe3a6d151af16e82a8644decd66ea9dbea4f4655e
+      version: 1.15.0
+    gatus:
+      chartVersion: 1.5.0
+      manifestDigest: 87501ec5e4d33b5e1638510264afba937cc9879b99eff82c717cd9da8888a9de
+      version: 1.5.0
+    headlamp:
+      chartVersion: 0.43.0
+      manifestDigest: 255165c984aadc5cd5e3b1bc3ab77531720e17daf8d9594cd66c1806b8bba935
+      version: 0.43.0
+    holmes:
+      chartVersion: 0.42.0
+      manifestDigest: 3ab9cace8b5d781e722a54ed431fa15c6bd999fc755386ae7efff2b8287618c5
+      version: 0.42.0
+    ingress-nginx:
+      chartVersion: 4.15.1
+      manifestDigest: 425247c5110ab16d02af6731e98dea4eeb59e419c41c0c8f519d6c58cb74e7f8
+      version: 4.15.1
+    kyverno:
+      chartVersion: 3.2.0
+      manifestDigest: 0bd1b2d3f349e7c4d8a8e3c6caf48ea7ab8c7d2464e95beec54027e75a26d159
+      version: 1.12.0
+    metrics-server:
+      chartVersion: 3.12.2
+      manifestDigest: dc3e1f1735f0697d65302ad9f611b62c7e4707fb8b24705d107e38fe9eb890fc
+      version: 0.7.2
+    opencost:
+      chartVersion: 2.2.1
+      manifestDigest: 8beaa541da018c1972b25de30fe899ace4038476af22abdbfbf1c951c3937841
+      version: 1.116.1
+    prometheus:
+      chartVersion: 29.18.0
+      manifestDigest: 99b2c6ad8f339f0226ee6e659e8787ae68ce18206ef4d01d8bfb5abcb9776c4e
+      version: 29.18.0
+    synthetic-monitoring:
+      manifestDigest: ed3f5bd478da9c8b50c178ca2ca62940700cd6e4dd8e44b23e524f8e61182977
+      version: 2.0.0
+phase: pending
+platformVersion: 0.1.0-rc.19
+schemaVersion: 2
