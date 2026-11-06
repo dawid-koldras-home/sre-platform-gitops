@@ -1,0 +1,885 @@
+---
+# Source: audit-sink/templates/network-policies.yaml
+# Default-deny plus the conversations the sink actually needs.
+#
+# Order of evaluation: 1) nothing is allowed until a later policy permits it;
+# 2) DNS to the cluster resolver; 3) the configured writer peers -> sink; 4) the
+# sink/migrate/grants identity -> PostgreSQL. Everything else stays denied.
+#
+# The sink ingress peers are not a same-namespace wildcard: each entry is
+# exactly one namespaceSelector/podSelector pair ANDed in a single peer, so a
+# pod carrying the writer label in another namespace, or any other pod in the
+# sink namespace, does not match. An empty peer list renders a deny-all sink
+# ingress posture.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: audit-sink-default-deny
+  namespace: audit-sink
+  annotations:
+    # Every policy this module owns is applied in the earliest wave, before the
+    # database and the jobs that dial it. Kubernetes NetworkPolicies are
+    # additive: once any policy selects a pod for a direction, only the union of
+    # all policies allows traffic. The identity bridge renders an ingress policy
+    # that selects every pod labelled app.kubernetes.io/name=audit-sink (the
+    # database included) and allows only port 8443, so until this module's own
+    # 5432 allow exists the migration cannot reach PostgreSQL and fails closed
+    # after the connect timeout (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-13"
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Source: audit-sink/templates/network-policies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: audit-sink-allow-dns
+  namespace: audit-sink
+  annotations:
+    # Every policy this module owns is applied in the earliest wave, before the
+    # database and the jobs that dial it. Kubernetes NetworkPolicies are
+    # additive: once any policy selects a pod for a direction, only the union of
+    # all policies allows traffic. The identity bridge renders an ingress policy
+    # that selects every pod labelled app.kubernetes.io/name=audit-sink (the
+    # database included) and allows only port 8443, so until this module's own
+    # 5432 allow exists the migration cannot reach PostgreSQL and fails closed
+    # after the connect timeout (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-13"
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Source: audit-sink/templates/network-policies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: audit-sink-sink-ingress
+  namespace: audit-sink
+  annotations:
+    # Every policy this module owns is applied in the earliest wave, before the
+    # database and the jobs that dial it. Kubernetes NetworkPolicies are
+    # additive: once any policy selects a pod for a direction, only the union of
+    # all policies allows traffic. The identity bridge renders an ingress policy
+    # that selects every pod labelled app.kubernetes.io/name=audit-sink (the
+    # database included) and allows only port 8443, so until this module's own
+    # 5432 allow exists the migration cannot reach PostgreSQL and fails closed
+    # after the connect timeout (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-13"
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: sink
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: audit-sink
+      app.kubernetes.io/instance: audit-sink
+      app.kubernetes.io/component: sink
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        []
+      ports:
+        - protocol: TCP
+          port: 8443
+---
+# Source: audit-sink/templates/network-policies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: audit-sink-sink-egress
+  namespace: audit-sink
+  annotations:
+    # Every policy this module owns is applied in the earliest wave, before the
+    # database and the jobs that dial it. Kubernetes NetworkPolicies are
+    # additive: once any policy selects a pod for a direction, only the union of
+    # all policies allows traffic. The identity bridge renders an ingress policy
+    # that selects every pod labelled app.kubernetes.io/name=audit-sink (the
+    # database included) and allows only port 8443, so until this module's own
+    # 5432 allow exists the migration cannot reach PostgreSQL and fails closed
+    # after the connect timeout (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-13"
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: sink
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - sink
+          - migrate
+          - grants
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: audit-sink
+              app.kubernetes.io/instance: audit-sink
+              app.kubernetes.io/component: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Source: audit-sink/templates/network-policies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: audit-sink-postgres-ingress
+  namespace: audit-sink
+  annotations:
+    # Every policy this module owns is applied in the earliest wave, before the
+    # database and the jobs that dial it. Kubernetes NetworkPolicies are
+    # additive: once any policy selects a pod for a direction, only the union of
+    # all policies allows traffic. The identity bridge renders an ingress policy
+    # that selects every pod labelled app.kubernetes.io/name=audit-sink (the
+    # database included) and allows only port 8443, so until this module's own
+    # 5432 allow exists the migration cannot reach PostgreSQL and fails closed
+    # after the connect timeout (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-13"
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: postgres
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: audit-sink
+      app.kubernetes.io/instance: audit-sink
+      app.kubernetes.io/component: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: audit-sink
+              app.kubernetes.io/instance: audit-sink
+              app.kubernetes.io/component: sink
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: audit-sink
+              app.kubernetes.io/instance: audit-sink
+              app.kubernetes.io/component: migrate
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: audit-sink
+              app.kubernetes.io/instance: audit-sink
+              app.kubernetes.io/component: grants
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Source: audit-sink/templates/serviceaccount.yaml
+# The sink dials PostgreSQL and serves HTTPS only. It needs no Kubernetes API
+# access, so the token is never mounted (no ambient cluster credentials).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: audit-sink
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+---
+# Source: audit-sink/templates/grants-config.yaml
+# Runtime grants, applied AFTER the migration Job has created the audit schema,
+# as a separate object because the migration contract keeps every GRANT out of
+# the migration files. The migration connects as audit_migrator, which owns the
+# schema and may grant exactly the DML the runtime identity needs: read and
+# append, never delete, never DDL, never the migration ledger.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-sink-grants
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: postgres-grants
+  annotations:
+    # The grants Job mounts this object at wave -4, so the ConfigMap is applied
+    # one wave earlier than the Job that reads it.
+    argocd.argoproj.io/sync-wave: "-5"
+data:
+  grants.sql: |
+    GRANT USAGE ON SCHEMA audit TO audit_runtime;
+    GRANT SELECT, INSERT, UPDATE ON audit.reservation TO audit_runtime;
+---
+# Source: audit-sink/templates/postgres-init-config.yaml
+# One-shot identity bootstrap. The official PostgreSQL entrypoint runs *.sh
+# from /docker-entrypoint-initdb.d after initdb, before the server accepts a
+# client, so the roles and database exist before any Job or pod can dial in.
+#
+# Passwords arrive only through the environment (from the db-credentials
+# Secret) and are interpolated by the shell into the heredoc; the script never
+# echoes them and never writes them to disk.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-sink-postgres-init
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    # Earlier than the claim and the StatefulSet that mounts it: the pod's
+    # kubelet mount fails closed with "configmap not found" when the object is
+    # applied after the database wave, and Argo CD then waits for a database that
+    # cannot start (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-12"
+    app.kubernetes.io/component: postgres-init
+data:
+  00-audit-identities.sh: |
+    #!/bin/sh
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<EOSQL
+    CREATE ROLE audit_migrator LOGIN PASSWORD '${AUDIT_DB_MIGRATOR_PASSWORD}';
+    CREATE ROLE audit_runtime LOGIN PASSWORD '${AUDIT_DB_RUNTIME_PASSWORD}';
+    GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO audit_migrator, audit_runtime;
+    GRANT CREATE ON DATABASE ${POSTGRES_DB} TO audit_migrator;
+    EOSQL
+---
+# Source: audit-sink/templates/postgres-pvc.yaml
+# Explicit, separately reviewable claim bound to a single named volume. An
+# empty storageClassName selects the cluster default; a production install
+# should name a Delete-reclaim class so removal leaves no billable volume.
+#
+# The retention annotation is not decoration. Argo CD deletes what it created
+# when an Application is removed, and the measured TASK-227 rebuild lost this
+# claim exactly once: the namespace went away, the volume was Released, and the
+# first rebind attempt created a new, empty volume. A claim that carries the
+# audit history must not be prunable or deletable by a sync, so removing the
+# module preserves the data and deleting it stays a separate, confirmed action.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: audit-sink-postgres-data
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: postgres
+  annotations:
+    argocd.argoproj.io/sync-options: "Prune=false,Delete=false"
+    # Server-side diff dry-run applies the rendered claim, and the API server
+    # refuses that on a bound claim ("spec is immutable after creation except
+    # resources.requests") because no manifest can name the cluster-assigned
+    # spec.volumeName. The error is not cosmetic: Argo CD then reports the whole
+    # Application Unknown, so nothing reconciles (measured on the TASK-228 clean
+    # rebuild). Diff this one resource client-side instead; the immutables below
+    # are ignored by the Application's ignoreDifferences so a retained claim does
+    # not read as drift either. Never disable server-side diff for the module.
+    argocd.argoproj.io/compare-options: "ServerSideDiff=false"
+    # The claim must exist before the StatefulSet that mounts it, and the database
+    # before the migration Job that dials it.
+    argocd.argoproj.io/sync-wave: "-11"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: "10Gi"
+---
+# Source: audit-sink/templates/postgres-service.yaml
+# Headless service: the PostgreSQL StatefulSet's stable network identity and
+# the name the sink, migrate and grants jobs dial. Its DNS name is one of the
+# SANs on the PostgreSQL serving certificate, so sslmode=verify-full matches.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: postgres
+  annotations:
+    # Argo CD orders a sync by wave and waits for each wave to be healthy. The
+    # database is therefore ready before the migration Job is applied, which a
+    # PreSync hook could never be: hooks run before every wave, so a clean
+    # namespace has no PostgreSQL yet and the migration fails closed with
+    # "migration refused" (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/component: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+# Source: audit-sink/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-sink
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: sink
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/component: sink
+  # The premigration and outage gates need to reach /healthz and /readyz on a
+  # sink that is deliberately not ready; default Endpoints would exclude it and
+  # a caller would get connection refused instead of the 503 it must assert.
+  publishNotReadyAddresses: true
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+---
+# Source: audit-sink/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-sink
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: sink
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: audit-sink
+      app.kubernetes.io/instance: audit-sink
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: audit-sink
+        app.kubernetes.io/instance: audit-sink
+        app.kubernetes.io/component: sink
+    spec:
+      serviceAccountName: audit-sink
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sink
+          image: "ghcr.io/dawid-koldras-home/sre-platform-audit-attribution-sink@sha256:0c6391c3736cb3713ac4c07ce116848ffe55f277aadacc78d37da9ac262b20d2"
+          imagePullPolicy: IfNotPresent
+          args:
+            - serve
+          ports:
+            - name: https
+              containerPort: 8443
+          env:
+            - name: AUDIT_DB_HOST
+              value: "postgres"
+            - name: AUDIT_DB_PORT
+              value: "5432"
+            - name: AUDIT_DB_NAME
+              value: "audit"
+            - name: AUDIT_DB_USER
+              value: audit_runtime
+            - name: AUDIT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "audit-db-credentials"
+                  key: AUDIT_DB_RUNTIME_PASSWORD
+            - name: AUDIT_DB_SSLMODE
+              value: verify-full
+            - name: AUDIT_DB_SSLROOTCERT
+              value: /etc/audit-sink/db-ca/ca.crt
+            - name: AUDIT_DB_CONNECT_TIMEOUT
+              value: "5"
+            - name: AUDIT_SINK_MODE
+              value: "read-write"
+            - name: AUDIT_SINK_ADDR
+              value: ":8443"
+            - name: AUDIT_SINK_TLS_CERT_FILE
+              value: /etc/audit-sink/tls/server.crt
+            - name: AUDIT_SINK_TLS_KEY_FILE
+              value: /etc/audit-sink/tls/server.key
+            - name: AUDIT_SINK_AUTH_FILE
+              value: /etc/audit-sink/auth/auth.json
+            - name: AUDIT_SINK_REQUEST_TIMEOUT
+              value: "10s"
+            - name: AUDIT_SINK_READY_TIMEOUT
+              value: "5s"
+            - name: AUDIT_SINK_READINESS_TTL
+              value: "1s"
+            - name: AUDIT_SINK_MAX_IN_FLIGHT
+              value: "64"
+            - name: AUDIT_SINK_SHUTDOWN_TIMEOUT
+              value: "10s"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: sink-tls
+              mountPath: /etc/audit-sink/tls
+              readOnly: true
+            - name: sink-ca
+              mountPath: /etc/audit-sink/db-ca
+              readOnly: true
+            - name: sink-auth
+              mountPath: /etc/audit-sink/auth
+              readOnly: true
+      volumes:
+        - name: sink-tls
+          secret:
+            secretName: "audit-sink-tls"
+        - name: sink-ca
+          secret:
+            secretName: "audit-sink-ca"
+        - name: sink-auth
+          secret:
+            secretName: "audit-auth-file"
+---
+# Source: audit-sink/templates/postgres-statefulset.yaml
+# PostgreSQL backing store for the audit sink. Single replica, a single named
+# claim, TLS terminated with the platform CA (the sink dials verify-full), no
+# admin ports and restricted pod security.
+#
+# Start-up order inside the pod:
+#   1. tls-bootstrap copies the server key pair out of the read-only Secret into
+#      a runtime directory with owner-only key permissions (PostgreSQL refuses
+#      to start when any other principal can read the key);
+#   2. the entrypoint runs initdb and then the identity bootstrap script;
+#   3. the server accepts TLS connections on the database port.
+# The audit schema itself is created later by the migration Job.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: audit-sink-postgres
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: postgres
+  annotations:
+    # Argo CD orders a sync by wave and waits for each wave to be healthy. The
+    # database is therefore ready before the migration Job is applied, which a
+    # PreSync hook could never be: hooks run before every wave, so a clean
+    # namespace has no PostgreSQL yet and the migration fails closed with
+    # "migration refused" (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: audit-sink
+      app.kubernetes.io/instance: audit-sink
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: audit-sink
+        app.kubernetes.io/instance: audit-sink
+        app.kubernetes.io/component: postgres
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: tls-bootstrap
+          image: "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+          command:
+            - sh
+            - -ec
+            - |
+              cp /tls-source/server.crt /tls-runtime/server.crt
+              cp /tls-source/server.key /tls-runtime/server.key
+              chmod 600 /tls-runtime/server.key
+              chmod 644 /tls-runtime/server.crt
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: postgres-tls
+              mountPath: /tls-source
+              readOnly: true
+            - name: tls-runtime
+              mountPath: /tls-runtime
+      containers:
+        - name: postgres
+          image: "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+          args:
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file=/etc/postgresql-tls/server.crt
+            - -c
+            - ssl_key_file=/etc/postgresql-tls/server.key
+          env:
+            - name: POSTGRES_DB
+              value: "audit"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "audit-db-credentials"
+                  key: AUDIT_DB_ADMIN_PASSWORD
+            - name: AUDIT_DB_MIGRATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "audit-db-credentials"
+                  key: AUDIT_DB_MIGRATOR_PASSWORD
+            - name: AUDIT_DB_RUNTIME_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "audit-db-credentials"
+                  key: AUDIT_DB_RUNTIME_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - pg_isready -U postgres -d audit
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - pg_isready -U postgres -d audit
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: tls-runtime
+              mountPath: /etc/postgresql-tls
+              readOnly: true
+            - name: postgres-run
+              mountPath: /var/run/postgresql
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: postgres-tmp
+              mountPath: /tmp
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: audit-sink-postgres-data
+        - name: tls-runtime
+          emptyDir: {}
+        - name: postgres-run
+          emptyDir: {}
+        - name: postgres-tmp
+          emptyDir: {}
+        - name: postgres-init
+          configMap:
+            name: audit-sink-postgres-init
+        - name: postgres-tls
+          secret:
+            secretName: "audit-postgres-tls"
+---
+# Source: audit-sink/templates/grants-job.yaml
+# Grants the runtime identity exactly the DML it needs, after the migration Job
+# has created the schema. Runs as audit_migrator - the role that executed the
+# migration and therefore owns the schema - through psql over verified TLS.
+# If this Job does not run, the schema exists but the runtime identity cannot
+# touch it, so /readyz stays 503: an incomplete deployment fails safe.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: audit-sink-grants
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: grants
+  annotations:
+    # One wave after the migration Job, so the schema exists before the grants
+    # are applied. A PostSync hook would deadlock: the sink Deployment cannot
+    # become ready before it is migrated, and Argo CD runs PostSync only after
+    # the Application is healthy. A plain wave-ordered resource avoids both
+    # problems and keeps a failed run executable for inspection.
+    argocd.argoproj.io/sync-wave: "-4"
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: audit-sink
+        app.kubernetes.io/instance: audit-sink
+        app.kubernetes.io/component: grants
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: grants
+          image: "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+          command:
+            - sh
+            - -ec
+            - psql --host postgres --port 5432 --username audit_migrator --dbname audit --set ON_ERROR_STOP=1 --file /scripts/grants.sql
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "audit-db-credentials"
+                  key: AUDIT_DB_MIGRATOR_PASSWORD
+            - name: PGSSLMODE
+              value: verify-full
+            - name: PGSSLROOTCERT
+              value: /etc/postgresql-ca/ca.crt
+            - name: PGCONNECT_TIMEOUT
+              value: "5"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: db-ca
+              mountPath: /etc/postgresql-ca
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: audit-sink-grants
+        - name: db-ca
+          secret:
+            secretName: "audit-sink-ca"
+---
+# Source: audit-sink/templates/migrate-job.yaml
+# Applies the embedded migrations as audit_migrator. The sink image is used on
+# purpose: the migration bytes are the ones compiled into the exact artefact
+# that serves traffic, so "compatible with embedded migrations" cannot drift
+# from what /readyz verifies. backoffLimit 0: a failed migration is
+# investigated, not retried.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: audit-sink-migrate
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: audit-sink
+    app.kubernetes.io/instance: audit-sink
+    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: migrate
+  annotations:
+    # A plain sync-wave resource, not a hook. Argo CD applies wave -10 (claim,
+    # PostgreSQL Service and StatefulSet) and waits for it to be healthy, then
+    # applies this Job at -5 and waits for it to complete before the grants Job
+    # and the sink. A PreSync hook cannot express that ordering: hooks run before
+    # every wave, so on a clean namespace the migration reached a database that
+    # did not exist yet and failed closed.
+    #
+    # Nothing deletes a finished Job, so a failure keeps its pod and log for the
+    # operator instead of replacing its own evidence. Re-running the migration is
+    # a versioned no-op and an unchanged Job object is not recreated by a sync.
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: audit-sink
+        app.kubernetes.io/instance: audit-sink
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: "ghcr.io/dawid-koldras-home/sre-platform-audit-attribution-sink@sha256:0c6391c3736cb3713ac4c07ce116848ffe55f277aadacc78d37da9ac262b20d2"
+          args:
+            - migrate
+          env:
+            - name: AUDIT_DB_HOST
+              value: "postgres"
+            - name: AUDIT_DB_PORT
+              value: "5432"
+            - name: AUDIT_DB_NAME
+              value: "audit"
+            - name: AUDIT_DB_USER
+              value: audit_migrator
+            - name: AUDIT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "audit-db-credentials"
+                  key: AUDIT_DB_MIGRATOR_PASSWORD
+            - name: AUDIT_DB_SSLMODE
+              value: verify-full
+            - name: AUDIT_DB_SSLROOTCERT
+              value: /etc/audit-sink/db-ca/ca.crt
+            - name: AUDIT_DB_CONNECT_TIMEOUT
+              value: "5"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          volumeMounts:
+            - name: db-ca
+              mountPath: /etc/audit-sink/db-ca
+              readOnly: true
+      volumes:
+        - name: db-ca
+          secret:
+            secretName: "audit-sink-ca"
