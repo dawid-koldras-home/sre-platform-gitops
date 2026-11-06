@@ -58,7 +58,7 @@ pending:
       manifestDigest: 99b2c6ad8f339f0226ee6e659e8787ae68ce18206ef4d01d8bfb5abcb9776c4e
       version: 29.18.0
     synthetic-monitoring:
-      manifestDigest: 580c5fa12db4211b0ce6ccdb0cd100bdaf87bc09a7a7838008a05c0265faae9b
+      manifestDigest: ed3f5bd478da9c8b50c178ca2ca62940700cd6e4dd8e44b23e524f8e61182977
       version: 2.0.0
 phase: pending
 platformVersion: 0.1.0-rc.19

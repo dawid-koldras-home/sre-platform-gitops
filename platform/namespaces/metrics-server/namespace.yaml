@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metrics-server
+  labels:
+    app.kubernetes.io/managed-by: srectl
+    app.kubernetes.io/name: metrics-server
+    app.kubernetes.io/part-of: sre-platform
+    sre.platform.io/owner-module: metrics-server
+    sre.platform.io/tenant: sre-tools
+    sre.platform.io/namespace-posture: baseline
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
