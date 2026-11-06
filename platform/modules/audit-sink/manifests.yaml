@@ -314,6 +314,15 @@ metadata:
     app.kubernetes.io/component: postgres
   annotations:
     argocd.argoproj.io/sync-options: "Prune=false,Delete=false"
+    # Server-side diff dry-run applies the rendered claim, and the API server
+    # refuses that on a bound claim ("spec is immutable after creation except
+    # resources.requests") because no manifest can name the cluster-assigned
+    # spec.volumeName. The error is not cosmetic: Argo CD then reports the whole
+    # Application Unknown, so nothing reconciles (measured on the TASK-228 clean
+    # rebuild). Diff this one resource client-side instead; the immutables below
+    # are ignored by the Application's ignoreDifferences so a retained claim does
+    # not read as drift either. Never disable server-side diff for the module.
+    argocd.argoproj.io/compare-options: "ServerSideDiff=false"
     # The claim must exist before the StatefulSet that mounts it, and the database
     # before the migration Job that dials it.
     argocd.argoproj.io/sync-wave: "-11"
