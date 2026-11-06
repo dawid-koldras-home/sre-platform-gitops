@@ -194,6 +194,10 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: postgres-grants
+  annotations:
+    # The grants Job mounts this object at wave -4, so the ConfigMap is applied
+    # one wave earlier than the Job that reads it.
+    argocd.argoproj.io/sync-wave: "-5"
 data:
   grants.sql: |
     GRANT USAGE ON SCHEMA audit TO audit_runtime;
@@ -218,6 +222,12 @@ metadata:
     app.kubernetes.io/version: "0.1.0"
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    # Earlier than the claim and the StatefulSet that mounts it: the pod's
+    # kubelet mount fails closed with "configmap not found" when the object is
+    # applied after the database wave, and Argo CD then waits for a database that
+    # cannot start (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-12"
     app.kubernetes.io/component: postgres-init
 data:
   00-audit-identities.sh: |
