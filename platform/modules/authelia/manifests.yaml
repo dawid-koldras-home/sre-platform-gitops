@@ -222,9 +222,9 @@ data:
       expiration: '1 hour'
       remember_me: '8 hours'
       cookies:
-        - domain: '172.104.159.107.nip.io'
-          authelia_url: 'https://auth.172.104.159.107.nip.io'
-          default_redirection_url: 'https://headlamp.172.104.159.107.nip.io'
+        - domain: '172.104.244.94.nip.io'
+          authelia_url: 'https://auth.172.104.244.94.nip.io'
+          default_redirection_url: 'https://headlamp.172.104.244.94.nip.io'
     regulation:
       modes:
       - 'user'
@@ -243,7 +243,7 @@ data:
       rules:
         - policy: two_factor
           domain:
-            - 'headlamp.172.104.159.107.nip.io'
+            - 'headlamp.172.104.244.94.nip.io'
     ...
 ---
 # Source: authelia/templates/persistentVolumeClaim.yaml
@@ -327,7 +327,7 @@ spec:
         app.kubernetes.io/managed-by: Helm
         helm.sh/chart: authelia-0.11.22
       annotations:
-        authelia.com/checksum-config: d9ab401268ee1a1766c2ac3bd73502ad6f80bc757a1c49da12f1d24cda6c6e3e
+        authelia.com/checksum-config: 7650fef2c79c30d3ed80a624ccb049e5ed56d804654405c91963058277941577
         
         argocd.argoproj.io/sync-wave: "10"
     spec:
@@ -482,7 +482,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: 'auth.172.104.159.107.nip.io'
+  - host: 'auth.172.104.244.94.nip.io'
     http:
       paths:
         - path: '/'
@@ -494,7 +494,7 @@ spec:
                 number: 80
   tls:
     - hosts:
-        - 'auth.172.104.159.107.nip.io'
+        - 'auth.172.104.244.94.nip.io'
       secretName: authelia-tls
 ---
 # Source: authelia/templates/extraObjects.yaml
