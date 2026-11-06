@@ -254,6 +254,9 @@ metadata:
     app.kubernetes.io/component: postgres
   annotations:
     argocd.argoproj.io/sync-options: "Prune=false,Delete=false"
+    # The claim must exist before the StatefulSet that mounts it, and the database
+    # before the migration Job that dials it.
+    argocd.argoproj.io/sync-wave: "-11"
 spec:
   accessModes:
     - ReadWriteOnce
@@ -277,6 +280,13 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: postgres
+  annotations:
+    # Argo CD orders a sync by wave and waits for each wave to be healthy. The
+    # database is therefore ready before the migration Job is applied, which a
+    # PreSync hook could never be: hooks run before every wave, so a clean
+    # namespace has no PostgreSQL yet and the migration fails closed with
+    # "migration refused" (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-10"
 spec:
   type: ClusterIP
   clusterIP: None
@@ -476,6 +486,13 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: postgres
+  annotations:
+    # Argo CD orders a sync by wave and waits for each wave to be healthy. The
+    # database is therefore ready before the migration Job is applied, which a
+    # PreSync hook could never be: hooks run before every wave, so a clean
+    # namespace has no PostgreSQL yet and the migration fails closed with
+    # "migration refused" (measured on the TASK-228 clean rebuild).
+    argocd.argoproj.io/sync-wave: "-10"
 spec:
   serviceName: postgres
   replicas: 1
@@ -638,20 +655,13 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: grants
   annotations:
-    # Same phase as the migration Job, one wave later, so the schema exists
-    # before the grants are applied without a second manual step. A PostSync
-    # hook would deadlock: the sink Deployment cannot become ready before it is
-    # migrated, and Argo CD runs PostSync only after the Application is healthy.
-    argocd.argoproj.io/hook: PreSync
-    # A failed hook must stay inspectable: the first clean rebuild of this platform lost
-    # its only migration evidence because BeforeHookCreation replaced the failed Job
-    # before anyone could read the log. Successful hooks are still garbage-collected,
-    # and a failed one is bounded by the Job TTL below rather than surviving forever.
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    # One wave after the migration Job, so the schema exists before the grants
+    # are applied. A PostSync hook would deadlock: the sink Deployment cannot
+    # become ready before it is migrated, and Argo CD runs PostSync only after
+    # the Application is healthy. A plain wave-ordered resource avoids both
+    # problems and keeps a failed run executable for inspection.
     argocd.argoproj.io/sync-wave: "-4"
 spec:
-  # Bounds how long a failed hook remains for diagnosis.
-  ttlSecondsAfterFinished: 900
   backoffLimit: 0
   activeDeadlineSeconds: 300
   template:
@@ -732,25 +742,18 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: migrate
   annotations:
-    # Runs before the rest of the sync, so a fresh deployment is migrated
-    # without an operator: the previous phased design left both Jobs suspended
-    # and nothing in the install path ever unsuspended them, so the sink never
-    # became ready and Argo CD reported the Application Suspended/Unknown.
+    # A plain sync-wave resource, not a hook. Argo CD applies wave -10 (claim,
+    # PostgreSQL Service and StatefulSet) and waits for it to be healthy, then
+    # applies this Job at -5 and waits for it to complete before the grants Job
+    # and the sink. A PreSync hook cannot express that ordering: hooks run before
+    # every wave, so on a clean namespace the migration reached a database that
+    # did not exist yet and failed closed.
     #
-    # Ordering inside the phase is by wave, not by name: the grants Job that
-    # needs this schema carries the next wave. BeforeHookCreation replaces the
-    # previous run, so repeated syncs do not collide on an immutable Job spec;
-    # the migration itself is versioned and re-running it is a no-op.
-    argocd.argoproj.io/hook: PreSync
-    # A failed hook must stay inspectable: the first clean rebuild of this platform lost
-    # its only migration evidence because BeforeHookCreation replaced the failed Job
-    # before anyone could read the log. Successful hooks are still garbage-collected,
-    # and a failed one is bounded by the Job TTL below rather than surviving forever.
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    # Nothing deletes a finished Job, so a failure keeps its pod and log for the
+    # operator instead of replacing its own evidence. Re-running the migration is
+    # a versioned no-op and an unchanged Job object is not recreated by a sync.
     argocd.argoproj.io/sync-wave: "-5"
 spec:
-  # Bounds how long a failed hook remains for diagnosis.
-  ttlSecondsAfterFinished: 900
   backoffLimit: 0
   activeDeadlineSeconds: 300
   template:
