@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:1de9f33862354186951ed97f098130c3b00a708d37ddb025b262044ec7c32734"
+        sre.platform.io/config-checksum: "sha256:3d02d97bdb40616a9d19b5a1a93a3f9db568a1395fcf9702a797de90182d4dd7"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -462,11 +462,9 @@ data:
               digest: sha256:4ec521bfc0ceb28496546edfd62e1e6ff19413837298d17b26f65b6535f43d6d
               repository: ghcr.io/dawid-koldras-home/access-change-api
             ingress:
-              clusterIssuerName: sre-tools-letsencrypt
               enabled: true
               host: headlamp.172.104.159.107.nip.io
               pathPrefix: /access-change
-              tlsSecretName: access-change-api-sre-tools-tls
             serviceName: access-change-api
             serviceNamespace: access-change-api
           enabled: true
@@ -1385,23 +1383,6 @@ metadata:
   namespace: access-change-api
 
 ---
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: access-change-api-tls
-  namespace: access-change-api
-  labels:
-    app.kubernetes.io/part-of: sre-platform
-    app.kubernetes.io/managed-by: srectl
-    sre.platform.io/component: access-change-api
-spec:
-  secretName: access-change-api-sre-tools-tls
-  dnsNames:
-    - headlamp.172.104.159.107.nip.io
-  issuerRef:
-    kind: ClusterIssuer
-    name: sre-tools-letsencrypt
----
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -1423,10 +1404,6 @@ metadata:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
-  tls:
-    - hosts:
-        - headlamp.172.104.159.107.nip.io
-      secretName: access-change-api-sre-tools-tls
   rules:
     - host: headlamp.172.104.159.107.nip.io
       http:
