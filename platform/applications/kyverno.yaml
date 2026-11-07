@@ -32,6 +32,8 @@ spec:
         - .spec.failurePolicy
         - .spec.rules[].skipBackgroundRequests
         - .spec.rules[].match.any[].resources.operations
+        - .spec.rules[].validate.message
+        - .spec.rules[].validate.cel.expressions[].message
   syncPolicy:
     automated:
       prune: true
