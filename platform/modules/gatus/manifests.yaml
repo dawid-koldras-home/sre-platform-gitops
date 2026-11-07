@@ -62,6 +62,14 @@ data:
     - alerts: []
       conditions:
       - '[STATUS] == 200'
+      group: Synthetic
+      interval: 1m
+      method: GET
+      name: New Media Consulting fast route probe
+      url: https://newmediaconsulting.com/__synthetic-fast-check-missing__
+    - alerts: []
+      conditions:
+      - '[STATUS] == 200'
       group: Secrets
       interval: 1m
       method: GET
@@ -129,7 +137,7 @@ spec:
         app.kubernetes.io/name: gatus
         app.kubernetes.io/instance: gatus
       annotations:
-        checksum/config: 556ec514526d6c0ac0a53590ff21c284b8f6e5b2a9ea156e40027aaa1058311e
+        checksum/config: 3c74c1b770ce0a53d1e51cf485b94413ad9aae4fabfe62addbbe9a3ff159886a
     spec:
       
       serviceAccountName: gatus

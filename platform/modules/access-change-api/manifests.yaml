@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:4ab2e902259f107eca8aa787b414ebd7ee59ecbc308f613e7dca650943278402"
+        sre.platform.io/config-checksum: "sha256:ae49a258bcec2bc82e7424139dd6156deb44ff0212fc3f8e7ebb5833b997b130"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -544,6 +544,14 @@ data:
               interval: 1m
               name: Policy Reporter UI
               url: http://policy-reporter.172.104.244.94.nip.io/
+            - expectedStatusCodes:
+              - 200
+              group: Synthetic
+              id: new-media-consulting
+              interval: 60s
+              name: New Media Consulting fast route probe
+              timeout: 10s
+              url: https://newmediaconsulting.com/__synthetic-fast-check-missing__
           enabled: true
         headlamp:
           config:
