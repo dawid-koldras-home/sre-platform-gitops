@@ -783,6 +783,492 @@ data:
       return Array.from(groups.entries()).map(([name, entries]) => ({ name, rows: entries }));
     }
 
+      // ---- src/synthetic.js ----
+    // The synthetic-first Service Status model.
+    //
+    // The page inventory is exactly the canonical synthetic target registry, which reaches this
+    // module already rendered by the installer and already joined with the latest published
+    // result. Nothing here infers a page from an Ingress, from Gatus or from a second list: a
+    // target that is not in the rendered inventory cannot appear, and a target that leaves the
+    // registry cannot linger.
+    //
+    // Two rules are load-bearing and are what make the page honest:
+    //
+    //   1. A result is only green while it is fresh. A successful run from an hour ago is
+    //      evidence of nothing about right now, so STALE is derived before UP/DOWN rather than
+    //      shown alongside a reassuring status.
+    //   2. Gatus is a separate fast-availability layer. It is correlated to a target by exact
+    //      endpoint id and reported next to the browser journey, never merged into it, so a
+    //      disagreement is visible instead of being averaged into a false UP.
+    //
+    // This module is free of React, of the Headlamp registry and of network calls, so the rules
+    // that decide what an operator is told are testable without a browser.
+
+
+    /** The closed set of states the page may display. */
+    const TARGET_STATE = {
+      UP: 'UP',
+      DOWN: 'DOWN',
+      RUNNING: 'RUNNING',
+      PENDING: 'PENDING',
+      STALE: 'STALE',
+      UNAVAILABLE: 'UNAVAILABLE',
+    };
+
+    /**
+     * Display order and copy.
+     *
+     * `tone` is a semantic role, not a colour: the view maps it to a theme colour, and every
+     * state also carries `label` and `glyph` so status is never communicated by colour alone.
+     */
+    const TARGET_STATE_META = {
+      [TARGET_STATE.UP]: { label: 'Up', glyph: '✓', tone: 'success', rank: 0 },
+      [TARGET_STATE.DOWN]: { label: 'Down', glyph: '✕', tone: 'error', rank: 1 },
+      [TARGET_STATE.STALE]: { label: 'Stale', glyph: '◷', tone: 'warning', rank: 2 },
+      [TARGET_STATE.PENDING]: { label: 'Pending', glyph: '…', tone: 'default', rank: 3 },
+      [TARGET_STATE.RUNNING]: { label: 'Running', glyph: '↻', tone: 'info', rank: 4 },
+      [TARGET_STATE.UNAVAILABLE]: { label: 'Unavailable', glyph: '?', tone: 'error', rank: 5 },
+    };
+
+    /** States listed in the filter control, in display order. */
+    const FILTER_STATES = [
+      TARGET_STATE.UP,
+      TARGET_STATE.DOWN,
+      TARGET_STATE.STALE,
+      TARGET_STATE.PENDING,
+      TARGET_STATE.RUNNING,
+      TARGET_STATE.UNAVAILABLE,
+    ];
+
+    const FRESHNESS = {
+      FRESH: 'fresh',
+      STALE: 'stale',
+      UNKNOWN: 'unknown',
+    };
+
+    /** The API contract this page understands. A different version is reported, not guessed at. */
+    const SNAPSHOT_SCHEMA_VERSION = 1;
+
+    /** Bounds copied from the service contract so a malformed payload cannot bloat the page. */
+    const MAX_TARGETS = 200;
+    const MAX_CHECKS = 100;
+    const MAX_TEXT_LENGTH = 200;
+
+    const TARGET_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+    function isRecordValue(value) {
+      return typeof value === 'object' && value !== null && !Array.isArray(value);
+    }
+
+    function text(value, fallback = '') {
+      if (typeof value !== 'string') return fallback;
+      const trimmed = value.replace(/\s+/g, ' ').trim();
+      if (trimmed === '') return fallback;
+      return trimmed.length > MAX_TEXT_LENGTH ? `${trimmed.slice(0, MAX_TEXT_LENGTH - 1)}…` : trimmed;
+    }
+
+    function toMillisValue(value) {
+      const parsed = Date.parse(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
+
+    /**
+     * validateSnapshot performs the shape check the page refuses to skip.
+     *
+     * A payload that is not the documented envelope is reported as malformed instead of being
+     * rendered as an empty list, because "no monitored pages" and "the response was not
+     * understood" are different facts and an operator must not confuse them.
+     */
+    function validateSnapshot(payload) {
+      if (!isRecordValue(payload)) return { ok: false, reason: 'envelope' };
+      if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+        return { ok: false, reason: 'schema', schemaVersion: payload.schemaVersion };
+      }
+      if (!Array.isArray(payload.targets)) return { ok: false, reason: 'targets' };
+      if (payload.targets.length > MAX_TARGETS) return { ok: false, reason: 'too-many-targets' };
+      return { ok: true, reason: '' };
+    }
+
+    /**
+     * deriveTargetState maps one published target to the displayed state.
+     *
+     * The order is the contract: a malformed record is unavailable, a missing run is pending, a
+     * stale record is stale regardless of its own outcome, and only then may the run's state be
+     * shown. A skipped run stays pending with a reason rather than being reported as healthy,
+     * because a skipped run is no evidence about the page.
+     */
+    function deriveTargetState(journey, freshness) {
+      if (!isRecordValue(journey)) return TARGET_STATE.UNAVAILABLE;
+      const runState = journey.state;
+      const freshnessState = isRecordValue(freshness) ? freshness.state : FRESHNESS.UNKNOWN;
+
+      if (runState === 'pending') return TARGET_STATE.PENDING;
+      if (runState === 'running') return TARGET_STATE.RUNNING;
+      if (runState !== 'up' && runState !== 'down' && runState !== 'skipped') {
+        return TARGET_STATE.UNAVAILABLE;
+      }
+      if (freshnessState === FRESHNESS.STALE || freshnessState === FRESHNESS.UNKNOWN) {
+        return TARGET_STATE.STALE;
+      }
+      if (runState === 'skipped') return TARGET_STATE.PENDING;
+      return runState === 'up' ? TARGET_STATE.UP : TARGET_STATE.DOWN;
+    }
+
+    function normaliseChecks(rawChecks) {
+      if (!Array.isArray(rawChecks)) return [];
+      return rawChecks.slice(0, MAX_CHECKS).map((entry, index) => {
+        if (!isRecordValue(entry)) {
+          return { id: `check-${index + 1}`, status: 'failed', durationMs: null, message: 'this check could not be read' };
+        }
+        const status = entry.status === 'passed' || entry.status === 'failed' ? entry.status : 'failed';
+        const check = {
+          id: text(entry.id, `check-${index + 1}`),
+          status,
+          durationMs: typeof entry.durationMs === 'number' && entry.durationMs >= 0 ? Math.round(entry.durationMs) : null,
+        };
+        if (status === 'failed') {
+          check.message = text(entry.message, '');
+        }
+        return check;
+      });
+    }
+
+    function normaliseScreenshot(raw) {
+      if (!isRecordValue(raw) || raw.available !== true) {
+        return {
+          available: false,
+          reason: text(raw && raw.reason, 'screenshot unavailable'),
+          capturedAt: null,
+          runId: '',
+          matchesLatestRun: false,
+        };
+      }
+      return {
+        available: true,
+        reason: '',
+        capturedAt: typeof raw.capturedAt === 'string' ? raw.capturedAt : '',
+        runId: typeof raw.runId === 'string' ? raw.runId : '',
+        matchesLatestRun: raw.matchesLatestRun === true,
+      };
+    }
+
+    /**
+     * buildTargets turns a validated snapshot into the rows the page renders.
+     *
+     * Malformed entries are dropped and counted rather than rendered as fake rows: a row without
+     * a stable id cannot be deep-linked, cannot be filtered deterministically and cannot be
+     * fetched as an image, so inventing one would only move the failure into the UI.
+     */
+    function buildTargets(payload, nowMs) {
+      const rows = [];
+      let malformed = 0;
+
+      for (const entry of payload.targets) {
+        if (!isRecordValue(entry) || typeof entry.id !== 'string' || !TARGET_ID_PATTERN.test(entry.id)) {
+          malformed += 1;
+          continue;
+        }
+        const journey = isRecordValue(entry.browserJourney) ? entry.browserJourney : null;
+        const freshness = isRecordValue(entry.freshness) ? entry.freshness : null;
+        const state = deriveTargetState(journey, freshness);
+        const checks = normaliseChecks(journey && journey.checks);
+        const finishedAtMs = journey ? toMillisValue(journey.finishedAt) : null;
+        const freshnessState = isRecordValue(freshness) && typeof freshness.state === 'string' ? freshness.state : FRESHNESS.UNKNOWN;
+
+        rows.push({
+          id: entry.id,
+          customer: text(entry.customer, 'unassigned'),
+          name: text(entry.name, entry.id),
+          state,
+          stateLabel: TARGET_STATE_META[state].label,
+          stateGlyph: TARGET_STATE_META[state].glyph,
+          tone: TARGET_STATE_META[state].tone,
+          freshness: freshnessState,
+          ageMs: freshness && typeof freshness.ageMs === 'number' && freshness.ageMs >= 0 ? Math.round(freshness.ageMs) : null,
+          expectedNextRunAt: freshness && typeof freshness.expectedNextRunAt === 'string' ? freshness.expectedNextRunAt : '',
+          run: journey === null || typeof journey.state !== 'string'
+            ? null
+            : {
+              state: journey.state,
+              runId: typeof journey.runId === 'string' ? journey.runId : '',
+              startedAt: typeof journey.startedAt === 'string' ? journey.startedAt : '',
+              finishedAt: typeof journey.finishedAt === 'string' ? journey.finishedAt : '',
+              finishedAtMs,
+              durationMs: typeof journey.durationMs === 'number' && journey.durationMs >= 0 ? Math.round(journey.durationMs) : null,
+              failedChecks: typeof journey.failedChecks === 'number' && journey.failedChecks >= 0
+                ? Math.floor(journey.failedChecks)
+                : checks.filter((check) => check.status === 'failed').length,
+            },
+          checks,
+          screenshot: normaliseScreenshot(entry.screenshot),
+          // Filled in by correlateFastAvailability when the Gatus correlation layer exists.
+          fastAvailability: null,
+          nowMs,
+        });
+      }
+
+      return {
+        rows: sortTargets(rows),
+        malformed,
+        generatedAt: typeof payload.generatedAt === 'string' ? payload.generatedAt : '',
+        nowMs,
+      };
+    }
+
+    /**
+     * sortTargets orders rows by customer, then display name, then id.
+     *
+     * The API already sorts, and the page sorts again because a filter or a correlation pass
+     * must not be able to reorder the dashboard: identical input always yields identical output.
+     */
+    function sortTargets(rows) {
+      return rows.slice().sort((left, right) => {
+        if (left.customer !== right.customer) return left.customer < right.customer ? -1 : 1;
+        if (left.name !== right.name) return left.name < right.name ? -1 : 1;
+        return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+      });
+    }
+
+    /** Counts for the summary cards. Every row lands in exactly one bucket. */
+    function aggregateTargets(rows) {
+      const counts = {
+        total: rows.length,
+        up: 0,
+        down: 0,
+        stale: 0,
+        pending: 0,
+        running: 0,
+        unavailable: 0,
+      };
+      for (const row of rows) {
+        switch (row.state) {
+          case TARGET_STATE.UP: counts.up += 1; break;
+          case TARGET_STATE.DOWN: counts.down += 1; break;
+          case TARGET_STATE.STALE: counts.stale += 1; break;
+          case TARGET_STATE.PENDING: counts.pending += 1; break;
+          case TARGET_STATE.RUNNING: counts.running += 1; break;
+          default: counts.unavailable += 1; break;
+        }
+      }
+      return counts;
+    }
+
+    /** Group rows by customer for the card grid, preserving the sorted order inside a group. */
+    function groupTargets(rows) {
+      const groups = new Map();
+      for (const row of rows) {
+        if (!groups.has(row.customer)) groups.set(row.customer, []);
+        groups.get(row.customer).push(row);
+      }
+      return Array.from(groups.entries()).map(([customer, entries]) => ({ customer, rows: entries }));
+    }
+
+    /**
+     * filterTargets applies the search and facet filters.
+     *
+     * Each filter is independent and additive. An unknown value is ignored rather than applied,
+     * because a hand-edited URL must not be able to produce an empty page that looks like "no
+     * monitored targets".
+     */
+    function filterTargets(rows, filters) {
+      const query = text(filters && filters.query, '').toLowerCase();
+      const customer = text(filters && filters.customer, '');
+      const requestedState = text(filters && filters.state, '');
+      const requestedFreshness = text(filters && filters.freshness, '');
+      // A hand-edited URL must not be able to produce an empty page that reads as "no monitored
+      // targets", so a facet value this page does not know is ignored rather than applied.
+      const state = Object.prototype.hasOwnProperty.call(TARGET_STATE_META, requestedState) ? requestedState : '';
+      const freshness = requestedFreshness === FRESHNESS.FRESH
+        || requestedFreshness === FRESHNESS.STALE
+        || requestedFreshness === FRESHNESS.UNKNOWN
+        ? requestedFreshness
+        : '';
+
+      return rows.filter((row) => {
+        if (customer !== '' && row.customer !== customer) return false;
+        if (state !== '' && row.state !== state) return false;
+        if (freshness !== '' && row.freshness !== freshness) return false;
+        if (query !== '') {
+          const haystack = `${row.name} ${row.id} ${row.customer}`.toLowerCase();
+          if (!haystack.includes(query)) return false;
+        }
+        return true;
+      });
+    }
+
+    /** The distinct customer names, for the customer filter control. */
+    function customersOf(rows) {
+      const seen = new Set();
+      for (const row of rows) seen.add(row.customer);
+      return Array.from(seen).sort();
+    }
+
+    /**
+     * correlateFastAvailability attaches the optional Gatus state to a row.
+     *
+     * Correlation is by exact endpoint id, never by name: names are display text that an operator
+     * may reword, while the installer id is the stable contract on both sides. An endpoint
+     * without a matching target is reported separately as a technical check, so it cannot become
+     * a page row.
+     */
+    function correlateFastAvailability(rows, gatusPayload, gatusEndpoints, nowMs) {
+      if (!Array.isArray(gatusEndpoints) || gatusEndpoints.length === 0) {
+        return { rows, technicalChecks: [] };
+      }
+      const { byEndpoint } = indexPayload(gatusPayload);
+      const correlatedIds = new Set();
+      const updated = rows.map((row) => {
+        const endpoint = gatusEndpoints.find((candidate) => candidate && candidate.id === row.id);
+        if (!endpoint) return row;
+        correlatedIds.add(endpoint.id);
+        const key = JSON.stringify([String(endpoint.group || ''), String(endpoint.name || '')]);
+        const found = byEndpoint.get(key);
+        if (!found) {
+          return {
+            ...row,
+            fastAvailability: {
+              state: TARGET_STATE.UNAVAILABLE,
+              label: 'Not reported',
+              ageMs: null,
+              detail: 'Gatus did not report this endpoint in the current response.',
+            },
+          };
+        }
+        if (found.malformed) {
+          return {
+            ...row,
+            fastAvailability: {
+              state: TARGET_STATE.UNAVAILABLE,
+              label: 'Unreadable',
+              ageMs: null,
+              detail: 'Gatus returned an entry this page cannot read.',
+            },
+          };
+        }
+        const spec = {
+          intervalMs: typeof endpoint.intervalMs === 'number' && endpoint.intervalMs > 0 ? endpoint.intervalMs : 60000,
+          timeoutMs: typeof endpoint.timeoutMs === 'number' && endpoint.timeoutMs > 0 ? endpoint.timeoutMs : 10000,
+          failureThreshold: typeof endpoint.failureThreshold === 'number' && endpoint.failureThreshold > 0 ? endpoint.failureThreshold : 2,
+          recoveryThreshold: typeof endpoint.recoveryThreshold === 'number' && endpoint.recoveryThreshold > 0 ? endpoint.recoveryThreshold : 2,
+        };
+        const derived = deriveState(found.results, spec, nowMs);
+        const state = derived.state === 'UP'
+          ? TARGET_STATE.UP
+          : derived.state === 'DOWN'
+            ? TARGET_STATE.DOWN
+            : derived.state === 'STALE'
+              ? TARGET_STATE.STALE
+              : TARGET_STATE.PENDING;
+        return {
+          ...row,
+          fastAvailability: {
+            state,
+            label: TARGET_STATE_META[state].label,
+            ageMs: derived.ageMs,
+            detail: describeFast(derived, spec),
+          },
+        };
+      });
+
+      const technicalChecks = gatusEndpoints
+        .filter((endpoint) => endpoint && typeof endpoint.id === 'string' && !correlatedIds.has(endpoint.id))
+        .map((endpoint) => ({ id: endpoint.id, name: text(endpoint.name, endpoint.id), group: text(endpoint.group, 'Ungrouped') }));
+
+      return { rows: updated, technicalChecks };
+    }
+
+    function describeFast(derived, spec) {
+      if (derived.result === null || derived.result === undefined) return 'No evaluation has completed yet.';
+      if (derived.state === 'UP') return 'Last evaluation passed.';
+      if (derived.state === 'STALE') return 'The newest evaluation is older than the freshness window.';
+      if (derived.state === 'DOWN') return 'The endpoint is failing its fast check.';
+      return `Needs ${spec.failureThreshold} consecutive failures (or successes) before the fast state changes.`;
+    }
+
+    /**
+     * disagreements reports rows whose browser journey and fast check do not agree.
+     *
+     * They are surfaced, never reconciled: the two layers answer different questions, and
+     * choosing one silently is exactly the false single status this task exists to remove.
+     */
+    function disagreements(rows) {
+      return rows.filter((row) => {
+        if (row.fastAvailability === null) return false;
+        const browserUp = row.state === TARGET_STATE.UP;
+        const browserDown = row.state === TARGET_STATE.DOWN;
+        const fastUp = row.fastAvailability.state === TARGET_STATE.UP;
+        const fastDown = row.fastAvailability.state === TARGET_STATE.DOWN;
+        return (browserUp && fastDown) || (browserDown && fastUp);
+      });
+    }
+
+    /** Format a duration for display. A missing duration is reported, not shown as zero. */
+    function formatDuration(durationMs) {
+      if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs < 0) return 'not reported';
+      if (durationMs < 1000) return `${Math.round(durationMs)} ms`;
+      if (durationMs < 60000) return `${(durationMs / 1000).toFixed(1)} s`;
+      return `${Math.floor(durationMs / 60000)} min ${Math.round((durationMs % 60000) / 1000)} s`;
+    }
+
+    /** Format an age in whole units. Used for "last run" and the freshness banner. */
+    function formatAge(ageMs) {
+      if (typeof ageMs !== 'number' || !Number.isFinite(ageMs) || ageMs < 0) return 'unknown';
+      const seconds = Math.round(ageMs / 1000);
+      if (seconds < 60) return `${seconds}s ago`;
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 48) return `${hours}h ago`;
+      return `${Math.floor(hours / 24)}d ago`;
+    }
+
+    /** Format an absolute timestamp in UTC. An unparseable value is reported as unknown. */
+    function formatTimestamp(value) {
+      const millis = toMillisValue(value);
+      if (millis === null) return 'unknown';
+      return new Date(millis).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+    }
+
+    /**
+     * screenshotReason explains an absent preview without breaking the monitoring result.
+     *
+     * The text is deliberately about the artifact, never about the page's health: an unavailable
+     * screenshot is not evidence that a target is down.
+     */
+    function screenshotReason(row) {
+      if (!row || !row.screenshot) return 'Screenshot unavailable';
+      if (row.screenshot.available) return '';
+      const reason = row.screenshot.reason || '';
+      if (reason.includes('capture disabled')) {
+        return 'Screenshot unavailable: capture is not enabled for this target';
+      }
+      if (reason.includes('no capture metadata')) {
+        return 'Screenshot unavailable: the stored image cannot be attributed to a run';
+      }
+      if (reason.includes('no synthetic result')) {
+        return 'Screenshot unavailable: no run has completed yet';
+      }
+      return `Screenshot unavailable${reason ? `: ${reason}` : ''}`;
+    }
+
+    /** True when the displayed row is backed by a run whose result may be shown as current. */
+    function hasCurrentRun(row) {
+      return row.state === TARGET_STATE.UP || row.state === TARGET_STATE.DOWN || row.state === TARGET_STATE.RUNNING;
+    }
+
+    /** A stable, human-readable summary of the page for the accessibility live region. */
+    function statusAnnouncement(counts) {
+      const parts = [];
+      if (counts.up > 0) parts.push(`${counts.up} up`);
+      if (counts.down > 0) parts.push(`${counts.down} down`);
+      if (counts.stale > 0) parts.push(`${counts.stale} stale`);
+      if (counts.pending > 0) parts.push(`${counts.pending} pending`);
+      if (counts.running > 0) parts.push(`${counts.running} running`);
+      if (counts.unavailable > 0) parts.push(`${counts.unavailable} unavailable`);
+      if (parts.length === 0) return `${counts.total} monitored pages`;
+      return `${counts.total} monitored pages: ${parts.join(', ')}`;
+    }
+
       // ---- src/contract.js ----
     // Authoritative validation contract for the endpoint editor.
     //
@@ -1047,6 +1533,19 @@ data:
     const SERVICE_PORT = 80;
     const NAMESPACE_OF_SERVICE = 'gatus';
     const STATUS_PATH = '/api/v1/endpoints/statuses';
+
+    // The synthetic result API. The page reads exactly one Service through the API-server
+    // proxy: the bounded status snapshot, and one PNG per eligible target on explicit action.
+    // The namespace, Service and port are pinned here so the granted RBAC resourceName and the
+    // request path cannot drift apart.
+    const SYNTHETIC_NAMESPACE = 'synthetic-monitoring';
+    const SYNTHETIC_SERVICE = 'synthetic-status-api';
+    const SYNTHETIC_PORT = 8080;
+    const SYNTHETIC_PROXY_ROOT =
+      `/api/v1/namespaces/${SYNTHETIC_NAMESPACE}/services/${SYNTHETIC_SERVICE}:${SYNTHETIC_PORT}/proxy`;
+    const SNAPSHOT_PATH = `${SYNTHETIC_PROXY_ROOT}/v1/status`;
+    const SCREENSHOT_PATH_PREFIX = `${SYNTHETIC_PROXY_ROOT}/v1/screenshots/`;
+    const TARGET_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
     /**
      * The one request this plugin makes.
@@ -1352,6 +1851,144 @@ data:
     const PLUGIN_EDITOR_PATH = EDITOR_ROUTE;
     const PLUGIN_PROXY_PATH = PROXY_PATH;
     const PLUGIN_UI_PROXY_PATH = UI_PROXY_PATH;
+    const PLUGIN_SNAPSHOT_PATH = SNAPSHOT_PATH;
+
+    /**
+     * Fetch the bounded synthetic status snapshot through the named Service proxy.
+     *
+     * One scoped read: the installer grants `get` on the exact `services/proxy` resourceName
+     * and nothing else, so this path cannot be widened by editing client state. A non-JSON
+     * answer - a console HTML page, an error page - is reported as malformed rather than
+     * mistaken for an empty inventory.
+     */
+    async function fetchSnapshot() {
+      let payload;
+      try {
+        payload = await apiRequest(SNAPSHOT_PATH, {
+          method: 'GET',
+          isJSON: true,
+          timeout: 10000,
+          headers: { Accept: 'application/json' },
+        });
+      } catch (error) {
+        const status = Number.isInteger(error && error.status) ? error.status : 0;
+        return {
+          ok: false,
+          reason: status === 401 || status === 403 ? 'forbidden' : status ? 'status' : 'network',
+          status,
+          payload: null,
+        };
+      }
+      if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+        return { ok: false, reason: 'malformed', status: 200, payload: null };
+      }
+      return { ok: true, reason: '', status: 200, payload };
+    }
+
+    /**
+     * Fetch one stored screenshot and hand back an object URL.
+     *
+     * The image is fetched as a binary response (`isJSON: false` returns the console's
+     * `Response`, not a parsed body), converted to a Blob and exposed only as a short-lived
+     * object URL. Two properties follow from that choice: the list API never carries image
+     * bytes or base64, and the `<img>` element never addresses a cluster IP or carries a
+     * credential of its own - it renders bytes the console already authorised.
+     *
+     * The caller owns the URL and must revoke it. The identifier is validated here as well as
+     * server-side: an artifact id cannot be changed into a path or into another target.
+     */
+    async function fetchScreenshotBlob(targetId) {
+      if (typeof targetId !== 'string' || !TARGET_ID.test(targetId)) {
+        return { ok: false, reason: 'invalid-id', status: 0, url: '' };
+      }
+      let response;
+      try {
+        response = await apiRequest(`${SCREENSHOT_PATH_PREFIX}${targetId}`, {
+          method: 'GET',
+          isJSON: false,
+          timeout: 15000,
+        });
+      } catch (error) {
+        const status = Number.isInteger(error && error.status) ? error.status : 0;
+        return {
+          ok: false,
+          reason: status === 401 || status === 403 ? 'forbidden' : status === 404 ? 'missing' : 'unavailable',
+          status,
+          url: '',
+        };
+      }
+      if (response === null || typeof response !== 'object' || typeof response.blob !== 'function') {
+        return { ok: false, reason: 'malformed', status: 0, url: '' };
+      }
+      const okFlag = response.ok !== false;
+      const contentType = typeof response.headers === 'object' && response.headers !== null && typeof response.headers.get === 'function'
+        ? response.headers.get('content-type')
+        : 'image/png';
+      if (!okFlag || typeof contentType !== 'string' || !contentType.startsWith('image/png')) {
+        return { ok: false, reason: 'missing', status: Number(response.status) || 0, url: '' };
+      }
+      let blob;
+      try {
+        blob = await response.blob();
+      } catch (error) {
+        return { ok: false, reason: 'malformed', status: 0, url: '' };
+      }
+      if (!blob || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+        return { ok: false, reason: 'unavailable', status: 0, url: '' };
+      }
+      return { ok: true, reason: '', status: 200, url: URL.createObjectURL(blob) };
+    }
+
+    /** Revoke an object URL produced by fetchScreenshotBlob. Safe to call with an empty value. */
+    function releaseScreenshotUrl(url) {
+      if (typeof url === 'string' && url !== '' && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    /**
+     * Read the optional Gatus correlation metadata the installer renders next to the payload.
+     *
+     * An empty list is a valid, meaningful state: it means this installation has no fast
+     * availability layer, and the page says so instead of issuing a request it has no grant
+     * for. No target URL, hostname or credential is present in this document.
+     */
+    function readGatusMetadata() {
+      const raw = typeof globalThis === 'undefined' ? undefined : globalThis[METADATA_GLOBAL];
+      const endpoints = raw && Array.isArray(raw.endpoints) ? raw.endpoints : [];
+      return { configured: endpoints.length > 0, endpoints, gatusUiUrl: UI_PROXY_PATH };
+    }
+
+    /**
+     * Fetch the Gatus status document through its own named Service proxy.
+     *
+     * Only called when the correlation metadata is present, because that is the signal that the
+     * installer also granted the Gatus read. A failure degrades the correlation panel alone: the
+     * browser-journey inventory is unaffected.
+     */
+    async function fetchGatusStatuses() {
+      let payload;
+      try {
+        payload = await apiRequest(PROXY_PATH, {
+          method: 'GET',
+          isJSON: true,
+          timeout: 10000,
+          headers: { Accept: 'application/json' },
+        });
+      } catch (error) {
+        const status = Number.isInteger(error && error.status) ? error.status : 0;
+        return {
+          ok: false,
+          reason: status === 401 || status === 403 ? 'forbidden' : status ? 'status' : 'network',
+          status,
+          payload: null,
+        };
+      }
+      if (!Array.isArray(payload)) {
+        return { ok: false, reason: 'malformed', status: 200, payload: null };
+      }
+      return { ok: true, reason: '', status: 200, payload };
+    }
 
     /**
      * Copy text to the clipboard, used for the YAML fragment this page produces.
@@ -3688,263 +4325,486 @@ data:
       // ---- src/view.js ----
     // The Service Status page.
     //
-    // This is a read-only view over what Gatus already reported. It performs one GET
-    // per refresh through the Kubernetes Service proxy, holds no credential in the
-    // browser, embeds no iframe, never addresses the Gatus ClusterIP directly and
-    // exposes no create, update or delete action. Every failure mode of that single
-    // read is rendered as an explicit state, because the alternative — a page that
-    // shows an empty table when it could not read anything — is indistinguishable from
-    // "everything is down", which is the one conclusion this page must never suggest
-    // without evidence.
+    // The page inventory is the canonical synthetic target registry, rendered by the installer
+    // and read through one bounded API. Every row is a customer page that is actually monitored:
+    // nothing is inferred from an Ingress, from Gatus or from a second hand-written list, and a
+    // target that leaves the registry cannot linger as a row.
+    //
+    // Three properties are deliberate and are what the tests pin:
+    //
+    //   1. A failure to read is never rendered as an empty dashboard. Unauthorized, unreachable,
+    //      malformed, empty and partial are five different messages, because "no pages are
+    //      monitored" and "the page could not read its inventory" lead an operator to opposite
+    //      conclusions.
+    //   2. Status is never conveyed by colour alone. Every state carries its own label and glyph,
+    //      the summary is announced in a live region, and controls are ordinary focusable
+    //      elements with accessible names.
+    //   3. The screenshot preview is bytes fetched on demand, never inline data. The list API has
+    //      no image field, and an `<img>` renders only an object URL produced from an authorised
+    //      binary response.
+    //
+    // Gatus, when the installer enables its correlation integration, is shown as a separate
+    // "Fast availability" field on the detail surface. It is correlated by exact endpoint id and
+    // a disagreement is stated rather than collapsed into a single reassuring status.
 
 
-    /** Poll a little faster than the slowest configured interval, and never tighter. */
+    /** Poll a little slower than the runner cadence; a refresh is always available. */
     const REFRESH_MS = 60000;
 
-    const STATE_COLOUR = {
-      [STATE.UP]: 'success',
-      [STATE.UNSTABLE]: 'warning',
-      [STATE.DOWN]: 'error',
-      [STATE.STALE]: 'warning',
-      [STATE.PENDING]: 'default',
-      [STATE.MISSING]: 'default',
-      [STATE.MALFORMED]: 'error',
-    };
+    const FILTER_KEYS = ['q', 'customer', 'state', 'freshness'];
 
     /**
-     * A single full-width message, used for every page-level state so loading,
-     * unavailable, malformed and empty are all visually distinct from a populated
-     * table. Keeping one component for them means a new failure mode cannot invent a
-     * look that an operator has to learn.
+     * Read the filters from the URL.
+     *
+     * The URL is the filter state's home so a filtered view can be bookmarked, shared with a
+     * colleague and restored by back/forward. An unreadable location yields the unfiltered view
+     * rather than throwing: a hand-edited query string must not break the page.
      */
-    function Notice({ tone, heading, body }) {
+    function readFiltersFromLocation() {
+      const filters = { query: '', customer: '', state: '', freshness: '' };
+      if (typeof window === 'undefined' || !window.location) return filters;
+      let params;
+      try {
+        params = new URLSearchParams(window.location.search || '');
+      } catch (error) {
+        return filters;
+      }
+      filters.query = params.get('q') || '';
+      filters.customer = params.get('customer') || '';
+      filters.state = params.get('state') || '';
+      filters.freshness = params.get('freshness') || '';
+      return filters;
+    }
+
+    /** Write the filters back to the URL without adding a history entry per keystroke. */
+    function writeFiltersToLocation(filters) {
+      if (typeof window === 'undefined' || !window.location || !window.history || typeof window.history.replaceState !== 'function') {
+        return;
+      }
+      let url;
+      try {
+        url = new URL(window.location.href);
+      } catch (error) {
+        return;
+      }
+      const params = url.searchParams;
+      const values = {
+        q: filters.query,
+        customer: filters.customer,
+        state: filters.state,
+        freshness: filters.freshness,
+      };
+      for (const key of FILTER_KEYS) {
+        if (values[key] === undefined || values[key] === '') params.delete(key);
+        else params.set(key, values[key]);
+      }
+      try {
+        window.history.replaceState(null, '', `${url.pathname}${params.toString() ? `?${params.toString()}` : ''}`);
+      } catch (error) {
+        // A console that forbids history updates must not lose the in-memory filter.
+      }
+    }
+
+    /** One full-width message for every page-level state. */
+    function Notice({ tone, heading, body, role }) {
       return h(
         Paper,
-        { variant: 'outlined', sx: { p: 2, mb: 2 } },
+        { variant: 'outlined', sx: { p: 2, mb: 2 }, role: role || undefined },
         h(Typography, { variant: 'h6', gutterBottom: true, color: `${tone}.main` }, heading),
-        h(Typography, { variant: 'body2' }, body)
+        h(Typography, { variant: 'body2' }, body),
       );
     }
 
-    function stateChip(row) {
+    function statusChip(state, key) {
+      const meta = TARGET_STATE_META[state] || TARGET_STATE_META[TARGET_STATE.UNAVAILABLE];
+      return h(Chip, {
+        key: key || 'state',
+        size: 'small',
+        color: meta.tone === 'default' ? 'default' : meta.tone,
+        label: `${meta.glyph} ${meta.label}`,
+        // The accessible name states the meaning in words, so a screen reader or a colour-blind
+        // operator receives the same information as sighted colour vision.
+        'aria-label': `Status: ${meta.label}`,
+      });
+    }
+
+    function SummaryCards(counts) {
+      const cards = [
+        { key: 'total', label: 'Monitored pages', value: counts.total, tone: 'inherit' },
+        { key: 'up', label: 'Healthy', value: counts.up, tone: 'success.main' },
+        { key: 'down', label: 'Failing', value: counts.down, tone: 'error.main' },
+        { key: 'stale', label: 'Stale', value: counts.stale, tone: 'warning.main' },
+        { key: 'pending', label: 'Pending', value: counts.pending, tone: 'text.secondary' },
+      ];
+      if (counts.running > 0) cards.push({ key: 'running', label: 'Running', value: counts.running, tone: 'info.main' });
+      if (counts.unavailable > 0) cards.push({ key: 'unavailable', label: 'Unavailable', value: counts.unavailable, tone: 'error.main' });
+
       return h(
-        Chip,
-        { key: 'state', label: row.state, size: 'small', color: STATE_COLOUR[row.state] || 'default' }
+        Box,
+        { sx: { display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }, role: 'group', 'aria-label': 'Status summary' },
+        cards.map(card => h(
+          Paper,
+          { key: card.key, variant: 'outlined', sx: { p: 1.5, minWidth: 130 }, 'aria-label': `${card.label}: ${card.value}` },
+          h(Typography, { variant: 'h5', sx: { color: card.tone } }, String(card.value)),
+          h(Typography, { variant: 'caption' }, card.label),
+        )),
       );
     }
 
-    function formatDuration(durationMs) {
-      if (typeof durationMs !== 'number') {
-        return 'n/a';
-      }
-      return durationMs >= 1000 ? `${(durationMs / 1000).toFixed(2)} s` : `${durationMs} ms`;
+    function FilterChip({ label, active, onClick, ariaLabel }) {
+      return h(
+        Link,
+        {
+          component: 'button',
+          type: 'button',
+          underline: 'none',
+          onClick,
+          'aria-pressed': active ? 'true' : 'false',
+          'aria-label': `${ariaLabel}${active ? ' (selected)' : ''}`,
+          sx: { display: 'inline-block', mr: 1, mb: 1 },
+        },
+        h(Chip, { size: 'small', variant: active ? 'filled' : 'outlined', color: active ? 'primary' : 'default', label }),
+      );
     }
 
-    function formatTime(timestamp, nowMs) {
-      if (typeof timestamp !== 'number') {
-        return 'never';
-      }
-      const absolute = new Date(timestamp).toISOString();
-      if (typeof nowMs !== 'number') {
-        return absolute;
-      }
-      const ageSeconds = Math.max(0, Math.round((nowMs - timestamp) / 1000));
-      return `${absolute} (${ageSeconds}s ago)`;
-    }
+    function Filters({ filters, rows, onChange }) {
+      const Input = TextField();
+      const customers = customersOf(rows);
+      const set = (patch) => onChange({ ...filters, ...patch });
 
-    function aggregatePanel(counts, gatusUiUrl) {
-      const parts = [
-        h(Chip, { key: 'total', size: 'small', label: `${counts.total} configured`, sx: { mr: 1 } }, null),
-      ];
-      const ordered = [
-        STATE.UP,
-        STATE.UNSTABLE,
-        STATE.DOWN,
-        STATE.STALE,
-        STATE.PENDING,
-        STATE.MISSING,
-        STATE.MALFORMED,
-      ];
-      for (const state of ordered) {
-        if (!counts[state]) {
-          continue;
-        }
-        parts.push(
-          h(
-            Chip,
-            {
-              key: state,
-              size: 'small',
-              label: `${counts[state]} ${state}`,
-              color: STATE_COLOUR[state],
-              sx: { mr: 1 },
-            },
-            null
-          )
-        );
-      }
-      if (gatusUiUrl) {
-        parts.push(
-          h(
-            Link,
-            {
-              key: 'ui',
-              href: gatusUiUrl,
-              target: '_blank',
-              rel: 'noreferrer noopener',
-              variant: 'body2',
-            },
-            'Open the protected Gatus dashboard'
-          )
-        );
-      }
-      return h(Box, { sx: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', mb: 2 } }, parts);
+      return h(
+        Box,
+        { sx: { mb: 2 }, role: 'search', 'aria-label': 'Filter monitored pages' },
+        h(Input, {
+          size: 'small',
+          fullWidth: true,
+          label: 'Search monitored pages',
+          placeholder: 'Name, id or customer',
+          inputProps: { 'aria-label': 'Search monitored pages' },
+          value: filters.query,
+          onChange: (event) => set({ query: event && event.target ? String(event.target.value) : '' }),
+          sx: { mb: 1 },
+        }),
+        h(Box, { sx: { mt: 1 } },
+          h(Typography, { variant: 'caption', component: 'span', sx: { mr: 1 } }, 'Customer:'),
+          FilterChip({ label: 'All', active: filters.customer === '', ariaLabel: 'Show all customers', onClick: () => set({ customer: '' }) }),
+          customers.map(customer => FilterChip({
+            key: `customer-${customer}`,
+            label: customer,
+            active: filters.customer === customer,
+            ariaLabel: `Show only ${customer}`,
+            onClick: () => set({ customer }),
+          })),
+        ),
+        h(Box, { sx: { mt: 1 } },
+          h(Typography, { variant: 'caption', component: 'span', sx: { mr: 1 } }, 'Status:'),
+          FilterChip({ label: 'All', active: filters.state === '', ariaLabel: 'Show all statuses', onClick: () => set({ state: '' }) }),
+          FILTER_STATES.map(state => FilterChip({
+            key: `state-${state}`,
+            label: `${TARGET_STATE_META[state].glyph} ${TARGET_STATE_META[state].label}`,
+            active: filters.state === state,
+            ariaLabel: `Show only ${TARGET_STATE_META[state].label} pages`,
+            onClick: () => set({ state }),
+          })),
+        ),
+        h(Box, { sx: { mt: 1 } },
+          h(Typography, { variant: 'caption', component: 'span', sx: { mr: 1 } }, 'Freshness:'),
+          FilterChip({ label: 'All', active: filters.freshness === '', ariaLabel: 'Show any freshness', onClick: () => set({ freshness: '' }) }),
+          [FRESHNESS.FRESH, FRESHNESS.STALE].map(freshness => FilterChip({
+            key: `freshness-${freshness}`,
+            label: freshness === FRESHNESS.FRESH ? 'Fresh' : 'Stale',
+            active: filters.freshness === freshness,
+            ariaLabel: `Show only ${freshness} results`,
+            onClick: () => set({ freshness }),
+          })),
+        ),
+      );
     }
 
     /**
-     * Rows are emitted as a flat child list rather than through a wrapper component,
-     * so the element tree stays exactly the TableHead/TableBody structure Headlamp's
-     * own components expect and no custom element is introduced.
+     * The card shown for one monitored page.
+     *
+     * The card is a button so the whole surface is one keyboard stop that opens the detail view.
+     * The thumbnail is bytes produced on demand; when none is available the card carries the
+     * honest reason instead of an empty frame that looks like a rendering fault.
      */
-    function dataTable(groups, nowMs) {
-      const children = [];
-      for (const group of groups) {
-        children.push(
-          h(
-            TableRow,
-            { key: `g:${group.name}` },
-            h(TableCell, { colSpan: 6, variant: 'head' }, group.name)
-          )
-        );
-        for (const row of group.rows) {
-          children.push(
-            h(
-              TableRow,
-              { key: `r:${row.id || row.name}`, hover: true },
-              h(TableCell, null, row.name),
-              h(TableCell, null, row.group || 'Ungrouped'),
-              h(TableCell, null, stateChip(row)),
-              h(TableCell, null, formatTime(row.evaluatedAt, nowMs)),
-              h(TableCell, null, formatDuration(row.durationMs)),
-              h(TableCell, null, row.detail)
-            )
-          );
+    function PageCard({ row, onOpen, thumbnail }) {
+      const meta = TARGET_STATE_META[row.state] || TARGET_STATE_META[TARGET_STATE.UNAVAILABLE];
+      const checks = row.run ? `${row.run.failedChecks} failed check${row.run.failedChecks === 1 ? '' : 's'}` : 'no completed run';
+      const thumb = thumbnail(row);
+      const parts = [
+        h(
+          Box,
+          { key: 'head', sx: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 1 } },
+          h(Typography, { variant: 'subtitle1', component: 'span' }, row.name),
+          statusChip(row.state, 'chip'),
+        ),
+        h(
+          Typography,
+          { key: 'meta', variant: 'caption', component: 'div', sx: { mt: 0.5 } },
+          `${row.customer} · ${row.id}`,
+        ),
+        h(
+          Typography,
+          { key: 'timing', variant: 'body2', sx: { mt: 0.5 } },
+          `Last run ${row.ageMs === null ? 'unknown' : formatAge(row.ageMs)} · ${formatDuration(row.run ? row.run.durationMs : null)} · ${checks}`,
+        ),
+        h(
+          Typography,
+          { key: 'next', variant: 'caption', component: 'div' },
+          row.expectedNextRunAt ? `Next expected run ${formatTimestamp(row.expectedNextRunAt)}` : 'Next expected run unknown',
+        ),
+      ];
+
+      if (thumb.state === 'ready') {
+        parts.push(h('img', {
+          key: 'thumb',
+          src: thumb.url,
+          alt: `Latest screenshot of ${row.name}`,
+          loading: 'lazy',
+          style: { marginTop: 8, maxWidth: '100%', maxHeight: 120, objectFit: 'contain', border: '1px solid rgba(128,128,128,0.4)' },
+        }));
+        if (thumb.caption) {
+          parts.push(h(Typography, { key: 'thumb-caption', variant: 'caption', component: 'div' }, thumb.caption));
         }
+      } else if (thumb.state === 'loading') {
+        parts.push(h(Typography, { key: 'thumb-loading', variant: 'caption', component: 'div', sx: { mt: 1 } }, 'Loading screenshot preview…'));
+      } else {
+        parts.push(h(Typography, { key: 'thumb-missing', variant: 'caption', component: 'div', sx: { mt: 1 } }, screenshotReason(row)));
       }
 
       return h(
-        TableContainer,
-        { component: Paper, variant: 'outlined' },
-        h(
-          Table,
-          { size: 'small' },
-          h(
-            TableHead,
-            null,
-            h(
-              TableRow,
-              null,
-              h(TableCell, null, 'Endpoint'),
-              h(TableCell, null, 'Group'),
-              h(TableCell, null, 'Status'),
-              h(TableCell, null, 'Last evaluation'),
-              h(TableCell, null, 'Response'),
-              h(TableCell, null, 'Detail')
-            )
-          ),
-          h(TableBody, null, children)
-        )
+        Paper,
+        {
+          key: `card-${row.id}`,
+          variant: 'outlined',
+          sx: { p: 1.5, display: 'flex', flexDirection: 'column', gap: 0.5 },
+          role: 'button',
+          tabIndex: 0,
+          'aria-label': `${row.name}, ${meta.label}, last run ${row.ageMs === null ? 'unknown' : formatAge(row.ageMs)}. Open details.`,
+          onClick: () => onOpen(row.id),
+          onKeyDown: (event) => {
+            if (event && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault();
+              onOpen(row.id);
+            }
+          },
+        },
+        parts,
       );
     }
 
-    function unavailabilityNotice(state) {
-      if (state.reason === 'forbidden') {
+    function checkTimeline(checks) {
+      if (!checks || checks.length === 0) {
+        return h(Typography, { variant: 'body2' }, 'This target has no recorded checks yet.');
+      }
+      return h(
+        Box,
+        { component: 'ol', sx: { pl: 2, m: 0 }, 'aria-label': 'Latest check timeline' },
+        checks.map(check => h(
+          Typography,
+          { key: `check-${check.id}`, component: 'li', variant: 'body2', sx: { mb: 0.5 } },
+          `${check.status === 'passed' ? '✓' : '✕'} ${check.id} — ${check.status} (${formatDuration(check.durationMs)})${check.message ? `: ${check.message}` : ''}`,
+        )),
+      );
+    }
+
+    function FastAvailability({ row, technicalChecks, gatusError, gatusUrl }) {
+      const parts = [
+        h(Typography, { key: 'heading', variant: 'subtitle2' }, 'Fast availability (Gatus)'),
+      ];
+
+      if (gatusError) {
+        parts.push(h(Typography, { key: 'error', variant: 'body2', color: 'warning.main' },
+          'The fast-availability layer could not be read. The browser journey above is unaffected.'));
+      } else if (row && row.fastAvailability) {
+        const fast = row.fastAvailability;
+        const disagrees = (row.state === TARGET_STATE.UP && fast.state === TARGET_STATE.DOWN)
+          || (row.state === TARGET_STATE.DOWN && fast.state === TARGET_STATE.UP);
+        parts.push(h(
+          Typography,
+          { key: 'state', variant: 'body2' },
+          `Fast state: ${fast.label}${fast.ageMs === null ? '' : ` · last evaluation ${formatAge(fast.ageMs)}`} — ${fast.detail}`,
+        ));
+        if (disagrees) {
+          parts.push(h(
+            Typography,
+            { key: 'disagreement', variant: 'body2', color: 'warning.main' },
+            `The two layers disagree: the browser journey reports ${TARGET_STATE_META[row.state].label} while the fast check reports ${fast.label}. Both are shown; neither overrides the other.`,
+          ));
+        }
+      } else if (row) {
+        parts.push(h(Typography, { key: 'none', variant: 'body2' },
+          'No correlated fast-availability check is configured for this page.'));
+      }
+
+      if (technicalChecks && technicalChecks.length > 0) {
+        parts.push(h(
+          Typography,
+          { key: 'technical', variant: 'caption', component: 'div', sx: { mt: 1 } },
+          `Other fast checks without a synthetic target (diagnostics only, not monitored pages): ${technicalChecks.map(check => check.id).join(', ')}`,
+        ));
+      }
+
+      parts.push(h(
+        Link,
+        { key: 'gatus-link', href: gatusUrl, target: '_blank', rel: 'noreferrer noopener', variant: 'caption', sx: { display: 'block', mt: 1 } },
+        'Open the protected Gatus dashboard',
+      ));
+
+      return h(Box, { sx: { mt: 2 } }, parts);
+    }
+
+    function DetailPanel({ row, technicalChecks, gatusError, gatusUrl, editorHref, onClose, onPreview, preview }) {
+      if (!row) return null;
+      return h(
+        Paper,
+        { variant: 'outlined', sx: { p: 2, mb: 2 }, role: 'region', 'aria-label': `Details for ${row.name}` },
+        h(
+          Box,
+          { sx: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' } },
+          h(Typography, { variant: 'h6', component: 'h2' }, row.name),
+          h(Link, { component: 'button', type: 'button', onClick: onClose, 'aria-label': 'Close details' }, 'Close'),
+        ),
+        h(Box, { sx: { mt: 1 } }, statusChip(row.state), h(Typography, { variant: 'caption', component: 'span', sx: { ml: 1 } },
+          `${row.customer} · target ${row.id}`)),
+        h(Typography, { variant: 'body2', sx: { mt: 1 } },
+          `Browser journey: ${row.run ? row.run.state : 'no completed run'} · freshness ${row.freshness}`
+          + `${row.ageMs === null ? '' : ` · ${formatAge(row.ageMs)}`}`),
+        h(Typography, { variant: 'body2' },
+          `Started ${row.run ? formatTimestamp(row.run.startedAt) : 'unknown'} · finished ${row.run ? formatTimestamp(row.run.finishedAt) : 'unknown'}`),
+        h(Typography, { variant: 'body2' },
+          `Duration ${formatDuration(row.run ? row.run.durationMs : null)} · ${row.run ? row.run.failedChecks : 0} failed check(s)`
+          + `${row.expectedNextRunAt ? ` · next expected ${formatTimestamp(row.expectedNextRunAt)}` : ''}`),
+        h(Typography, { variant: 'subtitle2', sx: { mt: 2 } }, 'Latest checks'),
+        checkTimeline(row.checks),
+        h(Box, { sx: { mt: 2 } }, FastAvailability({ row, technicalChecks, gatusError, gatusUrl })),
+        h(Box, { sx: { mt: 2 } },
+          h(Typography, { variant: 'subtitle2' }, 'Latest screenshot'),
+          row.screenshot.available
+            ? h(Box, null,
+              h(Link, { component: 'button', type: 'button', onClick: () => onPreview(row), 'aria-label': `Preview latest screenshot of ${row.name}` },
+                'Open latest screenshot preview'),
+              h(Typography, { variant: 'caption', component: 'div' },
+                `Captured ${formatTimestamp(row.screenshot.capturedAt)}`
+                + `${row.screenshot.runId ? ` · run ${row.screenshot.runId}` : ''}`
+                + `${row.screenshot.matchesLatestRun ? '' : ' · from an earlier run than the result shown above'}`))
+            : h(Typography, { variant: 'body2' }, screenshotReason(row))),
+        preview ? h(Box, { sx: { mt: 2 } }, previewBlock(preview)) : null,
+        h(Box, { sx: { mt: 2 } },
+          editorHref
+            ? h(Link, { href: editorHref, variant: 'body2' }, 'Open the endpoint fragment editor (changes are not applied)')
+            : h(Typography, { variant: 'caption' }, 'The endpoint editor is unavailable because this console reported no active cluster.')),
+      );
+    }
+
+    function previewBlock(preview) {
+      if (preview.state === 'loading') {
+        return h(Typography, { variant: 'body2' }, 'Loading the latest screenshot…');
+      }
+      if (preview.state === 'error') {
+        return h(Typography, { variant: 'body2', color: 'warning.main' },
+          `Screenshot unavailable: ${preview.reason || 'the image could not be read'}`);
+      }
+      return h(
+        Box,
+        { role: 'figure', 'aria-label': `Screenshot preview for ${preview.name}` },
+        h('img', {
+          src: preview.url,
+          alt: `Latest screenshot of ${preview.name}, captured ${formatTimestamp(preview.capturedAt)}`,
+          style: { maxWidth: '100%', maxHeight: 480, objectFit: 'contain', border: '1px solid rgba(128,128,128,0.4)' },
+        }),
+        h(Typography, { variant: 'caption', component: 'div' },
+          `${preview.name} · captured ${formatTimestamp(preview.capturedAt)} · run ${preview.runId || 'unknown'}`),
+      );
+    }
+
+    function skeleton() {
+      return h(
+        Box,
+        { 'aria-busy': 'true', 'aria-live': 'polite' },
+        h(Paper, { variant: 'outlined', sx: { p: 2, mb: 1 } }, h(Typography, { variant: 'body2' }, 'Loading monitored pages…')),
+        h(Box, { sx: { display: 'grid', gap: 1 } },
+          [0, 1, 2].map(index => h(Paper, {
+            key: `skeleton-${index}`,
+            variant: 'outlined',
+            sx: { p: 2, minHeight: 96 },
+            'aria-hidden': 'true',
+          }))),
+      );
+    }
+
+    function unavailability(reason, status) {
+      if (reason === 'forbidden') {
         return Notice({
           tone: 'error',
           heading: 'Service Status is not permitted',
-          body:
-            'The Headlamp ServiceAccount may not read the Gatus Service proxy. This is expected ' +
-            'only when the gatus headlamp integration is disabled, or when the namespaced proxy ' +
-            'grant is missing. No other Headlamp page is affected.',
+          body: 'The Headlamp ServiceAccount may not read the synthetic status API. This is expected only '
+            + 'when the synthetic-status module is disabled, or when its exact namespaced proxy grant is missing. '
+            + 'No other Headlamp page is affected.',
+          role: 'alert',
         });
       }
-      if (state.reason === 'malformed') {
+      if (reason === 'malformed') {
         return Notice({
           tone: 'error',
-          heading: 'Gatus returned a response this page cannot read',
-          body:
-            'The status document was not the expected list of endpoint status entries. Gatus is ' +
-            'reachable but its response shape is not what this page understands, so nothing is ' +
-            'shown rather than something misleading.',
+          heading: 'The status API answered with a document this page cannot read',
+          body: 'The response was not the documented status envelope, so nothing is shown rather than something '
+            + 'misleading. The service is reachable; its contract and this payload have diverged.',
+          role: 'alert',
         });
       }
-      if (state.reason === 'network') {
+      if (reason === 'network') {
         return Notice({
           tone: 'error',
-          heading: 'Could not reach Gatus',
-          body:
-            'The request for Gatus status failed before a response was received. Check that the ' +
-            'Gatus pod is Ready and that the Headlamp ServiceAccount can reach the named Service ' +
-            'proxy. No other Headlamp page is affected.',
-        });
-      }
-      if (state.reason === 'fetch-unavailable') {
-        return Notice({
-          tone: 'error',
-          heading: 'This console build cannot issue the status request',
-          body: 'The browser did not provide a fetch implementation, so no status could be read.',
+          heading: 'The status API could not be reached',
+          body: 'The request failed before a response was received. Check that the synthetic-status-api pod is '
+            + 'Ready and that the Headlamp ServiceAccount can reach the named Service proxy. No other Headlamp '
+            + 'page is affected.',
+          role: 'alert',
         });
       }
       return Notice({
         tone: 'error',
-        heading: `Gatus did not answer (HTTP ${state.status || 'unknown'})`,
-        body:
-          'The status request reached the API server but not the Gatus backend. Check the Gatus ' +
-          'Service endpoints and the container logs. No other Headlamp page is affected.',
-      });
-    }
-
-    function emptyNotice(endpointsConfigured) {
-      return Notice({
-        tone: 'warning',
-        heading: 'No endpoints are configured',
-        body: endpointsConfigured
-          ? 'Gatus is running but reports no endpoints. Add endpoints to the installation ' +
-            'configuration and apply; this is an empty result set, not a failure to read.'
-          : 'Gatus reported no endpoint statuses and none are configured in the installation.',
+        heading: `The status API did not answer (HTTP ${status || 'unknown'})`,
+        body: 'The request reached the API server but not the status service. Check the Service endpoints and its '
+          + 'container logs.',
+        role: 'alert',
       });
     }
 
     function ServiceStatusPage() {
-      const metadata = useMemo(() => readEndpointMetadata(), []);
-      // The endpoint editor is reached from this page rather than from a second sidebar item.
-      // It is a Service Status plugin page, not a control inside Headlamp's own plugin-details
-      // screen, which 0.43.0 gives plugins no way to extend.
-      //
-      // The href is cluster-scoped. A plugin route is registered cluster-relative and rendered
-      // by the console at `/c/<active-cluster><route>`, so the unprefixed route is not a usable
-      // href: it leaves the cluster layout and renders the console 404. An empty result means no
-      // active cluster could be resolved, and is reported rather than linked.
+      const metadata = useMemo(() => readGatusMetadata(), []);
       const editorHref = useMemo(() => clusterScopedEditorHref(), []);
+      const [filters, setFilters] = useState(() => readFiltersFromLocation());
+      const [selectedId, setSelectedId] = useState('');
+      const [tick, setTick] = useState(0);
+      const [preview, setPreview] = useState(null);
+      const [thumbnails, setThumbnails] = useState({});
       const [state, setState] = useState({
         loading: true,
         reason: '',
         status: 0,
-        payload: null,
+        snapshot: null,
+        gatus: null,
         nowMs: Date.now(),
       });
-      const [tick, setTick] = useState(0);
 
       const load = useCallback(async () => {
-        const result = await fetchStatuses();
+        const snapshotResult = await fetchSnapshot();
+        let gatus = null;
+        if (snapshotResult.ok && metadata.configured) {
+          gatus = await fetchGatusStatuses();
+        }
         setState({
           loading: false,
-          reason: result.reason,
-          status: result.status,
-          payload: result.payload,
+          reason: snapshotResult.reason,
+          status: snapshotResult.status,
+          snapshot: snapshotResult.ok ? snapshotResult.payload : null,
+          gatus,
           nowMs: Date.now(),
         });
-      }, []);
+      }, [metadata.configured]);
 
       useEffect(() => {
         load();
@@ -3952,87 +4812,260 @@ data:
         return () => clearInterval(timer);
       }, [load, tick]);
 
-      // `tick` lets an operator force a re-read without waiting a minute. It is the
-      // only interaction on the page and it changes nothing but when the read happens.
       const refresh = useCallback(() => setTick(value => value + 1), []);
+      const changeFilters = useCallback((next) => {
+        setFilters(next);
+        writeFiltersToLocation(next);
+      }, []);
+
+      const built = useMemo(() => {
+        if (state.snapshot === null) return null;
+        const validation = validateSnapshot(state.snapshot);
+        if (!validation.ok) return { invalid: validation.reason };
+        const model = buildTargets(state.snapshot, state.nowMs);
+        const gatusPayload = state.gatus && state.gatus.ok ? state.gatus.payload : null;
+        const correlated = correlateFastAvailability(
+          model.rows,
+          gatusPayload,
+          metadata.configured ? metadata.endpoints : [],
+          state.nowMs,
+        );
+        return {
+          invalid: '',
+          rows: correlated.rows,
+          technicalChecks: correlated.technicalChecks,
+          malformed: model.malformed,
+          generatedAt: model.generatedAt,
+        };
+      }, [state.snapshot, state.gatus, state.nowMs, metadata]);
+
+      const rows = built && built.rows ? built.rows : [];
+      const visible = useMemo(() => filterTargets(rows, filters), [rows, filters]);
+      const counts = useMemo(() => aggregateTargets(rows), [rows]);
+      const selected = rows.find(row => row.id === selectedId) || null;
+      const gatusError = metadata.configured && state.gatus !== null && !state.gatus.ok;
+
+      // Thumbnails are fetched one at a time, after the inventory is known, only for targets that
+      // actually have a stored image. A page with fifty targets therefore issues no image request
+      // for the forty-nine without one, and the list API never carries bytes.
+      const availableSignature = useMemo(
+        () => rows.filter(row => row.screenshot.available).map(row => `${row.id}:${row.screenshot.runId}`).sort().join('|'),
+        [rows],
+      );
+      useEffect(() => {
+        if (availableSignature === '') return undefined;
+        let cancelled = false;
+        (async () => {
+          for (const row of rows) {
+            if (cancelled) return;
+            if (!row.screenshot.available) continue;
+            const key = `${row.id}:${row.screenshot.runId}`;
+            if (thumbnails[key] !== undefined) continue;
+            setThumbnails(current => ({ ...current, [key]: { state: 'loading' } }));
+            const result = await fetchScreenshotBlob(row.id);
+            if (cancelled) {
+              if (result.ok) releaseScreenshotUrl(result.url);
+              return;
+            }
+            setThumbnails(current => {
+              // Replace, never accumulate: a refreshed run produces a new object URL for the same
+              // target, and the previous blob must be released or a long-lived console session
+              // would keep every image it ever rendered in memory.
+              const previous = current[key];
+              if (result.ok && previous && previous.state === 'ready' && previous.url !== result.url) {
+                releaseScreenshotUrl(previous.url);
+              }
+              return {
+                ...current,
+                [key]: result.ok
+                  ? {
+                    state: 'ready',
+                    url: result.url,
+                    caption: row.screenshot.matchesLatestRun ? '' : `Earlier run · captured ${formatTimestamp(row.screenshot.capturedAt)}`,
+                  }
+                  : { state: 'error', reason: result.reason },
+              };
+            });
+          }
+        })();
+        return () => { cancelled = true; };
+      }, [availableSignature]);
+
+      const thumbnail = useCallback((row) => {
+        const key = `${row.id}:${row.screenshot.runId}`;
+        return thumbnails[key] || { state: 'none' };
+      }, [thumbnails]);
+
+      const openPreview = useCallback(async (row) => {
+        setPreview({ state: 'loading', name: row.name });
+        const cached = thumbnails[`${row.id}:${row.screenshot.runId}`];
+        if (cached && cached.state === 'ready') {
+          setPreview({
+            state: 'ready',
+            name: row.name,
+            url: cached.url,
+            capturedAt: row.screenshot.capturedAt,
+            runId: row.screenshot.runId,
+          });
+          return;
+        }
+        const result = await fetchScreenshotBlob(row.id);
+        setPreview(result.ok
+          ? { state: 'ready', name: row.name, url: result.url, capturedAt: row.screenshot.capturedAt, runId: row.screenshot.runId }
+          : { state: 'error', name: row.name, reason: result.reason });
+      }, [thumbnails]);
 
       if (state.loading) {
-        return Notice({
-          tone: 'info',
-          heading: 'Loading service status',
-          body: 'Reading the current status of every configured endpoint from Gatus.',
-        });
+        return skeleton();
       }
 
-      if (!state.payload) {
-        return unavailabilityNotice(state);
+      if (state.snapshot === null) {
+        return h(Box, null, unavailability(state.reason, state.status), refreshLink(refresh));
       }
 
-      if (metadata.degraded) {
-        return Notice({
-          tone: 'error',
-          heading: 'Endpoint metadata is missing',
-          body:
-            'The installer did not render the endpoint list next to this plugin, so results cannot ' +
-            'be matched to endpoints or aged correctly. Re-apply the installation to restore it; ' +
-            'no status is shown rather than an unlabelled list.',
-        });
+      if (!built || built.invalid) {
+        return h(
+          Box,
+          null,
+          Notice({
+            tone: 'error',
+            heading: 'The status document does not match the supported contract',
+            body: `This page understands snapshot schema version 1. The service answered with ${built && built.invalid ? built.invalid : 'an unreadable document'}, so nothing is rendered rather than a partial list.`,
+            role: 'alert',
+          }),
+          refreshLink(refresh),
+        );
       }
 
-      if (state.payload.length === 0) {
-        return emptyNotice(metadata.endpoints.length > 0);
+      if (rows.length === 0) {
+        return h(
+          Box,
+          null,
+          Notice({
+            tone: 'warning',
+            heading: 'No monitored pages are configured',
+            body: 'The canonical synthetic target registry is empty, so there is nothing to monitor. Add a target '
+              + 'under synthetic/targets/customers and apply; this is an empty result set, not a read failure.',
+          }),
+          refreshLink(refresh),
+        );
       }
 
-      const built = buildRows(metadata.endpoints, state.payload, state.nowMs);
-      const counts = aggregate(built.rows);
-
-      if (counts.total === 0) {
-        return emptyNotice(false);
-      }
+      const groups = groupTargets(visible);
+      const staleCount = counts.stale;
+      const conflicting = disagreements(rows);
 
       return h(
         Box,
         null,
-        aggregatePanel(counts, metadata.gatusUiUrl),
-        built.partial
-          ? Notice({
-              tone: 'warning',
-              heading: 'Partial response',
-              body:
-                'Gatus reported fewer endpoints than the installation configures. The missing ones ' +
-                'are shown as MISSING rather than omitted, so a short read cannot be mistaken for ' +
-                'full coverage.',
-            })
-          : null,
-        dataTable(groupRows(built.rows), state.nowMs),
-        h(
-          Typography,
-          { variant: 'caption', sx: { display: 'block', mt: 1 } },
-          `Read every ${Math.round(REFRESH_MS / 1000)}s through ${PLUGIN_PROXY_PATH}. Gatus is the ` +
-            'authoritative current-status source; this page only reads it. A Gatus instance inside ' +
-            'the cluster cannot detect a total cluster outage.'
-        ),
-        h(Link, { component: 'button', variant: 'body2', onClick: refresh, sx: { mt: 1 } }, 'Refresh now'),
         h(
           Box,
-          { sx: { mt: 2 } },
-          editorHref
-            ? h(
-                Link,
-                { href: editorHref, variant: 'body2' },
-                'Open the endpoint fragment editor (a Service Status page; changes are not applied)'
-              )
-            : Notice({
-                tone: 'warning',
-                heading: 'Endpoint editor unavailable',
-                body:
-                  'This console did not report an active cluster, so the endpoint editor has no ' +
-                  'address on this page. Select a cluster in the console and reload; the editor is ' +
-                  'deliberately not linked without one, because the unprefixed route renders the ' +
-                  'console 404 page.',
-              })
-        )
+          { sx: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', mb: 1 } },
+          h(Typography, { variant: 'h5', component: 'h1' }, 'Customer page status'),
+          h(Typography, { variant: 'caption' }, `Last refresh ${formatTimestamp(new Date(state.nowMs).toISOString())}`),
+        ),
+        h(Typography, { variant: 'body2', sx: { mb: 2 } },
+          `${counts.total} monitored page${counts.total === 1 ? '' : 's'} from the canonical synthetic target registry.`),
+        h(Box, { 'aria-live': 'polite', sx: { position: 'absolute', left: -10000, top: 'auto', width: 1, height: 1, overflow: 'hidden' } },
+          statusAnnouncement(counts)),
+
+        SummaryCards(counts),
+
+        staleCount > 0
+          ? Notice({
+            tone: 'warning',
+            heading: `${staleCount} page${staleCount === 1 ? ' has' : 's have'} a stale result`,
+            body: 'A result older than twice the schedule plus the timeout is not evidence about the page right now. '
+              + 'These are shown as STALE rather than as their last outcome.',
+          })
+          : null,
+
+        conflicting.length > 0
+          ? Notice({
+            tone: 'warning',
+            heading: 'The two monitoring layers disagree',
+            body: `${conflicting.length} page${conflicting.length === 1 ? '' : 's'} report a different browser journey and fast-availability state (${conflicting.map(row => row.id).join(', ')}). Open a page for both values; neither is collapsed into a single status.`,
+          })
+          : null,
+
+        built.malformed > 0
+          ? Notice({
+            tone: 'warning',
+            heading: 'Partial response',
+            body: `${built.malformed} entr${built.malformed === 1 ? 'y' : 'ies'} in the status document could not be read and ${built.malformed === 1 ? 'is' : 'are'} not shown. The readable pages are listed below.`,
+          })
+          : null,
+
+        gatusError
+          ? Notice({
+            tone: 'warning',
+            heading: 'Fast availability is unavailable',
+            body: 'The optional Gatus correlation could not be read. Browser journeys below are unaffected.',
+          })
+          : null,
+
+        h(Box, { sx: { display: 'flex', gap: 1, alignItems: 'center', mb: 2, flexWrap: 'wrap' } },
+          refreshLink(refresh),
+          h(Typography, { variant: 'caption' }, `Refreshes every ${Math.round(REFRESH_MS / 1000)}s.`)),
+
+        FilterChipRow(filters, changeFilters, rows),
+        Filters({ filters, rows, onChange: changeFilters }),
+
+        visible.length === 0
+          ? Notice({
+            tone: 'info',
+            heading: 'No page matches these filters',
+            body: 'Clear the search or choose “All” for each filter to see every monitored page again.',
+          })
+          : groups.map(group => h(
+            Box,
+            { key: `group-${group.customer}`, component: 'section', 'aria-label': `Customer ${group.customer}`, sx: { mb: 2 } },
+            h(Typography, { variant: 'subtitle1', component: 'h2', sx: { mb: 1 } }, `${group.customer} (${group.rows.length})`),
+            h(
+              Box,
+              { sx: { display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' } } },
+              group.rows.map(row => h(Box, { key: row.id }, PageCard({ row, onOpen: setSelectedId, thumbnail }))),
+            ),
+          )),
+
+        selected
+          ? DetailPanel({
+            row: selected,
+            technicalChecks: built.technicalChecks,
+            gatusError,
+            gatusUrl: metadata.gatusUiUrl,
+            editorHref,
+            onClose: () => setSelectedId(''),
+            onPreview: openPreview,
+            preview,
+          })
+          : null,
       );
+    }
+
+    // The reset control is a peer of the filters rather than part of them, because it is the one
+    // action that must remain available when the filtered result set is empty.
+    function FilterChipRow(filters, onChange, rows) {
+      const active = filters.query !== '' || filters.customer !== '' || filters.state !== '' || filters.freshness !== '';
+      if (!active) return null;
+      return h(Box, { sx: { mb: 1 } },
+        h(Link, {
+          component: 'button',
+          type: 'button',
+          onClick: () => onChange({ query: '', customer: '', state: '', freshness: '' }),
+          'aria-label': `Clear all filters, showing all ${rows.length} monitored pages`,
+        }, 'Clear filters'));
+    }
+
+    function refreshLink(refresh) {
+      return h(Link, {
+        component: 'button',
+        type: 'button',
+        onClick: refresh,
+        variant: 'body2',
+        'aria-label': 'Refresh the monitored page status now',
+        sx: { mr: 2 },
+      }, 'Refresh now');
     }
 
     registerSidebarEntry({
@@ -4053,13 +5086,8 @@ data:
     });
 
     // The endpoint editor is an ordinary plugin route in a plugin-owned namespace, reached from
-    // the dashboard link above, and it is a Service Status page rather than a control inside
-    // Headlamp's native plugin-details screen. Headlamp 0.43.0 exposes no plugin API for adding
-    // a row to Settings -> Plugins or anything to that details page, so that remains an unmet
-    // criterion needing a newer extension API or a separate upstream change. The route is
-    // registered cluster-relative: the console owns the `/c/<cluster>` prefix and this plugin
-    // registers no cluster name. Registering a sidebar entry would change the navigation
-    // TASK-207 established, so the dashboard keeps the single entry.
+    // the detail surface rather than from the primary navigation. TASK-209's write path is
+    // unchanged: this task changes the status inventory and presentation only.
     registerEditorRoute({
       path: PLUGIN_EDITOR_PATH,
       sidebar: null,
@@ -4070,18 +5098,18 @@ data:
     });
 
     })();
-  package.json: |-
+  package.json: |
     {
       "name": "@sre-platform/headlamp-service-status",
-      "version": "0.1.7",
-      "description": "Read-only Gatus availability view and endpoint fragment editor for the Headlamp operator console",
+      "version": "0.2.0",
+      "description": "Read-only synthetic-first customer page status view for the Headlamp operator console, with an optional correlated Gatus layer and the GitOps-safe endpoint fragment editor",
       "private": true,
       "license": "Apache-2.0",
       "main": "src/view.js",
       "type": "module",
       "scripts": {
         "build": "node build.mjs",
-        "test": "node --test test/status.test.mjs test/payload.test.mjs test/editor.test.mjs"
+        "test": "node --test test/status.test.mjs test/synthetic.test.mjs test/payload.test.mjs test/editor.test.mjs"
       },
       "devDependencies": {
         "@kinvolk/headlamp-plugin": "0.13.1"
@@ -12097,7 +13125,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: 9866c1d73cda729472921ccdf78742904a20b0dc2d4d083b01f25b5faa735807
+        sre.platform.io/headlamp-plugins-sha256: 0a0ed95ca4b89b2488a0656fb79f15e18bd17a8654d91bdab3ffc4be2cf93b50
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
@@ -12206,9 +13234,6 @@ spec:
             - mountPath: /headlamp/plugins/opencost
               name: plugin-opencost
               readOnly: true
-            - mountPath: /headlamp/plugins/kyverno
-              name: plugin-kyverno
-              readOnly: true
             - mountPath: /headlamp/plugins/ai-assistant
               name: plugin-ai-assistant
               readOnly: true
@@ -12250,15 +13275,6 @@ spec:
               path: package.json
             name: headlamp-plugin-opencost
           name: plugin-opencost
-        - configMap:
-            defaultMode: 420
-            items:
-            - key: main.js
-              path: main.js
-            - key: package.json
-              path: package.json
-            name: headlamp-plugin-kyverno
-          name: plugin-kyverno
         - emptyDir: {}
           name: plugin-ai-assistant
         - configMap:
@@ -12489,66 +13505,3 @@ spec:
                  name: headlamp
                  port:
                    number: 80
----
-apiVersion: v1
-data:
-  main.js: |
-    (function(L,s){typeof exports=="object"&&typeof module<"u"?s(exports,require("react/jsx-runtime"),require("@kinvolk/headlamp-plugin/lib"),require("@iconify/react"),require("@kinvolk/headlamp-plugin/lib/CommonComponents"),require("@mui/material"),require("@kinvolk/headlamp-plugin/lib/k8s/cluster"),require("@kinvolk/headlamp-plugin/lib/components/common"),require("react"),require("react-router-dom"),require("recharts")):typeof define=="function"&&define.amd?define(["exports","react/jsx-runtime","@kinvolk/headlamp-plugin/lib","@iconify/react","@kinvolk/headlamp-plugin/lib/CommonComponents","@mui/material","@kinvolk/headlamp-plugin/lib/k8s/cluster","@kinvolk/headlamp-plugin/lib/components/common","react","react-router-dom","recharts"],s):(L=typeof globalThis<"u"?globalThis:L||self,s(L.main={},L.pluginLib.ReactJSX,L.pluginLib,L.pluginLib.Iconify,L.pluginLib.CommonComponents,L.pluginLib.MuiMaterial,L.pluginLib.K8s.cluster,L.pluginLib.CommonComponents,L.pluginLib.React,L.pluginLib.ReactRouter,L.pluginLib.Recharts))})(this,(function(L,s,y,O,P,n,$,g,C,bt,w){"use strict";const Q=class Q extends $.KubeObject{get spec(){return this.jsonData.spec}get status(){return this.jsonData.status}get validationActions(){return this.spec.validationActions||["Audit"]}get validationCount(){var e;return((e=this.spec.validations)==null?void 0:e.length)||0}get isAdmissionEnabled(){var e,a;return((a=(e=this.spec.evaluation)==null?void 0:e.admission)==null?void 0:a.enabled)??!0}get isBackgroundEnabled(){var e,a;return((a=(e=this.spec.evaluation)==null?void 0:e.background)==null?void 0:a.enabled)??!0}get ready(){var e,a;return((a=(e=this.status)==null?void 0:e.conditionStatus)==null?void 0:a.ready)??!1}};Q.kind="ValidatingPolicy",Q.apiName="validatingpolicies",Q.apiVersion="policies.kyverno.io/v1",Q.isNamespaced=!1;let U=Q;const _=class _ extends $.KubeObject{get spec(){return this.jsonData.spec}get status(){return this.jsonData.status}get mutationCount(){var e;return((e=this.spec.mutations)==null?void 0:e.length)||0}get isAdmissionEnabled(){var e,a;return((a=(e=this.spec.evaluation)==null?void 0:e.admission)==null?void 0:a.enabled)??!0}get isBackgroundEnabled(){var e,a;return((a=(e=this.spec.evaluation)==null?void 0:e.background)==null?void 0:a.enabled)??!0}get ready(){var e,a;return((a=(e=this.status)==null?void 0:e.conditionStatus)==null?void 0:a.ready)??!1}};_.kind="MutatingPolicy",_.apiName="mutatingpolicies",_.apiVersion="policies.kyverno.io/v1",_.isNamespaced=!1;let ye=_;const R=class R extends $.KubeObject{get spec(){return this.jsonData.spec}get status(){return this.jsonData.status}get generateCount(){var e;return((e=this.spec.generate)==null?void 0:e.length)||0}get ready(){var e,a;return((a=(e=this.status)==null?void 0:e.conditionStatus)==null?void 0:a.ready)??!1}};R.kind="GeneratingPolicy",R.apiName="generatingpolicies",R.apiVersion="policies.kyverno.io/v1",R.isNamespaced=!1;let ve=R;const ee=class ee extends $.KubeObject{get spec(){return this.jsonData.spec}get status(){return this.jsonData.status}get schedule(){return this.spec.schedule||"-"}get ready(){var e,a;return((a=(e=this.status)==null?void 0:e.conditionStatus)==null?void 0:a.ready)??!1}};ee.kind="DeletingPolicy",ee.apiName="deletingpolicies",ee.apiVersion="policies.kyverno.io/v1",ee.isNamespaced=!1;let be=ee;const te=class te extends $.KubeObject{get spec(){return this.jsonData.spec}get status(){return this.jsonData.status}get imagePatterns(){return(this.spec.matchImageReferences||[]).map(e=>e.glob||e.expression||"")}get attestorCount(){var e;return((e=this.spec.attestors)==null?void 0:e.length)||0}get ready(){var e,a;return((a=(e=this.status)==null?void 0:e.conditionStatus)==null?void 0:a.ready)??!1}};te.kind="ImageValidatingPolicy",te.apiName="imagevalidatingpolicies",te.apiVersion="policies.kyverno.io/v1",te.isNamespaced=!1;let Ce=te;function kt({ready:t}){return s.jsx(n.Chip,{label:t?"True":"False",color:t?"success":"error",size:"small"})}function Qe({data:t}){return!t||Array.isArray(t)&&t.length===0||Object.keys(t).length===0?null:s.jsx("pre",{style:{overflowX:"auto",padding:"1rem",background:"var(--mui-palette-background-paper)",borderRadius:"4px",border:"1px solid var(--mui-palette-divider)",margin:0},children:JSON.stringify(t,null,2)})}function ke({title:t,data:e,columns:a}){return!e||e.length===0?null:s.jsx(g.SectionBox,{title:t,sx:{mt:2},children:s.jsx(n.TableContainer,{component:n.Paper,variant:"outlined",children:s.jsxs(n.Table,{size:"small",children:[s.jsx(n.TableHead,{children:s.jsx(n.TableRow,{children:a.map((r,l)=>s.jsx(n.TableCell,{sx:{fontWeight:"bold"},children:r.label},l))})}),s.jsx(n.TableBody,{children:e.map((r,l)=>s.jsx(n.TableRow,{children:a.map((o,i)=>s.jsx(n.TableCell,{children:s.jsx(n.Box,{sx:{fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-word"},children:o.getter(r)||"-"})},i))},l))})]})})})}function xt({constraints:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");if(!t)return null;const a=t.resourceRules&&t.resourceRules.length>0,r={...t};delete r.resourceRules;const l=Object.keys(r).length>0;return s.jsxs(g.SectionBox,{title:e("Match Constraints"),sx:{mt:2},children:[a&&s.jsxs(n.Box,{sx:{mb:l?2:0},children:[s.jsx(n.Typography,{variant:"subtitle2",sx:{mb:1,color:"text.secondary"},children:e("Resource Rules")}),s.jsx(n.TableContainer,{component:n.Paper,variant:"outlined",children:s.jsxs(n.Table,{size:"small",children:[s.jsx(n.TableHead,{children:s.jsxs(n.TableRow,{children:[s.jsx(n.TableCell,{sx:{fontWeight:"bold"},children:e("API Groups")}),s.jsx(n.TableCell,{sx:{fontWeight:"bold"},children:e("API Versions")}),s.jsx(n.TableCell,{sx:{fontWeight:"bold"},children:e("Operations")}),s.jsx(n.TableCell,{sx:{fontWeight:"bold"},children:e("Resources")})]})}),s.jsx(n.TableBody,{children:t.resourceRules.map((o,i)=>{var c,u,h,x;return s.jsxs(n.TableRow,{children:[s.jsx(n.TableCell,{children:s.jsx(n.Box,{sx:{fontFamily:"monospace"},children:((c=o.apiGroups)==null?void 0:c.join(", "))||"*"})}),s.jsx(n.TableCell,{children:s.jsx(n.Box,{sx:{fontFamily:"monospace"},children:((u=o.apiVersions)==null?void 0:u.join(", "))||"*"})}),s.jsx(n.TableCell,{children:s.jsx(n.Box,{sx:{fontFamily:"monospace"},children:((h=o.operations)==null?void 0:h.join(", "))||"*"})}),s.jsx(n.TableCell,{children:s.jsx(n.Box,{sx:{fontFamily:"monospace"},children:((x=o.resources)==null?void 0:x.join(", "))||"*"})})]},i)})})]})})]}),l&&s.jsxs(n.Box,{children:[a&&s.jsx(n.Typography,{variant:"subtitle2",sx:{mb:1,color:"text.secondary"},children:e("Other Constraints")}),s.jsx(Qe,{data:r})]})]})}function mt({policy:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno"),a=()=>t instanceof U?[{name:e("Validation Actions"),value:t.validationActions.join(", ")||"-"},{name:e("Validations"),value:t.validationCount.toString()}]:t instanceof ye?[{name:e("Mutations"),value:t.mutationCount.toString()}]:t instanceof ve?[{name:e("Generators"),value:t.generateCount.toString()}]:t instanceof be?[{name:e("Schedule"),value:t.schedule}]:[],r=[{name:e("Name"),value:t.jsonData.metadata.name},{name:e("Kind"),value:t.jsonData.kind},{name:e("Ready"),value:s.jsx(kt,{ready:t.ready})},...a(),{name:e("Created"),value:new Date(t.jsonData.metadata.creationTimestamp).toLocaleString()}],l=t.spec;return s.jsxs(n.Box,{sx:{p:2},children:[s.jsx(g.SectionBox,{title:e("Overview"),children:s.jsx(g.NameValueTable,{rows:r})}),s.jsx(xt,{constraints:l==null?void 0:l.matchConstraints}),(l==null?void 0:l.variables)&&s.jsx(ke,{title:e("Variables"),data:l.variables,columns:[{label:e("Name"),getter:o=>o.name},{label:e("Expression"),getter:o=>o.expression}]}),t instanceof U&&t.spec.validations&&s.jsx(ke,{title:e("Validations"),data:t.spec.validations,columns:[{label:e("Expression"),getter:o=>o.expression},{label:e("Message"),getter:o=>o.message||o.messageExpression},{label:e("Reason"),getter:o=>o.reason}]}),t instanceof U&&t.spec.auditAnnotations&&s.jsx(ke,{title:e("Audit Annotations"),data:t.spec.auditAnnotations,columns:[{label:e("Key"),getter:o=>o.key},{label:e("Value Expression"),getter:o=>o.valueExpression}]}),t instanceof ye&&t.spec.mutations&&s.jsx(ke,{title:e("Mutations"),data:t.spec.mutations,columns:[{label:e("Patch Type"),getter:o=>o.patchType||"JSONPatch"},{label:e("Expression"),getter:o=>{var i,c;return((i=o.applyConfiguration)==null?void 0:i.expression)||((c=o.rfc6902)==null?void 0:c.expression)}}]}),t instanceof ve&&t.spec.generate&&s.jsx(ke,{title:e("Generators"),data:t.spec.generate,columns:[{label:e("Expression"),getter:o=>o.expression},{label:e("Name"),getter:o=>o.name},{label:e("Namespace"),getter:o=>o.namespace}]}),t instanceof be&&t.spec.conditions&&s.jsx(g.SectionBox,{title:e("Conditions"),sx:{mt:2},children:s.jsx(Qe,{data:t.spec.conditions})})]})}function Ve(t){y.Activity.launch({id:`kyverno-cel-${t.jsonData.metadata.uid||t.jsonData.metadata.name}`,location:"split-right",icon:s.jsx(O.Icon,{icon:"mdi:shield-edit"}),title:t.jsonData.metadata.name,content:s.jsx(mt,{policy:t})})}function je({ready:t}){return s.jsx(n.Chip,{label:t?"True":"False",color:t?"success":"error",size:"small"})}function Tt(){const{t}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(P.ResourceListView,{title:t("Validating Policies"),resourceClass:U,columns:[{id:"name",label:t("Name"),getValue:e=>e.jsonData.metadata.name,render:e=>s.jsx(n.Link,{component:"button",onClick:()=>Ve(e),sx:{textAlign:"left"},children:e.jsonData.metadata.name})},{id:"ready",label:t("Ready"),getValue:e=>e.ready?"True":"False",render:e=>s.jsx(je,{ready:e.ready}),gridTemplate:"0.5fr"},{id:"actions",label:t("Actions"),getValue:e=>e.validationActions.join(", ")},{id:"validations",label:t("Validations"),getValue:e=>e.validationCount,gridTemplate:"0.5fr"},"age"]})}function Ct(){const{t}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(P.ResourceListView,{title:t("Mutating Policies"),resourceClass:ye,columns:[{id:"name",label:t("Name"),getValue:e=>e.jsonData.metadata.name,render:e=>s.jsx(n.Link,{component:"button",onClick:()=>Ve(e),sx:{textAlign:"left"},children:e.jsonData.metadata.name})},{id:"ready",label:t("Ready"),getValue:e=>e.ready?"True":"False",render:e=>s.jsx(je,{ready:e.ready}),gridTemplate:"0.5fr"},{id:"mutations",label:t("Mutations"),getValue:e=>e.mutationCount,gridTemplate:"0.5fr"},"age"]})}function Vt(){const{t}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(P.ResourceListView,{title:t("Generating Policies"),resourceClass:ve,columns:[{id:"name",label:t("Name"),getValue:e=>e.jsonData.metadata.name,render:e=>s.jsx(n.Link,{component:"button",onClick:()=>Ve(e),sx:{textAlign:"left"},children:e.jsonData.metadata.name})},{id:"ready",label:t("Ready"),getValue:e=>e.ready?"True":"False",render:e=>s.jsx(je,{ready:e.ready}),gridTemplate:"0.5fr"},{id:"generators",label:t("Generators"),getValue:e=>e.generateCount,gridTemplate:"0.5fr"},"age"]})}function jt(){const{t}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(P.ResourceListView,{title:t("Deleting Policies"),resourceClass:be,columns:[{id:"name",label:t("Name"),getValue:e=>e.jsonData.metadata.name,render:e=>s.jsx(n.Link,{component:"button",onClick:()=>Ve(e),sx:{textAlign:"left"},children:e.jsonData.metadata.name})},{id:"ready",label:t("Ready"),getValue:e=>e.ready?"True":"False",render:e=>s.jsx(je,{ready:e.ready}),gridTemplate:"0.5fr"},{id:"schedule",label:t("Schedule"),getValue:e=>e.schedule},"age"]})}class _e extends $.KubeObject{get spec(){return this.jsonData.spec}get status(){return this.jsonData.status}get schedule(){return this.spec.schedule}get lastExecutionTime(){var e;return(e=this.status)==null?void 0:e.lastExecutionTime}get ready(){var e,a;return((a=(e=this.status)==null?void 0:e.conditions)==null?void 0:a.some(r=>r.type==="Ready"&&r.status==="True"))??!1}}const se=class se extends _e{};se.kind="CleanupPolicy",se.apiName="cleanuppolicies",se.apiVersion="kyverno.io/v2",se.isNamespaced=!0;let Le=se;const ae=class ae extends _e{};ae.kind="ClusterCleanupPolicy",ae.apiName="clustercleanuppolicies",ae.apiVersion="kyverno.io/v2",ae.isNamespaced=!1;let Pe=ae;function Dt(){const{t}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(P.ResourceListView,{title:t("Cleanup Policies"),resourceClass:Le,columns:[{id:"name",label:t("Name"),getValue:e=>e.jsonData.metadata.name},"namespace",{id:"ready",label:t("Ready"),getValue:e=>e.ready?"True":"False",render:e=>s.jsx(n.Chip,{label:e.ready?"True":"False",color:e.ready?"success":"error",size:"small"}),gridTemplate:"0.5fr"},{id:"schedule",label:t("Schedule"),getValue:e=>e.schedule},{id:"lastExecution",label:t("Last Execution"),getValue:e=>e.lastExecutionTime||"-"},"age"]})}function Nt(){const{t}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(P.ResourceListView,{title:t("Cluster Cleanup Policies"),resourceClass:Pe,columns:[{id:"name",label:t("Name"),getValue:e=>e.jsonData.metadata.name},{id:"ready",label:t("Ready"),getValue:e=>e.ready?"True":"False",render:e=>s.jsx(n.Chip,{label:e.ready?"True":"False",color:e.ready?"success":"error",size:"small"}),gridTemplate:"0.5fr"},{id:"schedule",label:t("Schedule"),getValue:e=>e.schedule},{id:"lastExecution",label:t("Last Execution"),getValue:e=>e.lastExecutionTime||"-"},"age"]})}class Re extends $.KubeObject{get summary(){return this.jsonData.summary||{}}get results(){return this.jsonData.results||[]}get scope(){return this.jsonData.scope}get totalResults(){const e=this.summary;return(e.pass||0)+(e.fail||0)+(e.warn||0)+(e.error||0)+(e.skip||0)}get failCount(){return(this.summary.fail||0)+(this.summary.error||0)}}const re=class re extends Re{};re.kind="PolicyReport",re.apiName="policyreports",re.apiVersion="wgpolicyk8s.io/v1alpha2",re.isNamespaced=!0;let q=re;const ne=class ne extends Re{};ne.kind="ClusterPolicyReport",ne.apiName="clusterpolicyreports",ne.apiVersion="wgpolicyk8s.io/v1alpha2",ne.isNamespaced=!1;let z=ne;function St(t){const e=new Map,a=new Map;function r(l,o,i){const c=l.get(o)||{fail:0,total:0};c.total+=1,i&&(c.fail+=1),l.set(o,c)}for(const l of t)for(const o of l.results){const i=o.result==="fail"||o.result==="error";o.policy.indexOf("/")>0?r(a,o.policy,i):r(e,o.policy,i)}return{cluster:e,namespaced:a}}function et(){const{items:t}=q.useList(),{items:e}=z.useList();return C.useMemo(()=>{const{cluster:a,namespaced:r}=St([...t||[],...e||[]]);return{forCluster:l=>a.get(l),forNamespaced:(l,o)=>r.get(`${o}/${l}`),loading:t===null||e===null}},[t,e])}function wt(t){const e=[];for(const a of t)a.validate&&!e.includes("Validate")&&e.push("Validate"),a.mutate&&!e.includes("Mutate")&&e.push("Mutate"),a.generate&&!e.includes("Generate")&&e.push("Generate"),a.verifyImages&&!e.includes("VerifyImages")&&e.push("VerifyImages");return e}class tt extends $.KubeObject{get spec(){return this.jsonData.spec}get status(){return this.jsonData.status}get ready(){var r;const a=(((r=this.status)==null?void 0:r.conditions)||[]).find(l=>l.type==="Ready");return(a==null?void 0:a.status)==="True"}get rules(){return this.spec.rules||[]}get ruleTypes(){return wt(this.rules)}get validationFailureAction(){return this.spec.validationFailureAction||"Audit"}get background(){return this.spec.background??!0}}const oe=class oe extends tt{};oe.kind="Policy",oe.apiName="policies",oe.apiVersion="kyverno.io/v1",oe.isNamespaced=!0;let xe=oe;const le=class le extends tt{};le.kind="ClusterPolicy",le.apiName="clusterpolicies",le.apiVersion="kyverno.io/v1",le.isNamespaced=!1;let me=le;function Bt(t){return t&&t.__esModule&&Object.prototype.hasOwnProperty.call(t,"default")?t.default:t}var Ke,st;function At(){return st||(st=1,Ke={area:!0,base:!0,br:!0,col:!0,embed:!0,hr:!0,img:!0,input:!0,link:!0,meta:!0,param:!0,source:!0,track:!0,wbr:!0}),Ke}var Ft=At();const Et=Bt(Ft);var Lt=/\s([^'"/\s><]+?)[\s/>]|([^\s=]+)=\s?(".*?"|'.*?')/g;function at(t){var e={type:"tag",name:"",voidElement:!1,attrs:{},children:[]},a=t.match(/<\/?([^\s]+?)[/\s>]/);if(a&&(e.name=a[1],(Et[a[1]]||t.charAt(t.length-2)==="/")&&(e.voidElement=!0),e.name.startsWith("!--"))){var r=t.indexOf("-->");return{type:"comment",comment:r!==-1?t.slice(4,r):""}}for(var l=new RegExp(Lt),o=null;(o=l.exec(t))!==null;)if(o[0].trim())if(o[1]){var i=o[1].trim(),c=[i,""];i.indexOf("=")>-1&&(c=i.split("=")),e.attrs[c[0]]=c[1],l.lastIndex--}else o[2]&&(e.attrs[o[2]]=o[3].trim().substring(1,o[3].length-1));return e}var Pt=/<[a-zA-Z0-9\-\!\/](?:"[^"]*"|'[^']*'|[^'">])*>/g,Kt=/^\s*$/,It=Object.create(null);function rt(t,e){switch(e.type){case"text":return t+e.content;case"tag":return t+="<"+e.name+(e.attrs?(function(a){var r=[];for(var l in a)r.push(l+'="'+a[l]+'"');return r.length?" "+r.join(" "):""})(e.attrs):"")+(e.voidElement?"/>":">"),e.voidElement?t:t+e.children.reduce(rt,"")+"</"+e.name+">";case"comment":return t+"<!--"+e.comment+"-->"}}var Mt={parse:function(t,e){e||(e={}),e.components||(e.components=It);var a,r=[],l=[],o=-1,i=!1;if(t.indexOf("<")!==0){var c=t.indexOf("<");r.push({type:"text",content:c===-1?t:t.substring(0,c)})}return t.replace(Pt,function(u,h){if(i){if(u!=="</"+a.name+">")return;i=!1}var x,k=u.charAt(1)!=="/",f=u.startsWith("<!--"),v=h+u.length,T=t.charAt(v);if(f){var j=at(u);return o<0?(r.push(j),r):((x=l[o]).children.push(j),r)}if(k&&(o++,(a=at(u)).type==="tag"&&e.components[a.name]&&(a.type="component",i=!0),a.voidElement||i||!T||T==="<"||a.children.push({type:"text",content:t.slice(v,t.indexOf("<",v))}),o===0&&r.push(a),(x=l[o-1])&&x.children.push(a),l[o]=a),(!k||a.voidElement)&&(o>-1&&(a.voidElement||a.name===u.slice(2,-1))&&(o--,a=o===-1?r:l[o]),!i&&T!=="<"&&T)){x=o===-1?r:l[o].children;var d=t.indexOf("<",v),p=t.slice(v,d===-1?void 0:d);Kt.test(p)&&(p=" "),(d>-1&&o+x.length>=0||p!==" ")&&x.push({type:"text",content:p})}}),r},stringify:function(t){return t.reduce(function(e,a){return e+rt("",a)},"")}};const De=(t,e,a,r)=>{var o,i,c,u;const l=[a,{code:e,...r||{}}];if((i=(o=t==null?void 0:t.services)==null?void 0:o.logger)!=null&&i.forward)return t.services.logger.forward(l,"warn","react-i18next::",!0);G(l[0])&&(l[0]=`react-i18next:: ${l[0]}`),(u=(c=t==null?void 0:t.services)==null?void 0:c.logger)!=null&&u.warn?t.services.logger.warn(...l):console!=null&&console.warn&&console.warn(...l)},nt={},ot=(t,e,a,r)=>{G(a)&&nt[a]||(G(a)&&(nt[a]=new Date),De(t,e,a,r))},G=t=>typeof t=="string",Z=t=>typeof t=="object"&&t!==null,Ot=/&(?:amp|#38|lt|#60|gt|#62|apos|#39|quot|#34|nbsp|#160|copy|#169|reg|#174|hellip|#8230|#x2F|#47);/g,$t={"&amp;":"&","&#38;":"&","&lt;":"<","&#60;":"<","&gt;":">","&#62;":">","&apos;":"'","&#39;":"'","&quot;":'"',"&#34;":'"',"&nbsp;":" ","&#160;":" ","&copy;":"©","&#169;":"©","&reg;":"®","&#174;":"®","&hellip;":"…","&#8230;":"…","&#x2F;":"/","&#47;":"/"},qt=t=>$t[t];let zt={bindI18n:"languageChanged",bindI18nStore:"",transEmptyNodeValue:"",transSupportBasicHtmlNodes:!0,transWrapTextNodes:"",transKeepBasicHtmlNodesFor:["br","strong","i","p"],useSuspense:!0,unescape:t=>t.replace(Ot,qt)};const Gt=()=>zt;let Wt;const lt=()=>Wt,Ie=(t,e)=>{var r;if(!t)return!1;const a=((r=t.props)==null?void 0:r.children)??t.children;return e?a.length>0:!!a},Me=t=>{var a,r;if(!t)return[];const e=((a=t.props)==null?void 0:a.children)??t.children;return(r=t.props)!=null&&r.i18nIsDynamicList?J(e):e},Ht=t=>Array.isArray(t)&&t.every(C.isValidElement),J=t=>Array.isArray(t)?t:[t],Zt=(t,e)=>{const a={...e};return a.props=Object.assign(t.props,e.props),a},it=(t,e,a,r)=>{if(!t)return"";let l="";const o=J(t),i=e!=null&&e.transSupportBasicHtmlNodes?e.transKeepBasicHtmlNodesFor??[]:[];return o.forEach((c,u)=>{if(G(c)){l+=`${c}`;return}if(C.isValidElement(c)){const{props:h,type:x}=c,k=Object.keys(h).length,f=i.indexOf(x)>-1,v=h.children;if(!v&&f&&!k){l+=`<${x}/>`;return}if(!v&&(!f||k)||h.i18nIsDynamicList){l+=`<${u}></${u}>`;return}if(f&&k===1&&G(v)){l+=`<${x}>${v}</${x}>`;return}const T=it(v,e,a,r);l+=`<${u}>${T}</${u}>`;return}if(c===null){De(a,"TRANS_NULL_VALUE","Passed in a null value as child",{i18nKey:r});return}if(Z(c)){const{format:h,...x}=c,k=Object.keys(x);if(k.length===1){const f=h?`${k[0]}, ${h}`:k[0];l+=`{{${f}}}`;return}De(a,"TRANS_INVALID_OBJ","Invalid child - Object should only have keys {{ value, format }} (format is optional).",{i18nKey:r,child:c});return}De(a,"TRANS_INVALID_VAR","Passed in a variable like {number} - pass variables for interpolation as full objects like {{number}}.",{i18nKey:r,child:c})}),l},Ut=(t,e,a,r,l,o,i)=>{if(a==="")return[];const c=l.transKeepBasicHtmlNodesFor||[],u=a&&new RegExp(c.map(p=>`<${p}`).join("|")).test(a);if(!t&&!e&&!u&&!i)return[a];const h=e??{},x=p=>{J(p).forEach(b=>{G(b)||(Ie(b)?x(Me(b)):Z(b)&&!C.isValidElement(b)&&Object.assign(h,b))})};x(t);const k=Mt.parse(`<0>${a}</0>`),f={...h,...o},v=(p,V,b)=>{var D;const B=Me(p),I=j(B,V.children,b);return Ht(B)&&I.length===0||(D=p.props)!=null&&D.i18nIsDynamicList?B:I},T=(p,V,b,B,I)=>{p.dummy?(p.children=V,b.push(C.cloneElement(p,{key:B},I?void 0:V))):b.push(...C.Children.map([p],D=>{const m={...D.props};return delete m.i18nIsDynamicList,C.createElement(D.type,{...m,key:B,ref:D.props.ref??D.ref},I?null:V)}))},j=(p,V,b)=>{const B=J(p);return J(V).reduce((D,m,K)=>{var A,H;const M=((H=(A=m.children)==null?void 0:A[0])==null?void 0:H.content)&&r.services.interpolator.interpolate(m.children[0].content,f,r.language);if(m.type==="tag"){let F=B[parseInt(m.name,10)];!F&&e&&(F=e[m.name]),b.length===1&&!F&&(F=b[0][m.name]),F||(F={});const N=Object.keys(m.attrs).length!==0?Zt({props:m.attrs},F):F,fe=C.isValidElement(N),Ae=fe&&Ie(m,!0)&&!m.voidElement,Fe=u&&Z(N)&&N.dummy&&!fe,Ee=Z(e)&&Object.hasOwnProperty.call(e,m.name);if(G(N)){const E=r.services.interpolator.interpolate(N,f,r.language);D.push(E)}else if(Ie(N)||Ae){const E=v(N,m,b);T(N,E,D,K)}else if(Fe){const E=j(B,m.children,b);T(N,E,D,K)}else if(Number.isNaN(parseFloat(m.name)))if(Ee){const E=v(N,m,b);T(N,E,D,K,m.voidElement)}else if(l.transSupportBasicHtmlNodes&&c.indexOf(m.name)>-1)if(m.voidElement)D.push(C.createElement(m.name,{key:`${m.name}-${K}`}));else{const E=j(B,m.children,b);D.push(C.createElement(m.name,{key:`${m.name}-${K}`},E))}else if(m.voidElement)D.push(`<${m.name} />`);else{const E=j(B,m.children,b);D.push(`<${m.name}>${E}</${m.name}>`)}else if(Z(N)&&!fe){const E=m.children[0]?M:null;E&&D.push(E)}else T(N,M,D,K,m.children.length!==1||!M)}else if(m.type==="text"){const F=l.transWrapTextNodes,N=i?l.unescape(r.services.interpolator.interpolate(m.content,f,r.language)):r.services.interpolator.interpolate(m.content,f,r.language);F?D.push(C.createElement(F,{key:`${m.name}-${K}`},N)):D.push(N)}return D},[])},d=j([{dummy:!0,children:t||[]}],k,J(t||[]));return Me(d[0])},ct=(t,e,a)=>{const r=t.key||e,l=C.cloneElement(t,{key:r});if(!l.props||!l.props.children||a.indexOf(`${e}/>`)<0&&a.indexOf(`${e} />`)<0)return l;function o(){return C.createElement(C.Fragment,null,l)}return C.createElement(o,{key:r})},Jt=(t,e)=>t.map((a,r)=>ct(a,r,e)),Yt=(t,e)=>{const a={};return Object.keys(t).forEach(r=>{Object.assign(a,{[r]:ct(t[r],r,e)})}),a},Xt=(t,e,a,r)=>t?Array.isArray(t)?Jt(t,e):Z(t)?Yt(t,e):(ot(a,"TRANS_INVALID_COMPONENTS",'<Trans /> "components" prop expects an object or array',{i18nKey:r}),null):null,Qt=t=>!Z(t)||Array.isArray(t)?!1:Object.keys(t).reduce((e,a)=>e&&Number.isNaN(Number.parseFloat(a)),!0);function _t({children:t,count:e,parent:a,i18nKey:r,context:l,tOptions:o={},values:i,defaults:c,components:u,ns:h,i18n:x,t:k,shouldUnescape:f,...v}){var fe,Ae,Fe,Ee,E,vt;const T=x||lt();if(!T)return ot(T,"NO_I18NEXT_INSTANCE","Trans: You need to pass in an i18next instance using i18nextReactModule",{i18nKey:r}),t;const j=k||T.t.bind(T)||(Zs=>Zs),d={...Gt(),...(fe=T.options)==null?void 0:fe.react};let p=h||j.ns||((Ae=T.options)==null?void 0:Ae.defaultNS);p=G(p)?[p]:p||["translation"];const V=it(t,d,T,r),b=c||V||d.transEmptyNodeValue||r,{hashTransKey:B}=d,I=r||(B?B(V||b):V||b);(Ee=(Fe=T.options)==null?void 0:Fe.interpolation)!=null&&Ee.defaultVariables&&(i=i&&Object.keys(i).length>0?{...i,...T.options.interpolation.defaultVariables}:{...T.options.interpolation.defaultVariables});const D=i||e!==void 0&&!((vt=(E=T.options)==null?void 0:E.interpolation)!=null&&vt.alwaysFormat)||!t?o.interpolation:{interpolation:{...o.interpolation,prefix:"#$?",suffix:"?$#"}},m={...o,context:l||o.context,count:e,...i,...D,defaultValue:b,ns:p},K=I?j(I,m):b,M=Xt(u,K,T,r);let A=M||t,H=null;Qt(M)&&(H=M,A=t);const F=Ut(A,H,K,T,d,m,f),N=a??d.defaultTransParent;return N?C.createElement(N,v,F):F}const Rt=C.createContext();function es({children:t,count:e,parent:a,i18nKey:r,context:l,tOptions:o={},values:i,defaults:c,components:u,ns:h,i18n:x,t:k,shouldUnescape:f,...v}){var V;const{i18n:T,defaultNS:j}=C.useContext(Rt)||{},d=x||T||lt(),p=k||(d==null?void 0:d.t.bind(d));return _t({children:t,count:e,parent:a,i18nKey:r,context:l,tOptions:o,values:i,defaults:c,components:u,ns:h||(p==null?void 0:p.ns)||j||((V=d==null?void 0:d.options)==null?void 0:V.defaultNS),i18n:d,t:k,shouldUnescape:f,...v})}const dt={pass:"success",fail:"error",error:"error",warn:"warning",skip:"default"},ts={critical:"error",high:"error",medium:"warning",low:"info",info:"default"};function Oe({status:t}){return s.jsx(n.Chip,{label:t,color:dt[t]||"default",size:"small"})}function $e({severity:t}){return t?s.jsx(n.Chip,{label:t,color:ts[t]||"default",size:"small",variant:"outlined"}):null}function Ne({summary:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno"),a=[{label:e("Pass"),count:t.pass||0,status:"pass"},{label:e("Fail"),count:t.fail||0,status:"fail"},{label:e("Warn"),count:t.warn||0,status:"warn"},{label:e("Error"),count:t.error||0,status:"error"},{label:e("Skip"),count:t.skip||0,status:"skip"}];return s.jsx("span",{style:{display:"inline-flex",gap:"4px"},children:a.filter(r=>r.count>0).map(r=>s.jsx(n.Tooltip,{title:r.label,children:s.jsx(n.Chip,{label:`${r.label}: ${r.count}`,color:dt[r.status],size:"small",variant:"outlined"})},r.label))})}function pt({loading:t,message:e}){return t?s.jsx(n.Box,{display:"flex",justifyContent:"center",alignItems:"center",p:2,minHeight:"200px",children:s.jsx(n.CircularProgress,{})}):s.jsx(n.Box,{display:"flex",justifyContent:"center",alignItems:"center",p:2,minHeight:"200px",children:s.jsxs(n.Box,{textAlign:"center",children:[s.jsx(n.Typography,{variant:"h5",gutterBottom:!0,children:e}),s.jsx(n.Typography,{children:s.jsxs(es,{i18nKey:"kyverno.learnAboutInstalling",children:["Learn more about"," ",s.jsx(n.Link,{href:"https://kyverno.io/docs/installation/",target:"_blank",rel:"noopener noreferrer",children:"installing Kyverno"})]})})]})})}const ss=[{key:"policies.kyverno.io/title",label:"Title"},{key:"policies.kyverno.io/description",label:"Description"},{key:"policies.kyverno.io/category",label:"Category"},{key:"policies.kyverno.io/severity",label:"Severity"},{key:"policies.kyverno.io/subject",label:"Subjects"},{key:"policies.kyverno.io/minversion",label:"Min Kyverno Version"},{key:"kyverno.io/kubernetes-version",label:"Kubernetes Version"}];function ut(t){return t.validate?"Validate":t.mutate?"Mutate":t.generate?"Generate":t.verifyImages?"VerifyImages":"Unknown"}function as(t){var r,l,o;const e=((r=t.match)==null?void 0:r.any)||((l=t.match)==null?void 0:l.all)||[],a=[];for(const i of e)(o=i.resources)!=null&&o.kinds&&a.push(...i.resources.kinds);return a.length>0?a.join(", "):"-"}function rs({labels:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");return!t||Object.keys(t).length===0?null:s.jsx(g.SectionBox,{title:e("Labels"),children:s.jsx(n.Box,{sx:{display:"flex",flexWrap:"wrap",gap:.5},children:Object.entries(t).map(([a,r])=>s.jsx(n.Chip,{label:`${a}: ${r}`,size:"small",variant:"outlined"},a))})})}function ns({annotations:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");if(!t)return null;const a=ss.filter(({key:r})=>t[r]).map(({key:r,label:l})=>({name:e(l),value:t[r]}));return a.length===0?null:s.jsx(g.SectionBox,{title:e("Policy Metadata"),children:s.jsx(g.NameValueTable,{rows:a})})}function os({jsonData:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(g.SectionBox,{title:e("YAML"),children:s.jsx(g.EditorDialog,{noDialog:!0,open:!0,item:t,onSave:null,onClose:()=>{},allowToHideManagedFields:!0})})}function ls({conditions:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");return!t||t.length===0?null:s.jsx(g.SectionBox,{title:e("Conditions"),children:s.jsx(g.Table,{columns:[{header:e("Type"),accessorFn:a=>a.type},{header:e("Status"),accessorFn:a=>a.status,Cell:({row:a})=>s.jsx(n.Chip,{label:a.original.status,color:a.original.status==="True"?"success":a.original.status==="False"?"error":"default",size:"small"})},{header:e("Reason"),accessorFn:a=>a.reason||"-"},{header:e("Message"),accessorFn:a=>a.message||"-"},{header:e("Last Transition"),accessorFn:a=>a.lastTransitionTime||"-"}],data:t})})}function is({rules:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(g.Table,{columns:[{header:e("Name"),accessorFn:a=>a.name},{header:e("Type"),accessorFn:a=>ut(a),Cell:({row:a})=>s.jsx(n.Chip,{label:ut(a.original),size:"small",variant:"outlined"})},{header:e("Match Kinds"),accessorFn:a=>as(a)},{header:e("Message"),accessorFn:a=>{var r;return((r=a.validate)==null?void 0:r.message)||"-"}}],data:t,emptyMessage:e("No rules defined.")})}function cs({policyName:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno"),{items:a}=q.useList(),{items:r}=z.useList();if(a===null||r===null)return s.jsx(g.SectionBox,{title:e("Associated Report Results"),children:s.jsx(n.Box,{sx:{display:"flex",justifyContent:"center",py:2},children:s.jsx(n.CircularProgress,{size:24})})});const l=[];for(const o of a)for(const i of o.results)i.policy===t&&l.push({...i,reportName:o.jsonData.metadata.name,reportNamespace:o.jsonData.metadata.namespace});for(const o of r)for(const i of o.results)i.policy===t&&l.push({...i,reportName:o.jsonData.metadata.name});return s.jsx(g.SectionBox,{title:e("Associated Report Results ({{count}})",{count:l.length}),children:s.jsx(g.Table,{columns:[{header:e("Rule"),accessorFn:o=>o.rule||"-"},{header:e("Result"),accessorFn:o=>o.result,Cell:({row:o})=>s.jsx(Oe,{status:o.original.result})},{header:e("Severity"),accessorFn:o=>o.severity||"",Cell:({row:o})=>s.jsx($e,{severity:o.original.severity})},{header:e("Resource"),accessorFn:o=>{var i;return((i=o.resources)==null?void 0:i.map(c=>`${c.namespace?c.namespace+"/":""}${c.kind}/${c.name}`).join(", "))||"-"}},{header:e("Message"),accessorFn:o=>o.message||"-"}],data:l,emptyMessage:e("No report results found for this policy.")})})}function ds({policy:t}){var l;const{t:e}=y.useTranslation("@headlamp-k8s/kyverno"),a=t.jsonData.metadata.annotations,r=t.jsonData.metadata.labels;return s.jsxs(n.Box,{sx:{p:2},children:[s.jsxs(n.Box,{sx:{display:"flex",gap:1,mb:2,justifyContent:"flex-end"},children:[s.jsx(g.AuthVisible,{item:t,authVerb:"update",children:s.jsx(g.EditButton,{item:t})}),s.jsx(g.AuthVisible,{item:t,authVerb:"delete",children:s.jsx(g.DeleteButton,{item:t})})]}),s.jsx(g.SectionBox,{title:e("Details"),children:s.jsx(g.NameValueTable,{rows:[{name:e("Name"),value:t.jsonData.metadata.name},...t.jsonData.metadata.namespace?[{name:e("Namespace"),value:t.jsonData.metadata.namespace}]:[],{name:e("Ready"),value:s.jsx(n.Chip,{label:t.ready?"True":"False",color:t.ready?"success":"error",size:"small"})},{name:e("Failure Action"),value:t.validationFailureAction},{name:e("Background"),value:String(t.background)},{name:e("Rule Types"),value:t.ruleTypes.join(", ")||"-"},{name:e("Created"),value:t.jsonData.metadata.creationTimestamp}]})}),s.jsx(ns,{annotations:a}),s.jsx(rs,{labels:r}),s.jsx(ls,{conditions:(l=t.jsonData.status)==null?void 0:l.conditions}),s.jsx(g.SectionBox,{title:e("Rules ({{count}})",{count:t.rules.length}),children:s.jsx(is,{rules:t.rules})}),s.jsx(cs,{policyName:t.jsonData.metadata.name}),s.jsx(os,{jsonData:t.jsonData})]})}function ht({name:t,namespace:e,isClusterScoped:a}){const{t:r}=y.useTranslation("@headlamp-k8s/kyverno"),l=a?me:xe,[o,i]=l.useGet(t,e);return i?s.jsx(n.Box,{sx:{p:2},children:s.jsx(n.Typography,{color:"error",children:r("Failed to load policy: {{error}}",{error:String(i)})})}):o?s.jsx(ds,{policy:o}):s.jsx(n.Box,{sx:{p:4,display:"flex",justifyContent:"center"},children:s.jsx(n.CircularProgress,{})})}function ps(t){y.Activity.launch({id:`kyverno-cpol-${t.jsonData.metadata.name}`,location:"split-right",icon:s.jsx(O.Icon,{icon:"mdi:shield-edit"}),title:t.jsonData.metadata.name,content:s.jsx(ht,{name:t.jsonData.metadata.name,isClusterScoped:!0})})}function us(){const{t}=y.useTranslation("@headlamp-k8s/kyverno"),e=et();return s.jsx(P.ResourceListView,{title:t("Cluster Policies"),resourceClass:me,columns:[{id:"name",label:t("Name"),getValue:a=>a.jsonData.metadata.name,render:a=>s.jsx(n.Link,{component:"button",onClick:()=>ps(a),sx:{textAlign:"left"},children:a.jsonData.metadata.name})},{id:"ready",label:t("Ready"),getValue:a=>a.ready?"True":"False",render:a=>s.jsx(n.Chip,{label:a.ready?"True":"False",color:a.ready?"success":"error",size:"small"}),gridTemplate:"0.5fr"},{id:"action",label:t("Action"),getValue:a=>a.validationFailureAction,gridTemplate:"0.7fr"},{id:"background",label:t("Background"),getValue:a=>a.background?"True":"False",gridTemplate:"0.7fr"},{id:"ruleTypes",label:t("Rule Types"),getValue:a=>a.ruleTypes.join(", "),render:a=>s.jsx(n.Box,{sx:{display:"inline-flex",gap:.5},children:a.ruleTypes.map(r=>s.jsx(n.Chip,{label:r,size:"small",variant:"outlined"},r))})},{id:"rules",label:t("Rules"),getValue:a=>a.rules.length,gridTemplate:"0.4fr"},{id:"results",label:t("Results"),getValue:a=>{var r;return((r=e.forCluster(a.jsonData.metadata.name))==null?void 0:r.total)??0},render:a=>{const r=e.forCluster(a.jsonData.metadata.name);return e.loading&&!r?s.jsx(n.Typography,{variant:"body2",children:"…"}):!r||r.total===0?s.jsx(n.Typography,{variant:"body2",children:"—"}):s.jsx(n.Typography,{variant:"body2",color:r.fail>0?"error":"text.primary",children:t("{{fail}} / {{total}} failed",{fail:r.fail,total:r.total})})},gridTemplate:"0.8fr"},"age"]})}function hs({results:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(g.Table,{columns:[{header:e("Policy"),accessorFn:a=>a.policy},{header:e("Rule"),accessorFn:a=>a.rule||"-"},{header:e("Result"),accessorFn:a=>a.result,Cell:({row:a})=>s.jsx(Oe,{status:a.original.result})},{header:e("Severity"),accessorFn:a=>a.severity||"",Cell:({row:a})=>s.jsx($e,{severity:a.original.severity})},{header:e("Category"),accessorFn:a=>a.category||"-"},{header:e("Message"),accessorFn:a=>a.message||"-"},{header:e("Resource"),accessorFn:a=>{var r;return((r=a.resources)==null?void 0:r.map(l=>`${l.kind}/${l.name}`).join(", "))||"-"}}],data:t,emptyMessage:e("No results found.")})}function gs({summary:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsxs(g.SectionBox,{title:e("Summary"),children:[s.jsx(n.Box,{sx:{mb:2},children:s.jsx(Ne,{summary:t})}),s.jsx(g.NameValueTable,{rows:[{name:e("Pass"),value:String(t.pass||0)},{name:e("Fail"),value:String(t.fail||0)},{name:e("Warn"),value:String(t.warn||0)},{name:e("Error"),value:String(t.error||0)},{name:e("Skip"),value:String(t.skip||0)}]})]})}function fs({results:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(g.SectionBox,{title:e("Results ({{count}})",{count:t.length}),children:s.jsx(hs,{results:t})})}function ys({report:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsxs(n.Box,{sx:{p:2},children:[s.jsx(g.SectionBox,{title:e("Details"),children:s.jsx(g.NameValueTable,{rows:[{name:e("Name"),value:t.jsonData.metadata.name},...t.jsonData.metadata.namespace?[{name:e("Namespace"),value:t.jsonData.metadata.namespace}]:[],...t.scope?[{name:e("Scope"),value:`${t.scope.kind}/${t.scope.name}`}]:[],{name:e("Created"),value:t.jsonData.metadata.creationTimestamp}]})}),s.jsx(gs,{summary:t.summary}),s.jsx(fs,{results:t.results})]})}function qe({name:t,namespace:e,isClusterScoped:a,resourceClass:r}){const{t:l}=y.useTranslation("@headlamp-k8s/kyverno"),i=r??(a?z:q),[c,u]=i.useGet(t,e);return u?s.jsx(n.Box,{sx:{p:2},children:s.jsx(n.Typography,{color:"error",children:l("Failed to load report: {{error}}",{error:String(u)})})}):c?s.jsx(ys,{report:c}):s.jsx(n.Box,{sx:{p:4,display:"flex",justifyContent:"center"},children:s.jsx(n.CircularProgress,{})})}function vs(t){y.Activity.launch({id:`kyverno-cpolr-${t.jsonData.metadata.name}`,location:"split-right",icon:s.jsx(O.Icon,{icon:"mdi:shield-check"}),title:t.jsonData.metadata.name,content:s.jsx(qe,{name:t.jsonData.metadata.name,isClusterScoped:!0})})}function bs(){const{t}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(P.ResourceListView,{title:t("Cluster Policy Reports"),resourceClass:z,columns:[{id:"name",label:"Name",getValue:e=>e.jsonData.metadata.name,render:e=>s.jsx(n.Link,{component:"button",onClick:()=>vs(e),sx:{textAlign:"left"},children:e.jsonData.metadata.name})},{id:"scope",label:t("Scope"),getValue:e=>{const a=e.scope;return a?`${a.kind}/${a.name}`:""}},{id:"pass",label:t("Pass"),getValue:e=>e.summary.pass||0,gridTemplate:"0.5fr"},{id:"fail",label:t("Fail"),getValue:e=>e.summary.fail||0,gridTemplate:"0.5fr"},{id:"warn",label:t("Warn"),getValue:e=>e.summary.warn||0,gridTemplate:"0.5fr"},{id:"error",label:t("Error"),getValue:e=>e.summary.error||0,gridTemplate:"0.5fr"},{id:"skip",label:t("Skip"),getValue:e=>e.summary.skip||0,gridTemplate:"0.5fr"},{id:"summary",label:t("Summary"),render:e=>s.jsx(Ne,{summary:e.summary}),getValue:e=>e.totalResults},"age"]})}const gt={legacy:!1,cel:!1,cleanup:!1,reports:!1,exceptions:!1,kyvernoV2Reports:!1,ephemeralReports:!1,loading:!0};async function Te(t){try{return await y.ApiProxy.request(t,{method:"GET"}),!0}catch{return!1}}const ze=new Map,Ge=new Map,Se=new Map;function ks(t,e){var a;(a=Se.get(t))==null||a.forEach(r=>r(e))}async function xs(t){const e=Ge.get(t);if(e)return e;const a=(async()=>{const[r,l,o,i]=await Promise.all([Te("/apis/kyverno.io/v1"),Te("/apis/policies.kyverno.io/v1"),Te("/apis/wgpolicyk8s.io/v1alpha2"),Te("/apis/reports.kyverno.io/v1")]);let c=!1,u=!1,h=!1;r&&await Te("/apis/kyverno.io/v2")&&(c=!0,u=!0,h=!0);const x={legacy:r,cel:l,cleanup:c,reports:o,exceptions:u,kyvernoV2Reports:h,ephemeralReports:i,loading:!1};return ze.set(t,x),Ge.delete(t),ks(t,x),x})();return Ge.set(t,a),a}function ft(){const e=y.K8s.useCluster()??"",a=ze.get(e),[r,l]=C.useState(a??gt);return C.useEffect(()=>{let o=!1;const i=ze.get(e);l(i||gt);const c=h=>{o||l(h)},u=Se.get(e)??new Set;return u.add(c),Se.set(e,u),i||xs(e),()=>{o=!0,u.delete(c),u.size===0&&Se.delete(e)}},[e]),r}function ms(){const t=y.K8s.useCluster(),e=ft(),a=e.legacy||e.cel;return!t||e.loading||!a||!e.reports?null:s.jsx(Ts,{})}function Ts(){const{t}=y.useTranslation("@headlamp-k8s/kyverno"),{items:e}=q.useList(),{items:a}=z.useList(),[r,l]=C.useState(null),o=bt.useHistory(),i=y.K8s.useCluster(),c=p=>{l(p.currentTarget)},u=()=>{l(null)},h=!!r,x=e===null||a===null,k=C.useMemo(()=>{const p={pass:0,fail:0,warn:0,error:0,skip:0};for(const V of e||[]){const b=V.summary;p.pass+=b.pass||0,p.fail+=b.fail||0,p.warn+=b.warn||0,p.error+=b.error||0,p.skip+=b.skip||0}for(const V of a||[]){const b=V.summary;p.pass+=b.pass||0,p.fail+=b.fail||0,p.warn+=b.warn||0,p.error+=b.error||0,p.skip+=b.skip||0}return p},[e,a]);if(x)return null;const f=k.fail+k.error+k.warn,v=k.pass+k.fail+k.warn+k.error+k.skip,T=v>0,j=T?Math.round(k.pass/v*100):0,d=f>0?"error":"success";return s.jsxs(s.Fragment,{children:[s.jsx(n.Tooltip,{title:t("Kyverno Compliance"),children:s.jsx(n.IconButton,{onClick:c,size:"small",sx:{color:"inherit"},children:s.jsx(n.Badge,{badgeContent:f||void 0,color:d,max:999,children:s.jsx(O.Icon,{icon:"kyverno:logo",width:"24"})})})}),s.jsxs(n.Menu,{anchorEl:r,open:h,onClose:u,transformOrigin:{horizontal:"right",vertical:"top"},anchorOrigin:{horizontal:"right",vertical:"bottom"},slotProps:{paper:{sx:{p:2,minWidth:220,mt:1}}},children:[s.jsx(n.Typography,{variant:"subtitle2",sx:{mb:1.5},children:t("Kyverno Compliance")}),T?s.jsxs(n.Box,{sx:{display:"flex",flexDirection:"column",gap:.5},children:[s.jsx(n.Typography,{variant:"body2",color:j>=90?"success.main":j>=70?"warning.main":"error.main",children:t("{{pct}}% compliant",{pct:j})}),s.jsx(n.Typography,{variant:"body2",children:t("Pass: {{count}}",{count:k.pass})}),s.jsx(n.Typography,{variant:"body2",color:k.fail>0?"error.main":"text.secondary",children:t("Fail: {{count}}",{count:k.fail})}),s.jsx(n.Typography,{variant:"body2",color:k.warn>0?"warning.main":"text.secondary",children:t("Warn: {{count}}",{count:k.warn})}),s.jsx(n.Typography,{variant:"body2",color:k.error>0?"error.main":"text.secondary",children:t("Error: {{count}}",{count:k.error})}),s.jsx(n.Typography,{variant:"body2",children:t("Skip: {{count}}",{count:k.skip})})]}):s.jsx(n.Typography,{variant:"body2",color:"text.secondary",children:t("No policy reports yet.")}),s.jsx(n.Box,{sx:{mt:1.5},children:s.jsx(n.Link,{component:"button",onClick:()=>{u();const p=i?`/c/${i}/kyverno/violations`:"/kyverno/violations";o.push(p)},underline:"hover",variant:"body2",children:t("View all violations")})})]})]})}function Cs({requires:t,children:e,message:a}){const{t:r}=y.useTranslation("@headlamp-k8s/kyverno"),l=ft(),o={legacy:r("Kyverno (kyverno.io/v1) was not detected on this cluster."),cel:r("Kyverno CEL policies (policies.kyverno.io/v1) were not detected on this cluster. Kyverno 1.14+ is required."),cleanup:r("Kyverno cleanup policies (kyverno.io/v2) were not detected on this cluster."),reports:r("Policy Reports (wgpolicyk8s.io/v1alpha2) were not detected on this cluster."),exceptions:r("Policy Exceptions (kyverno.io/v2) were not detected on this cluster."),kyvernoV2Reports:r("Kyverno admission/background-scan reports (kyverno.io/v2) were not detected on this cluster."),ephemeralReports:r("Kyverno ephemeral reports (reports.kyverno.io/v1) were not detected on this cluster. Kyverno 1.11+ is required.")};return l.loading?s.jsx(pt,{loading:!0}):l[t]?s.jsx(s.Fragment,{children:e}):s.jsx(pt,{message:a||o[t]})}const We={pass:"#4caf50",fail:"#f44336",warn:"#ff9800",error:"#d32f2f",skip:"#9e9e9e"},Vs={critical:"#b71c1c",high:"#d32f2f",medium:"#ff9800",low:"#2196f3",info:"#9e9e9e"};function W({title:t,value:e,color:a}){return s.jsx(n.Card,{variant:"outlined",children:s.jsxs(n.CardContent,{sx:{textAlign:"center",py:1.5,"&:last-child":{pb:1.5}},children:[s.jsx(n.Typography,{variant:"body2",color:"text.secondary",children:t}),s.jsx(n.Typography,{variant:"h4",sx:{color:a||"text.primary",fontWeight:"bold"},children:e})]})})}function js(){const{t}=y.useTranslation("@headlamp-k8s/kyverno"),[e]=me.useList(),[a]=xe.useList(),{items:r}=q.useList(),{items:l}=z.useList(),o=C.useMemo(()=>{var m,K;const f={pass:0,fail:0,warn:0,error:0,skip:0},v=new Map,T=new Map,j=new Map,d=[...r||[],...l||[]];for(const M of d)for(const A of M.results){if(f[A.result]=(f[A.result]||0)+1,A.result==="fail"||A.result==="error"){const N=A.category||"Uncategorized";v.set(N,(v.get(N)||0)+1)}A.severity&&T.set(A.severity,(T.get(A.severity)||0)+1);const H=((K=(m=A.resources)==null?void 0:m[0])==null?void 0:K.namespace)||M.jsonData.metadata.namespace||"cluster",F=j.get(H)||{pass:0,fail:0};A.result==="pass"&&F.pass++,(A.result==="fail"||A.result==="error")&&F.fail++,j.set(H,F)}const p=((e==null?void 0:e.length)||0)+((a==null?void 0:a.length)||0),V=[...e||[],...a||[]].filter(M=>M.validationFailureAction==="Enforce").length,b=p-V,B=f.pass+f.fail+f.warn+f.error+f.skip,I=B>0,D=I?Math.round(f.pass/B*100):null;return{counts:f,totalPolicies:p,enforceCount:V,auditCount:b,total:B,compliancePct:D,hasData:I,byCategory:v,bySeverity:T,byNamespace:j}},[e,a,r,l]),i=C.useMemo(()=>["pass","fail","warn","error","skip"].filter(f=>o.counts[f]>0).map(f=>({name:f.charAt(0).toUpperCase()+f.slice(1),value:o.counts[f],color:We[f]})),[o.counts]),c=C.useMemo(()=>Array.from(o.byCategory.entries()).sort((f,v)=>v[1]-f[1]).slice(0,10).map(([f,v])=>({name:f,value:v})),[o.byCategory]),u=C.useMemo(()=>["critical","high","medium","low","info"].filter(v=>o.bySeverity.has(v)).map(v=>({name:v.charAt(0).toUpperCase()+v.slice(1),value:o.bySeverity.get(v)||0,color:Vs[v]})),[o.bySeverity]),h=C.useMemo(()=>Array.from(o.byNamespace.entries()).filter(([f])=>f!=="cluster").sort(([,f],[,v])=>v.fail-f.fail).slice(0,10).map(([f,{pass:v,fail:T}])=>({name:f,pass:v,failAndError:T})),[o.byNamespace]),x=e===null||a===null||r===null||l===null,k=o.compliancePct===null?void 0:o.compliancePct>=90?"#4caf50":o.compliancePct>=70?"#ff9800":"#f44336";return s.jsxs(n.Box,{sx:{p:2},children:[s.jsxs(g.SectionBox,{title:t("Kyverno Overview"),children:[s.jsxs(n.Grid,{container:!0,spacing:2,sx:{mb:3},children:[s.jsx(n.Grid,{item:!0,xs:6,sm:3,children:s.jsx(W,{title:t("Total Policies"),value:x?"...":o.totalPolicies})}),s.jsx(n.Grid,{item:!0,xs:6,sm:3,children:s.jsx(W,{title:t("Compliance"),value:x?"...":o.compliancePct===null?"—":`${o.compliancePct}%`,color:k})}),s.jsx(n.Grid,{item:!0,xs:6,sm:3,children:s.jsx(W,{title:t("Enforce"),value:x?"...":o.enforceCount})}),s.jsx(n.Grid,{item:!0,xs:6,sm:3,children:s.jsx(W,{title:t("Audit"),value:x?"...":o.auditCount})})]}),s.jsxs(n.Grid,{container:!0,spacing:2,sx:{mb:3},children:[s.jsx(n.Grid,{item:!0,xs:6,sm:3,children:s.jsx(W,{title:t("Pass"),value:o.counts.pass,color:"#4caf50"})}),s.jsx(n.Grid,{item:!0,xs:6,sm:3,children:s.jsx(W,{title:t("Fail"),value:o.counts.fail,color:"#f44336"})}),s.jsx(n.Grid,{item:!0,xs:6,sm:3,children:s.jsx(W,{title:t("Warn"),value:o.counts.warn,color:"#ff9800"})}),s.jsx(n.Grid,{item:!0,xs:6,sm:3,children:s.jsx(W,{title:t("Error"),value:o.counts.error,color:"#d32f2f"})})]})]}),s.jsxs(n.Grid,{container:!0,spacing:2,children:[i.length>0&&s.jsx(n.Grid,{item:!0,xs:12,md:6,children:s.jsx(g.SectionBox,{title:t("Results by Status"),children:s.jsx(w.ResponsiveContainer,{width:"100%",height:300,children:s.jsxs(w.PieChart,{children:[s.jsx(w.Pie,{data:i,cx:"50%",cy:"50%",innerRadius:60,outerRadius:100,dataKey:"value",nameKey:"name",label:({name:f,value:v})=>`${f}: ${v}`,children:i.map((f,v)=>s.jsx(w.Cell,{fill:f.color},v))}),s.jsx(w.Tooltip,{}),s.jsx(w.Legend,{})]})})})}),u.length>0&&s.jsx(n.Grid,{item:!0,xs:12,md:6,children:s.jsx(g.SectionBox,{title:t("Results by Severity"),children:s.jsx(w.ResponsiveContainer,{width:"100%",height:300,children:s.jsxs(w.PieChart,{children:[s.jsx(w.Pie,{data:u,cx:"50%",cy:"50%",innerRadius:60,outerRadius:100,dataKey:"value",nameKey:"name",label:({name:f,value:v})=>`${f}: ${v}`,children:u.map((f,v)=>s.jsx(w.Cell,{fill:f.color},v))}),s.jsx(w.Tooltip,{}),s.jsx(w.Legend,{})]})})})}),c.length>0&&s.jsx(n.Grid,{item:!0,xs:12,children:s.jsx(g.SectionBox,{title:t("Top Failing Categories"),children:s.jsx(n.Box,{sx:{display:"flex",flexDirection:"column",gap:1,py:1},children:c.map(({name:f,value:v})=>{const T=c[0].value,j=T>0?v/T*100:0;return s.jsxs(n.Box,{sx:{display:"flex",alignItems:"center",gap:1.5},children:[s.jsx(n.Typography,{variant:"body2",sx:{minWidth:180,textAlign:"right",flexShrink:0},children:f}),s.jsx(n.Box,{sx:{flex:1,height:20,bgcolor:"action.hover",borderRadius:1,overflow:"hidden"},children:s.jsx(n.Box,{sx:{width:`${j}%`,height:"100%",bgcolor:"#f44336",borderRadius:1,minWidth:2}})}),s.jsx(n.Typography,{variant:"body2",sx:{minWidth:36,fontWeight:"bold"},children:v})]},f)})})})}),h.length>0&&s.jsx(n.Grid,{item:!0,xs:12,children:s.jsx(g.SectionBox,{title:t("Compliance by Namespace (Top 10)"),children:s.jsx(w.ResponsiveContainer,{width:"100%",height:300,children:s.jsxs(w.BarChart,{data:h,margin:{top:8,right:16,left:16,bottom:8},children:[s.jsx(w.XAxis,{dataKey:"name"}),s.jsx(w.YAxis,{allowDecimals:!1}),s.jsx(w.Tooltip,{}),s.jsx(w.Legend,{}),s.jsx(w.Bar,{dataKey:"pass",fill:We.pass,name:t("Pass"),stackId:"a"}),s.jsx(w.Bar,{dataKey:"failAndError",fill:We.fail,name:t("Fail/Error"),stackId:"a"})]})})})}),!x&&!o.hasData&&s.jsx(n.Grid,{item:!0,xs:12,children:s.jsx(g.SectionBox,{title:t("No reports yet"),children:s.jsx(n.Typography,{variant:"body2",color:"text.secondary",children:t("No policy results have been recorded for this cluster. Install some Kyverno policies to see compliance data here.")})})})]})]})}function yt(t){var e,a,r;return(e=t.cosign)!=null&&e.key?"Cosign Key":(a=t.cosign)!=null&&a.keyless?"Cosign Keyless":(r=t.cosign)!=null&&r.certificate?"Cosign Certificate":t.cosign?"Cosign":t.notary?"Notary":"Unknown"}function Ds({policy:t}){var r,l,o,i,c,u;const{t:e}=y.useTranslation("@headlamp-k8s/kyverno"),a=t.jsonData.metadata.annotations||{};return s.jsxs(n.Box,{sx:{p:2},children:[s.jsxs(n.Box,{sx:{display:"flex",gap:1,mb:2,justifyContent:"flex-end"},children:[s.jsx(g.AuthVisible,{item:t,authVerb:"update",children:s.jsx(g.EditButton,{item:t})}),s.jsx(g.AuthVisible,{item:t,authVerb:"delete",children:s.jsx(g.DeleteButton,{item:t})})]}),s.jsx(g.SectionBox,{title:e("Details"),children:s.jsx(g.NameValueTable,{rows:[{name:e("Name"),value:t.jsonData.metadata.name},{name:e("Ready"),value:s.jsx(n.Chip,{label:t.ready?"True":"False",color:t.ready?"success":"error",size:"small"})},{name:e("Admission"),value:((l=(r=t.spec.evaluation)==null?void 0:r.admission)==null?void 0:l.enabled)!==!1?e("Enabled"):e("Disabled")},{name:e("Background"),value:((i=(o=t.spec.evaluation)==null?void 0:o.background)==null?void 0:i.enabled)!==!1?e("Enabled"):e("Disabled")},{name:e("Created"),value:t.jsonData.metadata.creationTimestamp},...a["policies.kyverno.io/title"]?[{name:e("Title"),value:a["policies.kyverno.io/title"]}]:[],...a["policies.kyverno.io/description"]?[{name:e("Description"),value:a["policies.kyverno.io/description"]}]:[],...a["policies.kyverno.io/category"]?[{name:e("Category"),value:a["policies.kyverno.io/category"]}]:[],...a["policies.kyverno.io/severity"]?[{name:e("Severity"),value:a["policies.kyverno.io/severity"]}]:[]]})}),s.jsx(g.SectionBox,{title:e("Image References ({{count}})",{count:((c=t.spec.matchImageReferences)==null?void 0:c.length)||0}),children:s.jsx(g.Table,{columns:[{header:e("Pattern"),accessorFn:h=>h.glob||h.expression||"-"},{header:e("Type"),accessorFn:h=>h.glob?"Glob":"CEL Expression",Cell:({row:h})=>s.jsx(n.Chip,{label:h.original.glob?"Glob":"CEL",size:"small",variant:"outlined"})}],data:t.spec.matchImageReferences||[],emptyMessage:e("No image references defined.")})}),s.jsx(g.SectionBox,{title:e("Attestors ({{count}})",{count:((u=t.spec.attestors)==null?void 0:u.length)||0}),children:s.jsx(g.Table,{columns:[{header:e("Name"),accessorFn:h=>h.name||"-"},{header:e("Type"),accessorFn:h=>yt(h),Cell:({row:h})=>s.jsx(n.Chip,{label:yt(h.original),size:"small",variant:"outlined"})}],data:t.spec.attestors||[],emptyMessage:e("No attestors defined.")})}),t.spec.attestations&&t.spec.attestations.length>0&&s.jsx(g.SectionBox,{title:e("Attestations ({{count}})",{count:t.spec.attestations.length}),children:s.jsx(g.Table,{columns:[{header:e("Name"),accessorFn:h=>h.name},{header:e("Type"),accessorFn:h=>{var x,k;return((x=h.intoto)==null?void 0:x.type)||((k=h.referrer)==null?void 0:k.type)||"-"}},{header:e("Format"),accessorFn:h=>h.intoto?"In-Toto":h.referrer?"Referrer":"-",Cell:({row:h})=>s.jsx(n.Chip,{label:h.original.intoto?"In-Toto":h.original.referrer?"Referrer":"-",size:"small",variant:"outlined"})}],data:t.spec.attestations})}),t.spec.validations&&t.spec.validations.length>0&&s.jsx(g.SectionBox,{title:e("Validations ({{count}})",{count:t.spec.validations.length}),children:s.jsx(g.Table,{columns:[{header:e("Expression"),accessorFn:h=>h.expression},{header:e("Message"),accessorFn:h=>h.message||"-"}],data:t.spec.validations})})]})}function Ns({name:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno"),[a,r]=Ce.useGet(t);return r?s.jsx(n.Box,{sx:{p:2},children:s.jsx(n.Typography,{color:"error",children:e("Failed to load policy: {{error}}",{error:String(r)})})}):a?s.jsx(Ds,{policy:a}):s.jsx(n.Box,{sx:{p:4,display:"flex",justifyContent:"center"},children:s.jsx(n.CircularProgress,{})})}function Ss(t){y.Activity.launch({id:`kyverno-ivpol-${t.jsonData.metadata.name}`,location:"split-right",icon:s.jsx(O.Icon,{icon:"mdi:shield-lock"}),title:t.jsonData.metadata.name,content:s.jsx(Ns,{name:t.jsonData.metadata.name})})}function ws(){const{t}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(P.ResourceListView,{title:t("Image Validating Policies"),resourceClass:Ce,columns:[{id:"name",label:t("Name"),getValue:e=>e.jsonData.metadata.name,render:e=>s.jsx(n.Link,{component:"button",onClick:()=>Ss(e),sx:{textAlign:"left"},children:e.jsonData.metadata.name})},{id:"ready",label:t("Ready"),getValue:e=>e.ready?"True":"False",render:e=>s.jsx(n.Chip,{label:e.ready?"True":"False",color:e.ready?"success":"error",size:"small"}),gridTemplate:"0.5fr"},{id:"images",label:t("Image Patterns"),getValue:e=>e.imagePatterns.join(", ")||"-"},{id:"attestors",label:t("Attestors"),getValue:e=>e.attestorCount,gridTemplate:"0.5fr"},"age"]})}function Y({titleKey:t,resourceClass:e,activityIdPrefix:a}){const{t:r}=y.useTranslation("@headlamp-k8s/kyverno"),l=e.isNamespaced;function o(i){const c=i.jsonData.metadata.name,u=i.jsonData.metadata.namespace;y.Activity.launch({id:`${a}:${u??""}:${c}`,location:"split-right",icon:s.jsx(O.Icon,{icon:"mdi:shield-check"}),title:u?`${u}/${c}`:c,content:s.jsx(qe,{name:c,namespace:u,isClusterScoped:!l,resourceClass:e})})}return s.jsx(P.ResourceListView,{title:r(t),resourceClass:e,columns:[{id:"name",label:r("Name"),getValue:i=>i.jsonData.metadata.name,render:i=>s.jsx(n.Link,{component:"button",onClick:()=>o(i),sx:{textAlign:"left"},children:i.jsonData.metadata.name})},...l?["namespace"]:[],{id:"owner",label:r("Owner"),getValue:i=>{const c=i.scope;return!c||!c.kind?"":`${c.kind}/${c.name??""}`}},{id:"pass",label:r("Pass"),getValue:i=>i.summary.pass||0,gridTemplate:"0.5fr"},{id:"fail",label:r("Fail"),getValue:i=>i.summary.fail||0,gridTemplate:"0.5fr"},{id:"warn",label:r("Warn"),getValue:i=>i.summary.warn||0,gridTemplate:"0.5fr"},{id:"error",label:r("Error"),getValue:i=>i.summary.error||0,gridTemplate:"0.5fr"},{id:"skip",label:r("Skip"),getValue:i=>i.summary.skip||0,gridTemplate:"0.5fr"},{id:"summary",label:r("Summary"),render:i=>s.jsx(Ne,{summary:i.summary}),getValue:i=>i.totalResults},"age"]})}const ie=class ie extends $.KubeObject{get spec(){return this.jsonData.spec}get exceptions(){return this.spec.exceptions||[]}get policyNames(){return this.exceptions.map(e=>e.policyName)}get background(){return this.spec.background??!0}};ie.kind="PolicyException",ie.apiName="policyexceptions",ie.apiVersion="kyverno.io/v2",ie.isNamespaced=!0;let we=ie;function Bs({match:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno"),a=(t==null?void 0:t.any)||(t==null?void 0:t.all)||[];if(a.length===0)return null;const r=t!=null&&t.any?e("Any (OR)"):e("All (AND)");return s.jsx(g.SectionBox,{title:e("Match Conditions ({{type}})",{type:r}),children:a.map((l,o)=>{const i=l.resources,c=l.subjects;return s.jsxs(n.Box,{sx:{mb:1},children:[(i==null?void 0:i.kinds)&&s.jsxs(n.Box,{sx:{display:"flex",gap:.5,alignItems:"center",mb:.5},children:[s.jsx(n.Typography,{variant:"body2",sx:{fontWeight:"bold",mr:1},children:e("Kinds:")}),i.kinds.map(u=>s.jsx(n.Chip,{label:u,size:"small",variant:"outlined"},u))]}),(i==null?void 0:i.names)&&s.jsxs(n.Box,{sx:{display:"flex",gap:.5,alignItems:"center",mb:.5},children:[s.jsx(n.Typography,{variant:"body2",sx:{fontWeight:"bold",mr:1},children:e("Names:")}),i.names.map(u=>s.jsx(n.Chip,{label:u,size:"small",variant:"outlined"},u))]}),(i==null?void 0:i.namespaces)&&s.jsxs(n.Box,{sx:{display:"flex",gap:.5,alignItems:"center",mb:.5},children:[s.jsx(n.Typography,{variant:"body2",sx:{fontWeight:"bold",mr:1},children:e("Namespaces:")}),i.namespaces.map(u=>s.jsx(n.Chip,{label:u,size:"small",variant:"outlined"},u))]}),c&&c.length>0&&s.jsxs(n.Box,{sx:{display:"flex",gap:.5,alignItems:"center",mb:.5},children:[s.jsx(n.Typography,{variant:"body2",sx:{fontWeight:"bold",mr:1},children:e("Subjects:")}),c.map((u,h)=>s.jsx(n.Chip,{label:`${u.kind}/${u.name}`,size:"small",variant:"outlined"},h))]})]},o)})})}function As({exception:t}){const{t:e}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsxs(n.Box,{sx:{p:2},children:[s.jsxs(n.Box,{sx:{display:"flex",gap:1,mb:2,justifyContent:"flex-end"},children:[s.jsx(g.AuthVisible,{item:t,authVerb:"update",children:s.jsx(g.EditButton,{item:t})}),s.jsx(g.AuthVisible,{item:t,authVerb:"delete",children:s.jsx(g.DeleteButton,{item:t})})]}),s.jsx(g.SectionBox,{title:e("Details"),children:s.jsx(g.NameValueTable,{rows:[{name:e("Name"),value:t.jsonData.metadata.name},{name:e("Namespace"),value:t.jsonData.metadata.namespace},{name:e("Background"),value:String(t.background)},{name:e("Created"),value:t.jsonData.metadata.creationTimestamp}]})}),s.jsx(g.SectionBox,{title:e("Excepted Policies ({{count}})",{count:t.exceptions.length}),children:s.jsx(g.Table,{columns:[{header:e("Policy"),accessorFn:a=>a.policyName},{header:e("Rules"),accessorFn:a=>a.ruleNames.join(", "),Cell:({row:a})=>s.jsx(n.Box,{sx:{display:"flex",gap:.5,flexWrap:"wrap"},children:a.original.ruleNames.map(r=>s.jsx(n.Chip,{label:r,size:"small",variant:"outlined"},r))})}],data:t.exceptions,emptyMessage:e("No exceptions defined.")})}),s.jsx(Bs,{match:t.spec.match})]})}function Fs({name:t,namespace:e}){const{t:a}=y.useTranslation("@headlamp-k8s/kyverno"),[r,l]=we.useGet(t,e);return l?s.jsx(n.Box,{sx:{p:2},children:s.jsx(n.Typography,{color:"error",children:a("Failed to load exception: {{error}}",{error:String(l)})})}):r?s.jsx(As,{exception:r}):s.jsx(n.Box,{sx:{p:4,display:"flex",justifyContent:"center"},children:s.jsx(n.CircularProgress,{})})}function Es(t){y.Activity.launch({id:`kyverno-polex-${t.jsonData.metadata.namespace}-${t.jsonData.metadata.name}`,location:"split-right",icon:s.jsx(O.Icon,{icon:"mdi:shield-off"}),title:`${t.jsonData.metadata.namespace}/${t.jsonData.metadata.name}`,content:s.jsx(Fs,{name:t.jsonData.metadata.name,namespace:t.jsonData.metadata.namespace})})}function Ls(){const{t}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(P.ResourceListView,{title:t("Policy Exceptions"),resourceClass:we,columns:[{id:"name",label:t("Name"),getValue:e=>e.jsonData.metadata.name,render:e=>s.jsx(n.Link,{component:"button",onClick:()=>Es(e),sx:{textAlign:"left"},children:e.jsonData.metadata.name})},"namespace",{id:"policies",label:t("Policies"),getValue:e=>e.policyNames.join(", "),render:e=>s.jsx("span",{style:{display:"inline-flex",gap:4,flexWrap:"wrap"},children:e.policyNames.map(a=>s.jsx(n.Chip,{label:a,size:"small",variant:"outlined"},a))})},{id:"exceptions",label:t("Rules"),getValue:e=>e.exceptions.length,gridTemplate:"0.5fr"},{id:"background",label:t("Background"),getValue:e=>e.background?"True":"False",gridTemplate:"0.5fr"},"age"]})}function Ps(t){y.Activity.launch({id:`kyverno-pol-${t.jsonData.metadata.namespace}-${t.jsonData.metadata.name}`,location:"split-right",icon:s.jsx(O.Icon,{icon:"mdi:shield-edit"}),title:`${t.jsonData.metadata.namespace}/${t.jsonData.metadata.name}`,content:s.jsx(ht,{name:t.jsonData.metadata.name,namespace:t.jsonData.metadata.namespace})})}function Ks(){const{t}=y.useTranslation("@headlamp-k8s/kyverno"),e=et();return s.jsx(P.ResourceListView,{title:t("Policies"),resourceClass:xe,columns:[{id:"name",label:t("Name"),getValue:a=>a.jsonData.metadata.name,render:a=>s.jsx(n.Link,{component:"button",onClick:()=>Ps(a),sx:{textAlign:"left"},children:a.jsonData.metadata.name})},"namespace",{id:"ready",label:t("Ready"),getValue:a=>a.ready?"True":"False",render:a=>s.jsx(n.Chip,{label:a.ready?"True":"False",color:a.ready?"success":"error",size:"small"}),gridTemplate:"0.5fr"},{id:"action",label:t("Action"),getValue:a=>a.validationFailureAction,gridTemplate:"0.7fr"},{id:"background",label:t("Background"),getValue:a=>a.background?"True":"False",gridTemplate:"0.7fr"},{id:"ruleTypes",label:t("Rule Types"),getValue:a=>a.ruleTypes.join(", "),render:a=>s.jsx(n.Box,{sx:{display:"inline-flex",gap:.5},children:a.ruleTypes.map(r=>s.jsx(n.Chip,{label:r,size:"small",variant:"outlined"},r))})},{id:"rules",label:t("Rules"),getValue:a=>a.rules.length,gridTemplate:"0.4fr"},{id:"results",label:t("Results"),getValue:a=>{var r;return((r=e.forNamespaced(a.jsonData.metadata.name,a.jsonData.metadata.namespace||""))==null?void 0:r.total)??0},render:a=>{const r=e.forNamespaced(a.jsonData.metadata.name,a.jsonData.metadata.namespace||"");return e.loading&&!r?s.jsx(n.Typography,{variant:"body2",children:"…"}):!r||r.total===0?s.jsx(n.Typography,{variant:"body2",children:"—"}):s.jsx(n.Typography,{variant:"body2",color:r.fail>0?"error":"text.primary",children:t("{{fail}} / {{total}} failed",{fail:r.fail,total:r.total})})},gridTemplate:"0.8fr"},"age"]})}function Is(t){y.Activity.launch({id:`kyverno-polr-${t.jsonData.metadata.namespace}-${t.jsonData.metadata.name}`,location:"split-right",icon:s.jsx(O.Icon,{icon:"mdi:shield-check"}),title:`${t.jsonData.metadata.namespace}/${t.jsonData.metadata.name}`,content:s.jsx(qe,{name:t.jsonData.metadata.name,namespace:t.jsonData.metadata.namespace})})}function Ms(){const{t}=y.useTranslation("@headlamp-k8s/kyverno");return s.jsx(P.ResourceListView,{title:t("Policy Reports"),resourceClass:q,columns:[{id:"name",label:"Name",getValue:e=>e.jsonData.metadata.name,render:e=>s.jsx(n.Link,{component:"button",onClick:()=>Is(e),sx:{textAlign:"left"},children:e.jsonData.metadata.name})},"namespace",{id:"scope",label:t("Scope"),getValue:e=>{const a=e.scope;return a?`${a.kind}/${a.name}`:""}},{id:"pass",label:t("Pass"),getValue:e=>e.summary.pass||0,gridTemplate:"0.5fr"},{id:"fail",label:t("Fail"),getValue:e=>e.summary.fail||0,gridTemplate:"0.5fr"},{id:"warn",label:t("Warn"),getValue:e=>e.summary.warn||0,gridTemplate:"0.5fr"},{id:"error",label:t("Error"),getValue:e=>e.summary.error||0,gridTemplate:"0.5fr"},{id:"skip",label:t("Skip"),getValue:e=>e.summary.skip||0,gridTemplate:"0.5fr"},{id:"summary",label:t("Summary"),render:e=>s.jsx(Ne,{summary:e.summary}),getValue:e=>e.totalResults},"age"]})}const Be=["fail","warn","error"];function Os(t,e){const a=[];for(const r of t||[])for(const l of r.results)Be.includes(l.result)&&a.push({...l,reportNamespace:r.jsonData.metadata.namespace,scope:r.jsonData.scope});for(const r of e||[])for(const l of r.results)Be.includes(l.result)&&a.push({...l,scope:r.jsonData.scope});return a}function $s(t,e){var a,r,l,o,i,c;switch(e){case"policy":return t.policy||"Unknown";case"namespace":return((r=(a=t.resources)==null?void 0:a[0])==null?void 0:r.namespace)||((l=t.scope)==null?void 0:l.namespace)||t.reportNamespace||"cluster-scoped";case"kind":return((i=(o=t.resources)==null?void 0:o[0])==null?void 0:i.kind)||((c=t.scope)==null?void 0:c.kind)||"Unknown";default:return""}}function qs(t,e){const a=new Map;for(const r of t){const l=$s(r,e),o=a.get(l)||[];o.push(r),a.set(l,o)}return a}function zs({selected:t,onChange:e,counts:a}){function r(l){t.includes(l)?t.length>1&&e(t.filter(o=>o!==l)):e([...t,l])}return s.jsx(n.Box,{sx:{display:"flex",gap:1},children:Be.map(l=>s.jsx(n.Chip,{label:`${l} (${a[l]||0})`,color:t.includes(l)?l==="fail"||l==="error"?"error":"warning":"default",variant:t.includes(l)?"filled":"outlined",onClick:()=>r(l),sx:{cursor:"pointer"}},l))})}function Gs(){const{t}=y.useTranslation("@headlamp-k8s/kyverno"),{items:e}=q.useList(),{items:a}=z.useList(),[r,l]=C.useState("none"),[o,i]=C.useState(Be),[c,u]=C.useState("all"),h=C.useMemo(()=>[{header:t("Resource"),accessorFn:d=>{var p,V,b;return((V=(p=d.resources)==null?void 0:p[0])==null?void 0:V.name)||((b=d.scope)==null?void 0:b.name)||"-"}},{header:t("Kind"),accessorFn:d=>{var p,V,b;return((V=(p=d.resources)==null?void 0:p[0])==null?void 0:V.kind)||((b=d.scope)==null?void 0:b.kind)||"-"}},{header:t("Namespace"),accessorFn:d=>{var p,V,b;return((V=(p=d.resources)==null?void 0:p[0])==null?void 0:V.namespace)||((b=d.scope)==null?void 0:b.namespace)||d.reportNamespace||"-"}},{header:t("Policy"),accessorFn:d=>d.policy},{header:t("Rule"),accessorFn:d=>d.rule||"-"},{header:t("Severity"),accessorFn:d=>d.severity||"",Cell:({row:d})=>s.jsx($e,{severity:d.original.severity})},{header:t("Result"),accessorFn:d=>d.result,Cell:({row:d})=>s.jsx(Oe,{status:d.original.result})},{header:t("Message"),accessorFn:d=>d.message||"-"}],[t]),x=C.useMemo(()=>Os(e,a),[e,a]),k=C.useMemo(()=>x.filter(d=>!(!o.includes(d.result)||c!=="all"&&d.severity!==c)),[x,o,c]),f=C.useMemo(()=>{const d={fail:0,warn:0,error:0,pass:0,skip:0};for(const p of x)d[p.result]=(d[p.result]||0)+1;return d},[x]),v=C.useMemo(()=>{const d=new Set;for(const p of x)p.severity&&d.add(p.severity);return Array.from(d).sort()},[x]);if(e===null||a===null)return s.jsx(g.SectionBox,{title:t("Violations"),children:s.jsx(n.Box,{sx:{display:"flex",justifyContent:"center",py:4},children:s.jsx(n.CircularProgress,{})})});const j=r!=="none"?qs(k,r):null;return s.jsx(n.Box,{sx:{p:2},children:s.jsxs(g.SectionBox,{title:t("Violations ({{count}})",{count:k.length}),children:[s.jsxs(n.Box,{sx:{display:"flex",gap:2,mb:2,alignItems:"center",flexWrap:"wrap"},children:[s.jsx(zs,{selected:o,onChange:i,counts:f}),v.length>0&&s.jsxs(n.FormControl,{size:"small",sx:{minWidth:140},children:[s.jsx(n.InputLabel,{children:t("Severity")}),s.jsxs(n.Select,{value:c,label:t("Severity"),onChange:d=>u(d.target.value),children:[s.jsx(n.MenuItem,{value:"all",children:t("All")}),v.map(d=>s.jsx(n.MenuItem,{value:d,children:d},d))]})]}),s.jsxs(n.ToggleButtonGroup,{value:r,exclusive:!0,onChange:(d,p)=>{p!==null&&l(p)},size:"small",children:[s.jsx(n.ToggleButton,{value:"none",children:t("Flat")}),s.jsx(n.ToggleButton,{value:"policy",children:t("By Policy")}),s.jsx(n.ToggleButton,{value:"namespace",children:t("By Namespace")}),s.jsx(n.ToggleButton,{value:"kind",children:t("By Kind")})]})]}),k.length===0?s.jsx(n.Typography,{variant:"body2",children:t("No violations found.")}):j?Array.from(j.entries()).sort(([,d],[,p])=>p.length-d.length).map(([d,p])=>s.jsxs(n.Box,{sx:{mb:2},children:[s.jsxs(n.Typography,{variant:"subtitle2",sx:{mb:.5},children:[d," (",p.length,")"]}),s.jsx(g.Table,{columns:h,data:p,rowsPerPage:[25,50,100]})]},d)):s.jsx(g.Table,{columns:h,data:k,rowsPerPage:[25,50,100]})]})})}const Ws=`
-    <path fill="currentColor" fill-rule="evenodd" d="M163.07047,73.19286,150.77033,127.0813h12.65642l10.319-45.20729c-1.95153-1.98034-3.95209-3.88056-6.0183-5.64688a5.64573,5.64573,0,0,1-1.36461-1.72768c-1.06466-.40866-2.1708-.84662-3.29234-1.30659m77.18516-48.70858L176.93919,54.97591c.80749,1.13038,1.58,2.25093,2.30732,3.3272a5.64676,5.64676,0,0,1,1.99033.94164c2.03657,1.50531,4.17259,2.92853,6.37023,4.29266L240.3396,38.144c.29571-2.5459.50843-5.07944.59707-7.58622a5.6592,5.6592,0,0,1,.5022-2.14354C241.04323,27.15884,240.64178,25.838,240.25563,24.48428Zm85.5841,30.10434L263.31892,24.48035c-.38664,1.355-.78768,2.67743-1.18366,3.93385a5.66227,5.66227,0,0,1,.50229,2.14354c.08848,2.50572.30136,5.03836.59731,7.58352l52.01892,25.04929c2.20468-1.39343,4.34643-2.84652,6.38456-4.38171a5.67171,5.67171,0,0,1,1.983-.95923C324.32026,56.794,325.06416,55.6964,325.83973,54.58862ZM352.8106,127.0813,340.33686,72.42613c-1.25805.53437-2.50023,1.03862-3.69109,1.50776a5.67438,5.67438,0,0,1-1.34914,1.73882c-1.93787,1.68627-3.81624,3.49138-5.64925,5.37081L340.1559,127.0813Z"/>
-    <path fill="currentColor" fill-rule="evenodd" d="M282.38231,93.81215l1.50147,1.85422c.697-5.92794,5.61455-11.61583,14.94793-16.71516,9.72895-5.31483,18.81492-10.03071,26.22124-15.60663l.982,1.21124q8.68295-13.5618,13.48837-17.07364c4.30486-2.61981,8.28306-1.85725,11.376,1.59387,2.73341,3.74314,2.65246,7.7928-.80553,11.45933q-4.43466,3.97-19.50553,9.64309L331.569,71.39c-6.993,6.08745-13.49566,13.993-20.71832,22.40459-6.92613,8.0696-13.51318,11.69628-19.45716,11.14652l1.50261,1.85447-5.84126,4.72971L281.893,99.06257,277.92678,97.42Zm-71.98425,13.16508,1.485-1.86641c-5.93751.60206-12.5559-2.96675-19.55341-10.97579-7.29452-8.3487-13.86535-16.19748-20.91311-22.22241l.97118-1.22081q-15.11973-5.54166-19.58958-9.47236c-3.4886-3.63593-3.60515-7.68517-.90514-11.4518,3.06268-3.47813,7.03352-4.27539,11.36235-1.69381Q168.09013,51.54526,176.8909,65.03l.97151-1.22073c7.45568,5.51069,16.58174,10.148,26.35669,15.378,9.37807,5.01626,14.34481,10.66224,15.09329,16.58363l1.48567-1.86756,4.49007,3.57184-3.833,1.58732-5.20548,12.57006Zm33.036-23.88248h2.38639c-4.168-4.27228-5.495-11.674-3.58371-22.13573,1.99262-10.90614,4.04466-20.93456,4.37319-30.2h1.56048q-5.076-15.2835-4.78194-21.2274c.67376-4.99383,3.77008-7.60676,8.39822-7.83831,4.62888.23155,7.72536,2.84448,8.39936,7.83831q.29219,5.94386-4.78234,21.2274h1.56047c.3287,9.26546,2.381,19.29388,4.3732,30.2,1.91134,10.46171.58429,17.86345-3.58363,22.13573H260.14v6.95919l-8.46647-3.50628L243.434,89.95974Z"/>
-    <polygon fill="currentColor" fill-rule="evenodd" points="251.674 91.641 264.981 97.154 278.291 102.664 283.801 115.975 288.403 127.081 264.296 127.081 263.225 124.497 261.244 119.711 256.458 117.73 251.674 115.748 246.889 117.73 242.103 119.711 240.122 124.497 239.052 127.081 214.945 127.081 219.547 115.975 225.057 102.664 238.367 97.154 251.674 91.641"/>
-    <path fill="currentColor" fill-rule="evenodd" d="M153.64329,174.28432a4.73074,4.73074,0,1,1-9.46147,0V140.833a4.73149,4.73149,0,0,1,4.73094-4.73053H352.80953a4.7311,4.7311,0,0,1,4.73078,4.73053v33.45134a4.73066,4.73066,0,1,1-9.46131,0v-28.7204H255.59119v28.7204a4.73066,4.73066,0,1,1-9.46131,0v-28.7204H153.64329Z"/>
-    <path fill="currentColor" fill-rule="evenodd" d="M245.82312,223.94755a.62693.62693,0,0,0,.50761.25962h4.53009l4.52993-.00066a.62315.62315,0,0,0,.49-.23743l2.82483-3.54033,2.82426-3.54271a.63044.63044,0,0,0,.12031-.52725l-2.014-8.8261a.618.618,0,0,0-.3404-.43289l-8.16241-3.93065a.62567.62567,0,0,0-.54485,0l-8.16242,3.93065a.62992.62992,0,0,0-.33851.42634l-2.01129,8.81006a.62848.62848,0,0,0,.11573.5505ZM239.421,237.02833a1.42523,1.42523,0,0,0,1.1537.58774h10.28722l10.28722-.00188a1.41647,1.41647,0,0,0,1.113-.53748l6.41443-8.0417,6.41329-8.04455a1.43711,1.43711,0,0,0,.27459-1.19831l-4.57486-20.04342a1.40672,1.40672,0,0,0-.773-.98273l-18.537-8.92751a1.422,1.422,0,0,0-1.23572,0L231.70674,198.766a1.42085,1.42085,0,0,0-.76862.96783l-4.56758,20.00692a1.42285,1.42285,0,0,0,.26216,1.25036Z"/>
-    <path fill="currentColor" fill-rule="evenodd" d="M143.25663,223.94755a.62524.62524,0,0,0,.50761.25962h4.53009l4.52993-.00066a.6247.6247,0,0,0,.49-.23743l2.825-3.54033,2.823-3.54271a.63007.63007,0,0,0,.12121-.52725l-2.01488-8.8261a.61924.61924,0,0,0-.33975-.43289l-8.16307-3.93065a.62423.62423,0,0,0-.54419,0l-8.162,3.93065a.6272.6272,0,0,0-.33876.42634l-2.011,8.81006a.62417.62417,0,0,0,.11582.5505Zm-6.402,13.08078a1.42487,1.42487,0,0,0,1.15321.58774h10.28648l10.288-.00188a1.42029,1.42029,0,0,0,1.11343-.53748l6.41394-8.0417,6.41255-8.04455a1.429,1.429,0,0,0,.27459-1.19831l-4.57412-20.04342a1.40508,1.40508,0,0,0-.77263-.98273l-18.537-8.92751a1.42375,1.42375,0,0,0-1.23653,0L129.13918,198.766a1.42546,1.42546,0,0,0-.76878.96783l-4.56626,20.00692a1.41757,1.41757,0,0,0,.26223,1.25036Z"/>
-    <path fill="currentColor" fill-rule="evenodd" d="M347.15349,223.94755a.62513.62513,0,0,0,.5076.25962H352.191l4.53-.00066a.62465.62465,0,0,0,.48993-.23743l2.825-3.54033,2.82311-3.54271a.62691.62691,0,0,0,.12105-.52725l-2.014-8.8261a.61813.61813,0,0,0-.34048-.43289l-8.16242-3.93065a.62548.62548,0,0,0-.54476,0l-8.16242,3.93065a.63139.63139,0,0,0-.3386.42634l-2.01127,8.81006a.62847.62847,0,0,0,.1158.5505Zm-6.40224,13.08078a1.42529,1.42529,0,0,0,1.15338.58774H352.191l10.28795-.00188a1.41924,1.41924,0,0,0,1.11351-.53748l6.414-8.0417,6.41247-8.04455a1.42855,1.42855,0,0,0,.27419-1.19831l-4.57364-20.04342a1.40712,1.40712,0,0,0-.77262-.98273l-18.53738-8.92751a1.42375,1.42375,0,0,0-1.23653,0L333.03588,198.766a1.42423,1.42423,0,0,0-.7687.96783l-4.56643,20.00692a1.41815,1.41815,0,0,0,.26231,1.25036Z"/>
-    `;function Hs(){O.addIcon("kyverno:logo",{body:`<g transform="translate(-120,-1)">${Ws}</g>`,width:250,height:240})}class X extends $.KubeObject{get summary(){var e;return((e=this.jsonData.spec)==null?void 0:e.summary)||{}}get results(){var e;return((e=this.jsonData.spec)==null?void 0:e.results)||[]}get owner(){var e;return(e=this.jsonData.spec)==null?void 0:e.owner}get scope(){const e=this.owner;if(e)return{apiVersion:e.apiVersion,kind:e.kind,name:e.name,namespace:e.namespace,uid:e.uid}}get totalResults(){const e=this.summary;return(e.pass||0)+(e.fail||0)+(e.warn||0)+(e.error||0)+(e.skip||0)}get failCount(){return(this.summary.fail||0)+(this.summary.error||0)}}const ce=class ce extends X{};ce.kind="AdmissionReport",ce.apiName="admissionreports",ce.apiVersion="kyverno.io/v2",ce.isNamespaced=!0;let He=ce;const de=class de extends X{};de.kind="ClusterAdmissionReport",de.apiName="clusteradmissionreports",de.apiVersion="kyverno.io/v2",de.isNamespaced=!1;let Ze=de;const pe=class pe extends X{};pe.kind="BackgroundScanReport",pe.apiName="backgroundscanreports",pe.apiVersion="kyverno.io/v2",pe.isNamespaced=!0;let Ue=pe;const ue=class ue extends X{};ue.kind="ClusterBackgroundScanReport",ue.apiName="clusterbackgroundscanreports",ue.apiVersion="kyverno.io/v2",ue.isNamespaced=!1;let Je=ue;const he=class he extends X{};he.kind="EphemeralReport",he.apiName="ephemeralreports",he.apiVersion="reports.kyverno.io/v1",he.isNamespaced=!0;let Ye=he;const ge=class ge extends X{};ge.kind="ClusterEphemeralReport",ge.apiName="clusterephemeralreports",ge.apiVersion="reports.kyverno.io/v1",ge.isNamespaced=!1;let Xe=ge;Hs();function S({name:t,parent:e,label:a,path:r,url:l,exact:o,icon:i,component:c,requires:u}){y.registerSidebarEntry({name:t,url:l??r,parent:e,label:a,icon:i});const h=u?()=>s.jsx(Cs,{requires:u,children:c()}):c;y.registerRoute({path:r,sidebar:t,name:t,exact:o,component:h})}y.registerSidebarEntry({name:"Kyverno",url:"/kyverno",icon:"kyverno:logo",parent:"",label:"Kyverno"}),S({name:"KyvernoOverview",parent:"Kyverno",label:"Overview",path:"/kyverno",exact:!0,requires:"legacy",component:()=>s.jsx(js,{})}),y.registerSidebarEntry({name:"KyvernoPolicies",url:"/kyverno/clusterpolicies",parent:"Kyverno",label:"Policies"}),S({name:"ClusterPolicies",parent:"KyvernoPolicies",label:"Cluster Policies",path:"/kyverno/clusterpolicies",requires:"legacy",component:()=>s.jsx(us,{})}),S({name:"Policies",parent:"KyvernoPolicies",label:"Policies",path:"/kyverno/policies",requires:"legacy",component:()=>s.jsx(Ks,{})}),S({name:"ValidatingPolicies",parent:"KyvernoPolicies",label:"Validating Policies",path:"/kyverno/validatingpolicies",requires:"cel",component:()=>s.jsx(Tt,{})}),S({name:"MutatingPolicies",parent:"KyvernoPolicies",label:"Mutating Policies",path:"/kyverno/mutatingpolicies",requires:"cel",component:()=>s.jsx(Ct,{})}),S({name:"GeneratingPolicies",parent:"KyvernoPolicies",label:"Generating Policies",path:"/kyverno/generatingpolicies",requires:"cel",component:()=>s.jsx(Vt,{})}),S({name:"DeletingPolicies",parent:"KyvernoPolicies",label:"Deleting Policies",path:"/kyverno/deletingpolicies",requires:"cel",component:()=>s.jsx(jt,{})}),S({name:"ImageValidatingPolicies",parent:"KyvernoPolicies",label:"Image Validating Policies",path:"/kyverno/imagevalidatingpolicies",requires:"cel",component:()=>s.jsx(ws,{})}),S({name:"ClusterCleanupPolicies",parent:"KyvernoPolicies",label:"Cluster Cleanup Policies",path:"/kyverno/clustercleanuppolicies",requires:"cleanup",component:()=>s.jsx(Nt,{})}),S({name:"CleanupPolicies",parent:"KyvernoPolicies",label:"Cleanup Policies",path:"/kyverno/cleanuppolicies",requires:"cleanup",component:()=>s.jsx(Dt,{})}),y.registerSidebarEntry({name:"KyvernoReports",url:"/kyverno/policyreports",parent:"Kyverno",label:"Reports"}),S({name:"PolicyReports",parent:"KyvernoReports",label:"Policy Reports",path:"/kyverno/policyreports",requires:"reports",component:()=>s.jsx(Ms,{})}),S({name:"ClusterPolicyReports",parent:"KyvernoReports",label:"Cluster Policy Reports",path:"/kyverno/clusterpolicyreports",requires:"reports",component:()=>s.jsx(bs,{})}),S({name:"AdmissionReports",parent:"KyvernoReports",label:"Admission Reports",path:"/kyverno/admissionreports",requires:"kyvernoV2Reports",component:()=>s.jsx(Y,{titleKey:"Admission Reports",resourceClass:He,activityIdPrefix:"kyverno-admrpt"})}),S({name:"ClusterAdmissionReports",parent:"KyvernoReports",label:"Cluster Admission Reports",path:"/kyverno/clusteradmissionreports",requires:"kyvernoV2Reports",component:()=>s.jsx(Y,{titleKey:"Cluster Admission Reports",resourceClass:Ze,activityIdPrefix:"kyverno-cadmrpt"})}),S({name:"BackgroundScanReports",parent:"KyvernoReports",label:"Background Scan Reports",path:"/kyverno/backgroundscanreports",requires:"kyvernoV2Reports",component:()=>s.jsx(Y,{titleKey:"Background Scan Reports",resourceClass:Ue,activityIdPrefix:"kyverno-bgscan"})}),S({name:"ClusterBackgroundScanReports",parent:"KyvernoReports",label:"Cluster Background Scan Reports",path:"/kyverno/clusterbackgroundscanreports",requires:"kyvernoV2Reports",component:()=>s.jsx(Y,{titleKey:"Cluster Background Scan Reports",resourceClass:Je,activityIdPrefix:"kyverno-cbgscan"})}),S({name:"EphemeralReports",parent:"KyvernoReports",label:"Ephemeral Reports",path:"/kyverno/ephemeralreports",requires:"ephemeralReports",component:()=>s.jsx(Y,{titleKey:"Ephemeral Reports",resourceClass:Ye,activityIdPrefix:"kyverno-ephrpt"})}),S({name:"ClusterEphemeralReports",parent:"KyvernoReports",label:"Cluster Ephemeral Reports",path:"/kyverno/clusterephemeralreports",requires:"ephemeralReports",component:()=>s.jsx(Y,{titleKey:"Cluster Ephemeral Reports",resourceClass:Xe,activityIdPrefix:"kyverno-cephrpt"})}),S({name:"KyvernoViolations",parent:"Kyverno",label:"Violations",path:"/kyverno/violations",requires:"reports",component:()=>s.jsx(Gs,{})}),S({name:"KyvernoExceptions",parent:"Kyverno",label:"Exceptions",path:"/kyverno/exceptions",requires:"exceptions",component:()=>s.jsx(Ls,{})}),y.registerAppBarAction(ms),L.registerKyvernoPage=S,Object.defineProperty(L,Symbol.toStringTag,{value:"Module"})}));
-  package.json: |
-    {
-      "name": "@headlamp-k8s/kyverno",
-      "version": "0.1.0",
-      "description": "A UI for viewing Kyverno policies and reports in Headlamp.",
-      "scripts": {
-        "start": "headlamp-plugin start",
-        "build": "headlamp-plugin build",
-        "format": "headlamp-plugin format",
-        "lint": "headlamp-plugin lint",
-        "lint-fix": "headlamp-plugin lint --fix",
-        "package": "headlamp-plugin package",
-        "tsc": "headlamp-plugin tsc",
-        "storybook": "headlamp-plugin storybook",
-        "storybook-build": "headlamp-plugin storybook-build",
-        "test": "headlamp-plugin test",
-        "i18n": "headlamp-plugin i18n"
-      },
-      "keywords": [
-        "headlamp",
-        "headlamp-plugin",
-        "kubernetes",
-        "kubernetes-ui",
-        "kubernetes-debugging",
-        "plugins"
-      ],
-      "prettier": "@headlamp-k8s/eslint-config/prettier-config",
-      "eslintConfig": {
-        "extends": [
-          "@headlamp-k8s",
-          "prettier",
-          "plugin:jsx-a11y/recommended"
-        ]
-      },
-      "overrides": {
-        "typescript": "5.6.2"
-      },
-      "devDependencies": {
-        "@kinvolk/headlamp-plugin": "^0.13.1"
-      }
-    }
-kind: ConfigMap
-metadata:
-  labels:
-    app.kubernetes.io/component: plugin
-    app.kubernetes.io/name: headlamp
-    app.kubernetes.io/part-of: sre-platform
-    sre.platform.io/plugin-name: kyverno
-  name: headlamp-plugin-kyverno
-  namespace: headlamp
