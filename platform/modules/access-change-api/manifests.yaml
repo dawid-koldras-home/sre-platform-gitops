@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:7d9d96323442a4b809876bff84b16fb952f03dac691f4fa31164701642c8a6dc"
+        sre.platform.io/config-checksum: "sha256:4ab2e902259f107eca8aa787b414ebd7ee59ecbc308f613e7dca650943278402"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -413,6 +413,11 @@ data:
         cause: comparison-artefact
         reason: Argo CD 2.11.7 cannot deserialise the Kubernetes 1.36 status.terminatingReplicas
           and spec.podReplacementPolicy fields of the live controller objects
+      - application: kyverno
+        cause: comparison-artefact
+        reason: Argo CD 2.11.7 ServerSideDiff cannot compute a clean ClusterPolicy diff
+          after the baseline-v2 rewrite; live equals rendered modulo Kyverno defaults,
+          reviewed ignoreDifferences and message text.
       gitops:
         authentication:
           existingSecret: srectl-repository-c72f8b593295

@@ -6,7 +6,7 @@ pending:
   modules:
     access-change-api:
       chartVersion: 0.1.0
-      manifestDigest: 864651431336052023dc125a45e7c3fee541ab0ecc2f922ef4f63a6d4425a643
+      manifestDigest: c0ded74de91f8a1e888fcde48680fa2152c6e05a67e74f15336e15f2f1e807b5
       version: 0.1.0
     argocd:
       chartVersion: 7.3.11
