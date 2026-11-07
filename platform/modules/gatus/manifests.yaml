@@ -62,14 +62,6 @@ data:
     - alerts: []
       conditions:
       - '[STATUS] == 200'
-      group: Synthetic
-      interval: 1m
-      method: GET
-      name: New Media Consulting fast route probe
-      url: https://newmediaconsulting.com:8443/
-    - alerts: []
-      conditions:
-      - '[STATUS] == 200'
       group: Secrets
       interval: 1m
       method: GET
@@ -137,7 +129,7 @@ spec:
         app.kubernetes.io/name: gatus
         app.kubernetes.io/instance: gatus
       annotations:
-        checksum/config: 81a85cc31658ab17c3b027157febdde47d2cbcb453cda5e78651996f1dd21243
+        checksum/config: 556ec514526d6c0ac0a53590ff21c284b8f6e5b2a9ea156e40027aaa1058311e
     spec:
       
       serviceAccountName: gatus
@@ -264,5 +256,3 @@ spec:
           port: 80
         - protocol: TCP
           port: 443
-        - protocol: TCP
-          port: 8443
