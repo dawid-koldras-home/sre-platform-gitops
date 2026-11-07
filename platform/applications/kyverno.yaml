@@ -31,6 +31,7 @@ spec:
         - .spec.admission
         - .spec.failurePolicy
         - .spec.rules[].skipBackgroundRequests
+        - .spec.rules[].match.any[].resources.operations
   syncPolicy:
     automated:
       prune: true
