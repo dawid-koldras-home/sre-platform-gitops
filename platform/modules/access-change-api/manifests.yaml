@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:4ab2e902259f107eca8aa787b414ebd7ee59ecbc308f613e7dca650943278402"
+        sre.platform.io/config-checksum: "sha256:7c280aa73181e2c29f15c77b107ce228f5f8a1083f264bad408289d3472476eb"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -622,6 +622,8 @@ data:
           enabled: true
         prometheus:
           enabled: true
+        synthetic-status:
+          enabled: false
       profile: platform
       profileAcknowledgement: preview
       target:
