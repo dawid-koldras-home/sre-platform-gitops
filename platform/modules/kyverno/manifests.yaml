@@ -53210,13 +53210,13 @@ spec:
             - --otelConfig=prometheus
             - --metricsPort=8000
             - --admissionReports=false
-            - --aggregateReports=true
+            - --aggregateReports=false
             - --policyReports=true
             - --validatingAdmissionPolicyReports=false
             - --backgroundScan=true
             - --backgroundScanWorkers=2
             - --backgroundScanInterval=1h
-            - --skipResourceFilters=true
+            - --skipResourceFilters=false
             - --enableConfigMapCaching=true
             - --enableDeferredLoading=true
             - --maxAPICallResponseLength=2000000
