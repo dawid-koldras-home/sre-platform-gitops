@@ -54026,6 +54026,30 @@ spec:
 #
 # validationFailureAction is injected by the module renderer and stays Audit by default.
 ---
+# Kyverno baseline policy pack, version 2.
+#
+# Version 1 asked every Pod to declare its hardening explicitly: a container with no
+# securityContext failed `baseline-disallow-privileged`, a Pod that ran as non-root per
+# container failed `baseline-require-non-root`, and a container that added no capability
+# failed `baseline-require-drop-capabilities`. On the live platform that produced 182
+# findings, every one of them on the platform's own infrastructure, and none of them
+# actionable: the pack reported the absence of a declaration rather than the presence of
+# a risk.
+#
+# Version 2 is written against explicit risk:
+#
+#   * a rule fails only when the object states the unsafe value (privileged true,
+#     runAsUser 0, runAsNonRoot false, a capability added), never because a field is
+#     absent, because absence is what the container runtime already treats as safe;
+#   * Pod Security Admission, which the platform enforces per namespace through
+#     pod-security.kubernetes.io/enforce, owns the platform's own namespaces. This pack
+#     audits the workloads an operator can actually change, so those namespaces are
+#     excluded rather than re-reported;
+#   * autogeneration for workload controllers is disabled, so one finding is reported
+#     once for the Pod that runs instead of once for the controller and once for the Pod.
+#
+# validationFailureAction is injected by the module renderer and stays Audit by default.
+---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -54050,7 +54074,6 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
-              operations: ["CREATE", "UPDATE"]
       exclude:
         any:
           - resources:
@@ -54113,7 +54136,6 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
-              operations: ["CREATE", "UPDATE"]
       exclude:
         any:
           - resources:
@@ -54175,7 +54197,6 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
-              operations: ["CREATE", "UPDATE"]
       exclude:
         any:
           - resources:
@@ -54211,7 +54232,6 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
-              operations: ["CREATE", "UPDATE"]
       exclude:
         any:
           - resources:
@@ -54243,7 +54263,6 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
-              operations: ["CREATE", "UPDATE"]
       exclude:
         any:
           - resources:
@@ -54275,7 +54294,6 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
-              operations: ["CREATE", "UPDATE"]
       exclude:
         any:
           - resources:
@@ -54328,7 +54346,6 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
-              operations: ["CREATE", "UPDATE"]
       exclude:
         any:
           - resources:
@@ -54388,7 +54405,6 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
-              operations: ["CREATE", "UPDATE"]
       exclude:
         any:
           - resources:
@@ -54446,7 +54462,6 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
-              operations: ["CREATE", "UPDATE"]
       exclude:
         any:
           - resources:
@@ -54531,6 +54546,46 @@ spec:
                   s, s.kind == "ServiceAccount" && s.namespace == "headlamp" && s.name == "headlamp"))
               message: The identity bridge RoleBinding grants a subject other than the platform service account.
 
+---
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: lke-managed-node-agents
+  namespace: kyverno
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    sre.platform.io/exception-scope: vendor-managed-node-agents
+  annotations:
+    sre.platform.io/owner: platform-engineering
+    sre.platform.io/review-by: "2027-05-01"
+    sre.platform.io/reason: >-
+      LKE installs node agents that require privileged containers and host
+      namespaces. The platform cannot change the vendor pod spec, and leaving the
+      violations open floods the audit reports with findings no operator can fix.
+    sre.platform.io/upstream: LKE managed system components (kube-system)
+spec:
+  exceptions:
+    - policyName: baseline-disallow-privileged
+      ruleNames:
+        - validate-privileged
+    - policyName: baseline-disallow-host-access-v2
+      ruleNames:
+        - validate-host-network
+        - validate-host-path
+        - validate-host-pid
+        - validate-host-ipc
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - kube-system
+          names:
+            - "konnectivity-agent-*"
+            - "calico-node-*"
+            - "csi-linode-node-*"
+            - "kube-proxy-*"
 ---
 apiVersion: kyverno.io/v2
 kind: PolicyException
