@@ -53210,7 +53210,7 @@ spec:
             - --otelConfig=prometheus
             - --metricsPort=8000
             - --admissionReports=false
-            - --aggregateReports=false
+            - --aggregateReports=true
             - --policyReports=true
             - --validatingAdmissionPolicyReports=false
             - --backgroundScan=true
