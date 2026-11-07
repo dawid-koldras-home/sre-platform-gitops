@@ -1,0 +1,909 @@
+---
+# Source: synthetic-status/templates/resources.yaml
+# Ingress: write publications arrive from the scheduled runner in this namespace, and reads
+# arrive through the Kubernetes API-server Service proxy, which is a host-sourced connection
+# that a NetworkPolicy cannot name. The policy therefore restricts the port and leaves the
+# source open, and says so: the write boundary is the bearer token, not the network, while the
+# read surface carries only sanitized status metadata and never a credential, a URL or an
+# artifact that can be exchanged for another target. Egress is denied entirely - this service
+# never contacts a monitored page, the Kubernetes API or any other destination.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: synthetic-status-api
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-status
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: synthetic-status
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080
+  egress: []
+---
+# Source: synthetic-status/templates/resources.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: synthetic-status-api
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-status
+    app.kubernetes.io/part-of: sre-platform
+automountServiceAccountToken: false
+---
+# Source: synthetic-status/templates/resources.yaml
+# The API source. It is delivered from Git through the resolver, so the running service is
+# exactly the reviewed bytes and no image has to be published for it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synthetic-status-api-source
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-status
+    app.kubernetes.io/part-of: sre-platform
+data:
+  # Explicit entry point. Running `server.mjs` directly is not safe in a ConfigMap mount: the
+  # kubelet serves the volume through symlinks, Node resolves the module's real path, and a
+  # self-execution guard that compares argv with import.meta.url therefore never matches.
+  main.mjs: |
+    // Entry point for the Synthetic Service Status API.
+    //
+    // The service is started through this file rather than by executing `server.mjs` directly.
+    // Kubernetes mounts a ConfigMap volume as a directory of symlinks (`/app/server.mjs` points
+    // into `/app/..data/...`), and Node resolves a module's real path for `import.meta.url`. A
+    // guard that compares `process.argv[1]` with the module URL therefore never matches in a
+    // ConfigMap mount: the process loaded the module, registered nothing, and exited 0, which the
+    // kubelet reports as a clean Completion and a restart loop. Running an explicit entry point
+    // removes that comparison from the contract entirely.
+    //
+    // All configuration comes from environment variables with the same defaults the deployment
+    // sets, so a local run with the variables absent is still safe and read-only.
+    
+    import { startStatusApi } from './server.mjs';
+    
+    const server = startStatusApi({
+      dataDir: process.env.SYNTHETIC_STATUS_DATA_DIR ?? '/var/lib/synthetic-status',
+      targetsFile: process.env.SYNTHETIC_STATUS_TARGETS_FILE ?? '/etc/synthetic-status/targets.json',
+      writeTokenFile: process.env.SYNTHETIC_STATUS_WRITE_TOKEN_FILE ?? '/etc/synthetic-status/write-token/token',
+      port: Number(process.env.SYNTHETIC_STATUS_PORT ?? '8080'),
+      intervalMs: Number(process.env.SYNTHETIC_STATUS_INTERVAL_MS ?? '900000'),
+      timeoutMs: Number(process.env.SYNTHETIC_STATUS_TIMEOUT_MS ?? '120000'),
+      log: (message) => console.log(`[status-api] ${message}`),
+    });
+    
+    const stop = () => server.close(() => process.exit(0));
+    process.on('SIGTERM', stop);
+    process.on('SIGINT', stop);
+    
+    // The port is logged once the socket is bound. A test uses it as the readiness signal, and an
+    // operator reading the pod log sees where the API is listening without any other output.
+    server.on('listening', () => {
+      const address = server.address();
+      const port = address && typeof address === 'object' ? address.port : 'unknown';
+      console.log(`[status-api] listening on ${port}`);
+    });
+    
+  server.mjs: |
+    // Synthetic Service Status API.
+    //
+    // Two audiences, two very different powers:
+    //   * the runner writes one result and at most one PNG per target, authenticated with a
+    //     bearer token read from a mounted file and never from an argument;
+    //   * Headlamp reads a bounded snapshot through the exact namespaced Service proxy. The
+    //     read surface exposes no bytes, no URL and no identifier that could be exchanged for
+    //     another target, and the list endpoint never returns image data.
+    //
+    // The service holds no Kubernetes credentials, lists no Jobs or Pods and never contacts a
+    // monitored page.
+    
+    import fs from 'node:fs';
+    import http from 'node:http';
+    import { timingSafeEqual } from 'node:crypto';
+    
+    import {
+      ConflictError,
+      MAX_RESULT_BYTES,
+      MAX_SCREENSHOT_BYTES,
+      MAX_TARGETS,
+      NotFoundError,
+      Store,
+      ValidationError,
+      assertTargetId,
+      validateRecord,
+    } from './store.mjs';
+    
+    function readJsonFile(file, fallback) {
+      try {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch {
+        return fallback;
+      }
+    }
+    
+    function readToken(file) {
+      try {
+        const value = fs.readFileSync(file, 'utf8').trim();
+        return value === '' ? undefined : Buffer.from(value);
+      } catch {
+        return undefined;
+      }
+    }
+    
+    function tokenMatches(expected, header) {
+      if (expected === undefined || typeof header !== 'string' || !header.startsWith('Bearer ')) return false;
+      const presented = Buffer.from(header.slice('Bearer '.length));
+      if (presented.length !== expected.length) return false;
+      return timingSafeEqual(presented, expected);
+    }
+    
+    function send(res, status, body, headers = {}) {
+      const payload = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
+      res.writeHead(status, {
+        'content-type': typeof body === 'object' && !Buffer.isBuffer(body) ? 'application/json' : 'text/plain',
+        'x-content-type-options': 'nosniff',
+        'cache-control': 'no-store',
+        ...headers,
+      });
+      res.end(payload);
+    }
+    
+    function readBody(req, limit) {
+      return new Promise((resolve, reject) => {
+        const chunks = [];
+        let total = 0;
+        req.on('data', (chunk) => {
+          total += chunk.length;
+          if (total > limit) {
+            // Stop accumulating and refuse the request. The socket is left to the server's
+            // own timeout rather than destroyed here, so the caller still receives the 400
+            // that explains why the body was refused.
+            chunks.length = 0;
+            reject(new ValidationError('body exceeds the size bound'));
+            return;
+          }
+          if (total <= limit) chunks.push(chunk);
+        });
+        req.on('end', () => resolve(Buffer.concat(chunks)));
+        req.on('error', reject);
+      });
+    }
+    
+    /**
+     * createStatusApi builds the HTTP handler.
+     *
+     * `targetsFile` is the rendered canonical inventory. It is re-read per request snapshot so
+     * a GitOps change becomes visible without a restart, and the store prunes artifacts for
+     * targets that disappear.
+     */
+    export function createStatusApi(options) {
+      const store = new Store(options.dataDir);
+      const targetsFile = options.targetsFile;
+      const writeTokenFile = options.writeTokenFile;
+      const log = options.log ?? (() => {});
+    
+      const inventory = () => {
+        const parsed = readJsonFile(targetsFile, { targets: [] });
+        const targets = Array.isArray(parsed?.targets) ? parsed.targets : [];
+        if (targets.length > MAX_TARGETS) return [];
+        const seen = new Set();
+        const result = [];
+        for (const target of targets) {
+          if (target === null || typeof target !== 'object') continue;
+          let id;
+          try {
+            id = assertTargetId(target.id);
+          } catch {
+            continue;
+          }
+          if (seen.has(id)) continue;
+          seen.add(id);
+          result.push({
+            id,
+            customer: typeof target.customer === 'string' ? target.customer : 'unassigned',
+            name: typeof target.name === 'string' ? target.name : id,
+            screenshotEligible: target.screenshotEligible === true,
+          });
+        }
+        return result.sort((left, right) => left.customer.localeCompare(right.customer) || left.id.localeCompare(right.id));
+      };
+    
+      return async function handler(req, res) {
+        const url = new URL(req.url ?? '/', 'http://status.local');
+        const targets = inventory();
+        const known = new Map(targets.map((target) => [target.id, target]));
+    
+        if (req.method === 'GET' && (url.pathname === '/healthz' || url.pathname === '/readyz')) {
+          if (url.pathname === '/readyz') {
+            // Readiness means "this pod can answer for the rendered inventory", not merely
+            // "the process is up". An unreadable or empty inventory would render an empty
+            // dashboard that reads as "nothing is monitored", so the pod reports not-ready and
+            // the console shows UNAVAILABLE instead.
+            if (targets.length === 0) return send(res, 503, 'inventory unavailable\n');
+          }
+          return send(res, 200, 'ok\n');
+        }
+    
+        if (req.method === 'GET' && url.pathname === '/v1/status') {
+          // Prune on read: an artifact whose target was removed from Git must stop being
+          // reachable, and doing it here keeps the guarantee close to the read path.
+          store.prune(new Set(known.keys()));
+          const nowMs = options.now ? options.now() : Date.now();
+          return send(res, 200, {
+            schemaVersion: 1,
+            generatedAt: new Date(nowMs).toISOString(),
+            targets: store.snapshot(targets, nowMs, options.intervalMs, options.timeoutMs),
+          });
+        }
+    
+        const screenshotRead = url.pathname.match(/^\/v1\/screenshots\/([^/]+)$/);
+        if (req.method === 'GET' && screenshotRead) {
+          let targetId;
+          try {
+            targetId = assertTargetId(decodeURIComponent(screenshotRead[1]));
+          } catch {
+            return send(res, 404, 'not found\n');
+          }
+          const target = known.get(targetId);
+          if (target === undefined || !target.screenshotEligible) return send(res, 404, 'not found\n');
+          const image = store.readScreenshot(targetId);
+          const metadata = store.readScreenshotMetadata(targetId);
+          // An image whose capture run cannot be named is not served: the caller could not
+          // label its age, which is the one thing this artifact must never be ambiguous about.
+          if (image === undefined || metadata === undefined) return send(res, 404, 'not found\n');
+          return send(res, 200, image, {
+            'content-type': 'image/png',
+            'x-synthetic-run-id': metadata.runId,
+            'x-synthetic-captured-at': metadata.capturedAt,
+            'content-security-policy': "default-src 'none'; sandbox",
+          });
+        }
+    
+        // Everything below mutates or is write-adjacent and needs the writer token.
+        const writeToken = readToken(writeTokenFile);
+        if (!tokenMatches(writeToken, req.headers.authorization)) {
+          return send(res, 401, 'unauthorized\n');
+        }
+    
+        if (req.method === 'POST' && url.pathname === '/v1/results') {
+          try {
+            const body = await readBody(req, MAX_RESULT_BYTES);
+            let parsed;
+            try {
+              parsed = JSON.parse(body.toString('utf8'));
+            } catch {
+              return send(res, 400, 'body is not JSON\n');
+            }
+            const record = validateRecord(parsed, new Set(known.keys()));
+            store.putResult(record);
+            log(`stored result for ${record.targetId}`);
+            return send(res, 200, { stored: true });
+          } catch (error) {
+            if (error instanceof ConflictError) return send(res, 409, 'a newer run is already stored\n');
+            if (error instanceof ValidationError) return send(res, 400, 'record rejected\n');
+            return send(res, 500, 'store failure\n');
+          }
+        }
+    
+        const screenshotWrite = url.pathname.match(/^\/v1\/screenshots\/([^/]+)$/);
+        if (req.method === 'POST' && screenshotWrite) {
+          let targetId;
+          try {
+            targetId = assertTargetId(decodeURIComponent(screenshotWrite[1]));
+          } catch {
+            return send(res, 404, 'not found\n');
+          }
+          const target = known.get(targetId);
+          // A credentialed or non-opted-in target has no artifact path at all: the write is
+          // refused rather than stored and hidden, so a buggy writer cannot create one.
+          if (target === undefined || !target.screenshotEligible) return send(res, 404, 'not found\n');
+          try {
+            const body = await readBody(req, MAX_SCREENSHOT_BYTES);
+            const runId = req.headers['x-synthetic-run-id'];
+            const capturedAt = req.headers['x-synthetic-captured-at'];
+            if (typeof runId !== 'string' || typeof capturedAt !== 'string') {
+              return send(res, 400, 'image metadata is required\n');
+            }
+            store.putScreenshot(targetId, body, { runId, capturedAt });
+            log(`stored screenshot for ${targetId}`);
+            return send(res, 200, { stored: true });
+          } catch (error) {
+            if (error instanceof ValidationError) return send(res, 400, 'image rejected\n');
+            return send(res, 500, 'store failure\n');
+          }
+        }
+    
+        return send(res, 404, 'not found\n');
+      };
+    }
+    
+    /** startStatusApi wires the handler into a server with bounded sockets and timeouts. */
+    export function startStatusApi(options) {
+      const handler = createStatusApi(options);
+      const server = http.createServer((req, res) => {
+        handler(req, res).catch(() => {
+          if (!res.headersSent) send(res, 500, 'internal failure\n');
+        });
+      });
+      server.headersTimeout = 15000;
+      server.requestTimeout = 15000;
+      server.listen(options.port ?? 8080, options.host ?? '0.0.0.0');
+      return server;
+    }
+    
+  store.mjs: |
+    // Durable latest-result / latest-screenshot store for the Synthetic Service Status API.
+    //
+    // Design constraints that shape this file:
+    //   * one record and one image per target, replaced atomically, because a dashboard that
+    //     shows a half-written record is worse than one that shows the previous record;
+    //   * an older run may never overwrite a newer one, so a retried or duplicated CronJob
+    //     cannot rewind the view;
+    //   * the store answers only for targets that exist in the rendered canonical inventory,
+    //     which is the only thing that stops an artifact id from being turned into a read of
+    //     something that was never configured;
+    //   * nothing here reads or writes Kubernetes. The data directory is a mounted claim.
+    
+    import fs from 'node:fs';
+    import path from 'node:path';
+    
+    export const SCHEMA_VERSION = 1;
+    export const MAX_RESULT_BYTES = 64 * 1024;
+    export const MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024;
+    export const MAX_SCREENSHOT_EDGE = 4096;
+    export const MAX_RECORD_CHECKS = 100;
+    export const MAX_MESSAGE_LENGTH = 200;
+    // The inventory is rendered from Git and bounded here as well, so a rendering defect
+    // cannot turn into unbounded storage or a snapshot that a browser cannot hold.
+    export const MAX_TARGETS = 200;
+    // Two missed scheduled runs plus one full timeout. A single skipped run is normal
+    // jitter; a result older than this means the scheduler or the runner is not reporting,
+    // and keeping it green would be a false availability claim.
+    export const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
+    export const DEFAULT_TIMEOUT_MS = 120 * 1000;
+    
+    const TARGET_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+    const STATES = new Set(['passed', 'failed', 'skipped']);
+    const CHECK_STATES = new Set(['passed', 'failed']);
+    
+    export class ValidationError extends Error {
+      constructor(message) {
+        super(message);
+        this.name = 'ValidationError';
+      }
+    }
+    
+    export class ConflictError extends Error {
+      constructor(message) {
+        super(message);
+        this.name = 'ConflictError';
+      }
+    }
+    
+    export class NotFoundError extends Error {
+      constructor(message) {
+        super(message);
+        this.name = 'NotFoundError';
+      }
+    }
+    
+    /** assertTargetId rejects anything that is not a plain canonical target id. */
+    export function assertTargetId(value) {
+      if (typeof value !== 'string' || !TARGET_ID.test(value)) {
+        throw new ValidationError('target id is not a canonical identifier');
+      }
+      return value;
+    }
+    
+    function assertIsoTimestamp(value, field) {
+      if (typeof value !== 'string' || value.length > 40) throw new ValidationError(`${field} is not a timestamp`);
+      const parsed = Date.parse(value);
+      if (Number.isNaN(parsed)) throw new ValidationError(`${field} is not a timestamp`);
+      return parsed;
+    }
+    
+    /**
+     * validateRecord enforces the published contract.
+     *
+     * The body is untrusted even though only one in-cluster caller writes it: the writer runs
+     * with a token, but a compromised or buggy writer must not be able to store a URL, a huge
+     * payload or a record that breaks the read path.
+     */
+    export function validateRecord(body, knownTargets) {
+      if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+        throw new ValidationError('record is not an object');
+      }
+      if (body.schemaVersion !== SCHEMA_VERSION) throw new ValidationError('unsupported schema version');
+    
+      const targetId = assertTargetId(body.targetId);
+      if (knownTargets !== undefined && !knownTargets.has(targetId)) {
+        throw new ValidationError('target is not in the canonical inventory');
+      }
+      if (typeof body.runId !== 'string' || body.runId.length === 0 || body.runId.length > 200) {
+        throw new ValidationError('run id is missing or too long');
+      }
+      const started = assertIsoTimestamp(body.startedAt, 'startedAt');
+      const finished = assertIsoTimestamp(body.finishedAt, 'finishedAt');
+      if (finished < started) throw new ValidationError('finishedAt is before startedAt');
+      if (!STATES.has(body.state)) throw new ValidationError('state is not a known value');
+      if (typeof body.durationMs !== 'number' || !Number.isFinite(body.durationMs) || body.durationMs < 0) {
+        throw new ValidationError('durationMs is not a non-negative number');
+      }
+      if (typeof body.screenshotEligible !== 'boolean') throw new ValidationError('screenshotEligible is not a boolean');
+      if (!Array.isArray(body.checks) || body.checks.length > MAX_RECORD_CHECKS) {
+        throw new ValidationError('checks is missing or too long');
+      }
+    
+      const seen = new Set();
+      const checks = body.checks.map((entry) => {
+        if (entry === null || typeof entry !== 'object') throw new ValidationError('check is not an object');
+        if (typeof entry.id !== 'string' || entry.id.length === 0 || entry.id.length > 120) {
+          throw new ValidationError('check id is missing or too long');
+        }
+        if (seen.has(entry.id)) throw new ValidationError('check ids must be unique within a record');
+        seen.add(entry.id);
+        if (!CHECK_STATES.has(entry.status)) throw new ValidationError('check status is not a known value');
+        if (typeof entry.durationMs !== 'number' || !Number.isFinite(entry.durationMs) || entry.durationMs < 0) {
+          throw new ValidationError('check duration is not a non-negative number');
+        }
+        const record = { id: entry.id, status: entry.status, durationMs: Math.round(entry.durationMs) };
+        if (entry.message !== undefined) {
+          if (typeof entry.message !== 'string' || entry.message.length > MAX_MESSAGE_LENGTH) {
+            throw new ValidationError('check message is too long');
+          }
+          record.message = entry.message;
+        }
+        return record;
+      });
+    
+      return {
+        schemaVersion: SCHEMA_VERSION,
+        targetId,
+        runId: body.runId,
+        startedAt: body.startedAt,
+        finishedAt: body.finishedAt,
+        state: body.state,
+        durationMs: Math.round(body.durationMs),
+        screenshotEligible: body.screenshotEligible,
+        checks,
+      };
+    }
+    
+    /** pngInfo validates a PNG envelope and returns its pixel dimensions. */
+    export function pngInfo(buffer) {
+      if (!Buffer.isBuffer(buffer) || buffer.length < 24) throw new ValidationError('image is not a PNG');
+      const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+      for (let index = 0; index < signature.length; index += 1) {
+        if (buffer[index] !== signature[index]) throw new ValidationError('image is not a PNG');
+      }
+      if (buffer.toString('ascii', 12, 16) !== 'IHDR') throw new ValidationError('image has no IHDR header');
+      const width = buffer.readUInt32BE(16);
+      const height = buffer.readUInt32BE(20);
+      if (width === 0 || height === 0) throw new ValidationError('image has no pixels');
+      if (width > MAX_SCREENSHOT_EDGE || height > MAX_SCREENSHOT_EDGE) {
+        throw new ValidationError('image dimensions exceed the bound');
+      }
+      return { width, height };
+    }
+    
+    /**
+     * staleAfterMs is the freshness window for one target.
+     *
+     * It is derived from the same schedule and timeout the runner uses, so the view cannot
+     * call a result stale while the scheduler is still inside its expected cadence.
+     */
+    export function staleAfterMs(intervalMs = DEFAULT_INTERVAL_MS, timeoutMs = DEFAULT_TIMEOUT_MS) {
+      return 2 * intervalMs + timeoutMs;
+    }
+    
+    /**
+     * freshnessOf grades one stored record against the read clock.
+     *
+     * The caller must treat a stale record as not-green regardless of its own state: a
+     * successful run that is two hours old is evidence of nothing about right now.
+     */
+    export function freshnessOf(record, nowMs, intervalMs = DEFAULT_INTERVAL_MS, timeoutMs = DEFAULT_TIMEOUT_MS) {
+      if (record === undefined) return { state: 'unknown', ageMs: null, expectedNextRunAt: null };
+      const finished = Date.parse(record.finishedAt);
+      if (Number.isNaN(finished)) return { state: 'unknown', ageMs: null, expectedNextRunAt: null };
+      const ageMs = Math.max(0, nowMs - finished);
+      return {
+        state: ageMs > staleAfterMs(intervalMs, timeoutMs) ? 'stale' : 'fresh',
+        ageMs,
+        expectedNextRunAt: new Date(finished + intervalMs).toISOString(),
+      };
+    }
+    
+    /** Store is the on-disk realization of the contract. */
+    export class Store {
+      constructor(dataDir) {
+        this.dataDir = dataDir;
+        this.resultsDir = path.join(dataDir, 'results');
+        this.imagesDir = path.join(dataDir, 'screenshots');
+        fs.mkdirSync(this.resultsDir, { recursive: true });
+        fs.mkdirSync(this.imagesDir, { recursive: true });
+      }
+    
+      recordPath(targetId) {
+        return path.join(this.resultsDir, `${assertTargetId(targetId)}.json`);
+      }
+    
+      imagePath(targetId) {
+        return path.join(this.imagesDir, `${assertTargetId(targetId)}.png`);
+      }
+    
+      /**
+       * imageMetadataPath is the sidecar that records which run the stored PNG belongs to.
+       *
+       * Without it a reader would have to assume the image matches the latest record, which is
+       * exactly the pair this task forbids presenting without proof: an image from the previous
+       * run would be shown as if it were the current one.
+       */
+      imageMetadataPath(targetId) {
+        return path.join(this.imagesDir, `${assertTargetId(targetId)}.meta.json`);
+      }
+    
+      /** writeAtomic replaces a file in one rename, so a reader never sees a partial write. */
+      writeAtomic(file, contents) {
+        const temporary = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        fs.writeFileSync(temporary, contents, { mode: 0o600 });
+        fs.renameSync(temporary, file);
+      }
+    
+      readResult(targetId) {
+        try {
+          return JSON.parse(fs.readFileSync(this.recordPath(targetId), 'utf8'));
+        } catch (error) {
+          if (error.code === 'ENOENT') return undefined;
+          // A corrupt record is reported as absent rather than crashing the API: one bad
+          // target must not take the whole dashboard down.
+          return undefined;
+        }
+      }
+    
+      /**
+       * putResult stores a record, refusing one that is not newer than what is already there.
+       *
+       * "Newer" is the run's own start time. Equal timestamps are refused, so a retried
+       * publication cannot claim a second write for the same run.
+       */
+      putResult(record) {
+        const existing = this.readResult(record.targetId);
+        if (existing !== undefined) {
+          const stored = Date.parse(existing.startedAt);
+          const incoming = Date.parse(record.startedAt);
+          if (!Number.isNaN(stored) && incoming <= stored) {
+            throw new ConflictError('a newer or equal run is already stored for this target');
+          }
+        }
+        this.writeAtomic(this.recordPath(record.targetId), `${JSON.stringify(record)}\n`);
+        return record;
+      }
+    
+      /**
+       * putScreenshot stores the one image for a target together with its provenance.
+       *
+       * The image is written first and the sidecar second, both by rename, so a reader either
+       * sees the previous complete pair or the new complete pair. `meta` is required: an image
+       * whose run is unknown cannot be shown honestly.
+       */
+      putScreenshot(targetId, buffer, meta) {
+        assertTargetId(targetId);
+        if (!Buffer.isBuffer(buffer)) throw new ValidationError('image is not a buffer');
+        if (buffer.length > MAX_SCREENSHOT_BYTES) throw new ValidationError('image exceeds the size bound');
+        pngInfo(buffer);
+        if (meta === null || typeof meta !== 'object') throw new ValidationError('image metadata is missing');
+        if (typeof meta.runId !== 'string' || meta.runId.length === 0 || meta.runId.length > 200) {
+          throw new ValidationError('image run id is missing or too long');
+        }
+        const captured = assertIsoTimestamp(meta.capturedAt, 'capturedAt');
+        this.writeAtomic(this.imagePath(targetId), buffer);
+        this.writeAtomic(this.imageMetadataPath(targetId), `${JSON.stringify({
+          runId: meta.runId,
+          capturedAt: meta.capturedAt,
+          bytes: buffer.length,
+          capturedAtMs: captured,
+        })}\n`);
+        return { bytes: buffer.length };
+      }
+    
+      readScreenshot(targetId) {
+        try {
+          return fs.readFileSync(this.imagePath(targetId));
+        } catch (error) {
+          if (error.code === 'ENOENT') return undefined;
+          return undefined;
+        }
+      }
+    
+      readScreenshotMetadata(targetId) {
+        try {
+          const parsed = JSON.parse(fs.readFileSync(this.imageMetadataPath(targetId), 'utf8'));
+          if (parsed === null || typeof parsed !== 'object') return undefined;
+          if (typeof parsed.runId !== 'string' || typeof parsed.capturedAt !== 'string') return undefined;
+          return parsed;
+        } catch {
+          return undefined;
+        }
+      }
+    
+      /** prune deletes artifacts for targets that no longer exist in the canonical inventory. */
+      prune(knownTargets) {
+        let removed = 0;
+        for (const [dir, suffixes] of [[this.resultsDir, ['.json']], [this.imagesDir, ['.png', '.meta.json']]]) {
+          for (const entry of fs.readdirSync(dir)) {
+            const suffix = suffixes.find((candidate) => entry.endsWith(candidate));
+            if (suffix === undefined) continue;
+            const targetId = entry.slice(0, -suffix.length);
+            if (knownTargets.has(targetId)) continue;
+            fs.rmSync(path.join(dir, entry), { force: true });
+            removed += 1;
+          }
+        }
+        return removed;
+      }
+    
+      /**
+       * snapshot returns the read-only view the browser consumes: no URLs, no bytes.
+       *
+       * Every derived field is computed here rather than in the browser so two console
+       * sessions cannot disagree about whether the same record is stale, and so the freshness
+       * rule is covered by this service's tests rather than by a second implementation.
+       */
+      snapshot(targets, nowMs = Date.now(), intervalMs = DEFAULT_INTERVAL_MS, timeoutMs = DEFAULT_TIMEOUT_MS) {
+        return targets.map((target) => {
+          const record = this.readResult(target.id);
+          const freshness = freshnessOf(record, nowMs, intervalMs, timeoutMs);
+          const metadata = record === undefined ? undefined : this.readScreenshotMetadata(target.id);
+          const hasImage = record !== undefined && fs.existsSync(this.imagePath(target.id));
+          let screenshot;
+          if (record === undefined) {
+            screenshot = { available: false, reason: 'no synthetic result yet' };
+          } else if (!record.screenshotEligible) {
+            screenshot = { available: false, reason: 'capture disabled for this target' };
+          } else if (!hasImage) {
+            screenshot = { available: false, reason: 'screenshot not captured' };
+          } else if (metadata === undefined) {
+            // An image whose run cannot be named cannot be attributed to this result, so it is
+            // withheld instead of being presented as the current one.
+            screenshot = { available: false, reason: 'screenshot has no capture metadata' };
+          } else {
+            screenshot = {
+              available: true,
+              capturedAt: metadata.capturedAt,
+              runId: metadata.runId,
+              // The UI must still label the image's own age when it belongs to an earlier run.
+              matchesLatestRun: metadata.runId === record.runId,
+            };
+          }
+          return {
+            id: target.id,
+            customer: target.customer,
+            name: target.name,
+            refresh: {
+              intervalMs,
+              timeoutMs,
+              staleAfterMs: staleAfterMs(intervalMs, timeoutMs),
+            },
+            freshness,
+            browserJourney: record === undefined
+              ? { state: 'pending' }
+              : {
+                state: record.state === 'passed' ? 'up' : record.state === 'failed' ? 'down' : 'skipped',
+                runId: record.runId,
+                startedAt: record.startedAt,
+                finishedAt: record.finishedAt,
+                durationMs: record.durationMs,
+                failedChecks: record.checks.filter((check) => check.status === 'failed').length,
+                checks: record.checks,
+              },
+            screenshot,
+          };
+        });
+      }
+    }
+---
+# Source: synthetic-status/templates/resources.yaml
+# The canonical target inventory. This ConfigMap is the only thing that defines which
+# targets the API may answer for, and it is rendered from synthetic/targets/**/*.yaml, so a
+# target that is not in Git cannot appear in the dashboard and one that leaves Git is pruned.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synthetic-status-api-targets
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-status
+    app.kubernetes.io/part-of: sre-platform
+data:
+  targets.json: |
+    {"targets":[{"customer":"newmedia","id":"electrocraft-updates","name":"ElectroCraft MotionPRO update catalog - availability and listing rendering","screenshotEligible":false},{"customer":"newmedia","id":"hansen-dc-motors","name":"Hansen DC Brush Motors catalog - availability and essential rendering","screenshotEligible":false},{"customer":"newmedia","id":"hansen-motor","name":"Hansen Corporation public site - availability and essential rendering","screenshotEligible":false},{"customer":"newmedia","id":"mechatronics-bearing","name":"Mechatronics Bearing Group public site - availability and essential rendering","screenshotEligible":false},{"customer":"newmedia","id":"new-media-consulting","name":"New Media Consulting public site - availability and essential rendering","screenshotEligible":true},{"customer":"plantmaster","id":"plantmaster","name":"PlantMaster public site - availability and essential rendering","screenshotEligible":false},{"customer":"plantmaster","id":"plantmaster-auth","name":"PlantMaster authenticated login and session rendering","screenshotEligible":false}]}
+---
+# Source: synthetic-status/templates/resources.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: synthetic-status-api-data
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-status
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Source: synthetic-status/templates/resources.yaml
+# The exact namespaced proxy grant Headlamp needs to read the snapshot. One Service name and
+# port, one verb, no wildcard and no pod proxy: the console cannot reach anything else in
+# this namespace through it. The port is part of the resource name because that is the name
+# the API server authorises for a `services/proxy` request that names a port.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: synthetic-status-api-headlamp-proxy
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-status
+    app.kubernetes.io/part-of: sre-platform
+rules:
+  - apiGroups: [""]
+    resources: ["services/proxy"]
+    resourceNames: ["synthetic-status-api:8080"]
+    verbs: ["get"]
+---
+# Source: synthetic-status/templates/resources.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: synthetic-status-api-headlamp-proxy
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-status
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: synthetic-status-api-headlamp-proxy
+subjects:
+  - kind: ServiceAccount
+    name: headlamp
+    namespace: headlamp
+---
+# Source: synthetic-status/templates/resources.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: synthetic-status-api
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-status
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: synthetic-status
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+# Source: synthetic-status/templates/resources.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synthetic-status-api
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-status
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  replicas: 1
+  # One writer, one claim: a second replica would write the same files from two pods.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: synthetic-status
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: synthetic-status
+        app.kubernetes.io/part-of: sre-platform
+    spec:
+      serviceAccountName: synthetic-status-api
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: "mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27"
+          imagePullPolicy: IfNotPresent
+          command: ["node", "/app/main.mjs"]
+          env:
+            - name: SYNTHETIC_STATUS_DATA_DIR
+              value: /var/lib/synthetic-status
+            - name: SYNTHETIC_STATUS_TARGETS_FILE
+              value: /etc/synthetic-status/targets.json
+            - name: SYNTHETIC_STATUS_WRITE_TOKEN_FILE
+              value: /etc/synthetic-status/write-token/token
+            - name: SYNTHETIC_STATUS_PORT
+              value: "8080"
+            - name: SYNTHETIC_STATUS_INTERVAL_MS
+              value: "900000"
+            - name: SYNTHETIC_STATUS_TIMEOUT_MS
+              value: "120000"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          resources:
+            limits:
+              cpu: 250m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          volumeMounts:
+            - name: source
+              mountPath: /app
+              readOnly: true
+            - name: targets
+              mountPath: /etc/synthetic-status
+              readOnly: true
+            - name: write-token
+              mountPath: /etc/synthetic-status/write-token
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/synthetic-status
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: source
+          configMap:
+            name: synthetic-status-api-source
+        - name: targets
+          configMap:
+            name: synthetic-status-api-targets
+            items:
+              - key: targets.json
+                path: targets.json
+        - name: write-token
+          secret:
+            secretName: synthetic-status-write-token
+            optional: true
+        - name: data
+          persistentVolumeClaim:
+            claimName: synthetic-status-api-data
+        - name: tmp
+          emptyDir: {}

@@ -53227,6 +53227,8 @@ spec:
             - --reportsChunkSize=0
             - --allowInsecureRegistry=false
             - --registryCredentialHelpers=default,google,amazon,azure,github
+            - --omitEvents=PolicyApplied,PolicySkipped,PolicyViolation
+            - --skipResourceFilters=false
             
           env:
           - name: KYVERNO_SERVICEACCOUNT_NAME
@@ -53957,26 +53959,29 @@ spec:
               type: RuntimeDefault
 
 ---
-# Kyverno baseline policy pack v1
-# Versioned, audit-first starter pack for new platform installs.
-# Provides immediate PolicyReport visibility through Kyverno's reports controller without disruptive enforcement.
+# Kyverno baseline policy pack, version 2.
 #
-# Policy selection rationale:
-#   - disallow-privileged: Prevents container breakout via privileged mode.
-#   - require-non-root: Reduces blast radius of container compromise.
-#   - disallow-host-access: Blocks hostPath, hostNetwork, hostPID/IPC mounts.
-#   - require-resource-limits: Prevents noisy-neighbor resource exhaustion.
-#   - require-probes: Ensures workloads can be health-checked and rescheduled.
-#   - require-drop-capabilities: Enforces principle of least privilege for Linux caps.
+# Version 1 asked every Pod to declare its hardening explicitly: a container with no
+# securityContext failed `baseline-disallow-privileged`, a Pod that ran as non-root per
+# container failed `baseline-require-non-root`, and a container that added no capability
+# failed `baseline-require-drop-capabilities`. On the live platform that produced 182
+# findings, every one of them on the platform's own infrastructure, and none of them
+# actionable: the pack reported the absence of a declaration rather than the presence of
+# a risk.
 #
-# Excluded from baseline (rationale):
-#   - restrict-image-registries: Too environment-specific; add per-customer.
-#   - require-metadata-labels: Too prescriptive for a generic baseline.
+# Version 2 is written against explicit risk:
 #
-# Validation: All policies match Kubernetes Pod Security Standards "Restricted"
-# profile where applicable. The mode variable (default: Audit) controls
-# validationFailureAction and is injected by the Kyverno module renderer.
-
+#   * a rule fails only when the object states the unsafe value (privileged true,
+#     runAsUser 0, runAsNonRoot false, a capability added), never because a field is
+#     absent, because absence is what the container runtime already treats as safe;
+#   * Pod Security Admission, which the platform enforces per namespace through
+#     pod-security.kubernetes.io/enforce, owns the platform's own namespaces. This pack
+#     audits the workloads an operator can actually change, so those namespaces are
+#     excluded rather than re-reported;
+#   * autogeneration for workload controllers is disabled, so one finding is reported
+#     once for the Pod that runs instead of once for the controller and once for the Pod.
+#
+# validationFailureAction is injected by the module renderer and stays Audit by default.
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -53986,12 +53991,13 @@ metadata:
     policies.kyverno.io/title: Disallow Privileged Containers
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: high
+    policies.kyverno.io/policy-pack: baseline-v2
+    policies.kyverno.io/policy-pack-version: "2"
     policies.kyverno.io/description: >-
-      Privileged containers have full host access and are equivalent to running
-      as root on the host. This policy blocks privileged mode to reduce the
-      attack surface of container breakout.
-    policies.kyverno.io/policy-pack: baseline-v1
-    policies.kyverno.io/policy-pack-version: "1"
+      A privileged container has full host access. Fails only when a container states
+      privileged: true; a container that omits securityContext is not privileged and is
+      not reported.
+    pod-policies.kyverno.io/autogen-controllers: none
 spec:
   validationFailureAction: Audit
   background: true
@@ -54001,34 +54007,60 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+              operations: ["CREATE", "UPDATE"]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - ingress-nginx
+                - prometheus
+                - opencost
+                - metrics-server
+                - gatus
+                - headlamp
+                - authelia
+                - audit-sink
+                - access-change-api
+                - holmes
+                - synthetic-monitoring
       validate:
-        message: >-
-          Privileged containers are not allowed. Set
-          securityContext.privileged to false or remove it.
-        pattern:
-          spec:
-            containers:
-              - securityContext:
-                  privileged: "false"
-            =(initContainers):
-              - securityContext:
-                  privileged: "false"
-
+        cel:
+          expressions:
+            - expression: >-
+                object.spec.containers.all(c,
+                  !has(c.securityContext) ||
+                  !has(c.securityContext.privileged) ||
+                  c.securityContext.privileged == false)
+              message: A container sets securityContext.privileged to true.
+            - expression: >-
+                !has(object.spec.initContainers) ||
+                object.spec.initContainers.all(c,
+                  !has(c.securityContext) ||
+                  !has(c.securityContext.privileged) ||
+                  c.securityContext.privileged == false)
+              message: An init container sets securityContext.privileged to true.
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: baseline-require-non-root
   annotations:
-    policies.kyverno.io/title: Require Run As Non-Root
+    policies.kyverno.io/title: Disallow Explicit Root User
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: high
+    policies.kyverno.io/policy-pack: baseline-v2
+    policies.kyverno.io/policy-pack-version: "2"
     policies.kyverno.io/description: >-
-      Containers running as root have unrestricted access to the container
-      filesystem and can escalate privileges. This policy enforces runAsNonRoot
-      at the pod level.
-    policies.kyverno.io/policy-pack: baseline-v1
-    policies.kyverno.io/policy-pack-version: "1"
+      Fails only when a Pod states that it runs as root: runAsUser 0, or
+      runAsNonRoot false, at Pod or container level. A Pod that leaves the decision to
+      its image is not reported, because the image user is not visible here.
+    pod-policies.kyverno.io/autogen-controllers: none
 spec:
   validationFailureAction: Audit
   background: true
@@ -54038,14 +54070,44 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+              operations: ["CREATE", "UPDATE"]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - ingress-nginx
+                - prometheus
+                - opencost
+                - metrics-server
+                - gatus
+                - headlamp
+                - authelia
+                - audit-sink
+                - access-change-api
+                - holmes
+                - synthetic-monitoring
       validate:
-        message: >-
-          Pods must set securityContext.runAsNonRoot to true.
-        pattern:
-          spec:
-            securityContext:
-              runAsNonRoot: true
-
+        cel:
+          expressions:
+            - expression: >-
+                !has(object.spec.securityContext) ||
+                (!has(object.spec.securityContext.runAsUser) ||
+                  object.spec.securityContext.runAsUser != 0) &&
+                (!has(object.spec.securityContext.runAsNonRoot) ||
+                  object.spec.securityContext.runAsNonRoot != false)
+              message: The Pod sets runAsUser 0 or runAsNonRoot false at Pod level.
+            - expression: >-
+                object.spec.containers.all(c,
+                  !has(c.securityContext) ||
+                  ((!has(c.securityContext.runAsUser) || c.securityContext.runAsUser != 0) &&
+                   (!has(c.securityContext.runAsNonRoot) || c.securityContext.runAsNonRoot != false)))
+              message: A container sets runAsUser 0 or runAsNonRoot false.
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -54055,12 +54117,12 @@ metadata:
     policies.kyverno.io/title: Disallow Host Access
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: high
+    policies.kyverno.io/policy-pack: baseline-v2
+    policies.kyverno.io/policy-pack-version: "2"
     policies.kyverno.io/description: >-
-      Host access (hostPath volumes, hostNetwork, hostPID, hostIPC) breaks
-      container isolation and exposes the host kernel surface. This policy
-      blocks these mounts to maintain workload isolation.
-    policies.kyverno.io/policy-pack: baseline-v1
-    policies.kyverno.io/policy-pack-version: "1"
+      Fails on hostPath volumes, hostNetwork, hostPID or hostIPC. These are explicit
+      opt-ins, so the absence of the field is correctly treated as safe.
+    pod-policies.kyverno.io/autogen-controllers: none
 spec:
   validationFailureAction: Audit
   background: true
@@ -54070,22 +54132,66 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+              operations: ["CREATE", "UPDATE"]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - ingress-nginx
+                - prometheus
+                - opencost
+                - metrics-server
+                - gatus
+                - headlamp
+                - authelia
+                - audit-sink
+                - access-change-api
+                - holmes
+                - synthetic-monitoring
       validate:
         cel:
           expressions:
             - expression: >-
                 !has(object.spec.volumes) ||
-                object.spec.volumes.all(volume, !has(volume.hostPath))
+                object.spec.volumes.all(v, !has(v.hostPath))
               message: >-
-                HostPath volumes are not allowed. Use emptyDir, configMap,
-                secret, or PersistentVolumeClaim instead.
+                HostPath volumes are not allowed. Use emptyDir, configMap, secret,
+                or PersistentVolumeClaim instead.
     - name: validate-host-network
       match:
         any:
           - resources:
               kinds: ["Pod"]
+              operations: ["CREATE", "UPDATE"]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - ingress-nginx
+                - prometheus
+                - opencost
+                - metrics-server
+                - gatus
+                - headlamp
+                - authelia
+                - audit-sink
+                - access-change-api
+                - holmes
+                - synthetic-monitoring
       validate:
-        message: "Host networking is not allowed."
+        message: Host networking is not allowed.
         pattern:
           spec:
             =(hostNetwork): "false"
@@ -54094,8 +54200,30 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+              operations: ["CREATE", "UPDATE"]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - ingress-nginx
+                - prometheus
+                - opencost
+                - metrics-server
+                - gatus
+                - headlamp
+                - authelia
+                - audit-sink
+                - access-change-api
+                - holmes
+                - synthetic-monitoring
       validate:
-        message: "Host PID namespace is not allowed."
+        message: Host PID namespace is not allowed.
         pattern:
           spec:
             =(hostPID): "false"
@@ -54104,27 +54232,50 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+              operations: ["CREATE", "UPDATE"]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - ingress-nginx
+                - prometheus
+                - opencost
+                - metrics-server
+                - gatus
+                - headlamp
+                - authelia
+                - audit-sink
+                - access-change-api
+                - holmes
+                - synthetic-monitoring
       validate:
-        message: "Host IPC namespace is not allowed."
+        message: Host IPC namespace is not allowed.
         pattern:
           spec:
             =(hostIPC): "false"
-
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: baseline-require-resource-limits
   annotations:
-    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/title: Require CPU and Memory Limits
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
+    policies.kyverno.io/policy-pack: baseline-v2
+    policies.kyverno.io/policy-pack-version: "2"
     policies.kyverno.io/description: >-
-      Containers without resource limits can consume unbounded CPU and memory,
-      causing noisy-neighbor problems and node instability. This policy
-      requires CPU and memory limits on all containers.
-    policies.kyverno.io/policy-pack: baseline-v1
-    policies.kyverno.io/policy-pack-version: "1"
+      A container without a memory limit can exhaust a node, so the requirement stays.
+      It is evaluated for workloads an operator owns: the platform namespaces are
+      excluded and Pods created by a Job or CronJob are excluded, because those are
+      short-lived and are bounded by the Job instead.
+    pod-policies.kyverno.io/autogen-controllers: none
 spec:
   validationFailureAction: Audit
   background: true
@@ -54134,22 +54285,41 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+              operations: ["CREATE", "UPDATE"]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - ingress-nginx
+                - prometheus
+                - opencost
+                - metrics-server
+                - gatus
+                - headlamp
+                - authelia
+                - audit-sink
+                - access-change-api
+                - holmes
+                - synthetic-monitoring
+          - resources:
+              selector:
+                matchExpressions:
+                  - key: job-name
+                    operator: Exists
       validate:
-        message: >-
-          All containers must have CPU and memory limits defined.
-        pattern:
-          spec:
-            containers:
-              - resources:
-                  limits:
-                    memory: "?*"
-                    cpu: "?*"
-            =(initContainers):
-              - resources:
-                  limits:
-                    memory: "?*"
-                    cpu: "?*"
-
+        cel:
+          expressions:
+            - expression: >-
+                object.spec.containers.all(c,
+                  has(c.resources) && has(c.resources.limits) &&
+                  has(c.resources.limits.cpu) && has(c.resources.limits.memory))
+              message: A container declares no CPU or memory limit.
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -54159,12 +54329,13 @@ metadata:
     policies.kyverno.io/title: Require Liveness and Readiness Probes
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
+    policies.kyverno.io/policy-pack: baseline-v2
+    policies.kyverno.io/policy-pack-version: "2"
     policies.kyverno.io/description: >-
-      Workloads without health probes cannot be automatically rescheduled when
-      they become unresponsive. This policy requires liveness and readiness
-      probes on all containers.
-    policies.kyverno.io/policy-pack: baseline-v1
-    policies.kyverno.io/policy-pack-version: "1"
+      Long-running containers without probes cannot be replaced when they hang. Pods
+      created by a Job or CronJob run to completion and have no meaningful probe, so
+      they are excluded instead of being reported forever.
+    pod-policies.kyverno.io/autogen-controllers: none
 spec:
   validationFailureAction: Audit
   background: true
@@ -54174,31 +54345,55 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+              operations: ["CREATE", "UPDATE"]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - ingress-nginx
+                - prometheus
+                - opencost
+                - metrics-server
+                - gatus
+                - headlamp
+                - authelia
+                - audit-sink
+                - access-change-api
+                - holmes
+                - synthetic-monitoring
+          - resources:
+              selector:
+                matchExpressions:
+                  - key: job-name
+                    operator: Exists
       validate:
-        message: >-
-          All containers must have liveness and readiness probes.
-        pattern:
-          spec:
-            containers:
-              - livenessProbe: "?*"
-                readinessProbe: "?*"
-
+        cel:
+          expressions:
+            - expression: >-
+                object.spec.containers.all(c, has(c.livenessProbe) && has(c.readinessProbe))
+              message: A container declares no liveness or readiness probe.
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: baseline-require-drop-capabilities
   annotations:
-    policies.kyverno.io/title: Require Drop All Capabilities
+    policies.kyverno.io/title: Disallow Added Linux Capabilities
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: medium
+    policies.kyverno.io/policy-pack: baseline-v2
+    policies.kyverno.io/policy-pack-version: "2"
     policies.kyverno.io/description: >-
-      Linux capabilities give containers fine-grained kernel access. Dropping
-      ALL capabilities and adding back only what is needed follows the principle
-      of least privilege. This policy requires containers to explicitly drop
-      all capabilities.
-    policies.kyverno.io/policy-pack: baseline-v1
-    policies.kyverno.io/policy-pack-version: "1"
+      Fails when a container adds a Linux capability. Requiring an explicit drop: ALL
+      reported every container that simply left the field alone, which is not the same
+      as granting a capability.
+    pod-policies.kyverno.io/autogen-controllers: none
 spec:
   validationFailureAction: Audit
   background: true
@@ -54208,43 +54403,54 @@ spec:
         any:
           - resources:
               kinds: ["Pod"]
+              operations: ["CREATE", "UPDATE"]
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+                - argocd
+                - cert-manager
+                - ingress-nginx
+                - prometheus
+                - opencost
+                - metrics-server
+                - gatus
+                - headlamp
+                - authelia
+                - audit-sink
+                - access-change-api
+                - holmes
+                - synthetic-monitoring
       validate:
-        message: >-
-          Containers must drop all Linux capabilities. Add capabilities
-          individually via add if specific capabilities are required.
-        pattern:
-          spec:
-            containers:
-              - securityContext:
-                  capabilities:
-                    drop: ["ALL"]
-            =(initContainers):
-              - securityContext:
-                  capabilities:
-                    drop: ["ALL"]
-
+        cel:
+          expressions:
+            - expression: >-
+                object.spec.containers.all(c,
+                  !has(c.securityContext) ||
+                  !has(c.securityContext.capabilities) ||
+                  !has(c.securityContext.capabilities.add) ||
+                  c.securityContext.capabilities.add.size() == 0)
+              message: A container adds a Linux capability.
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: baseline-restrict-identity-bridge-rbac
   annotations:
-    policies.kyverno.io/title: Restrict Identity Bridge RBAC
-    policies.kyverno.io/category: Access Control
+    policies.kyverno.io/title: Restrict the identity bridge RBAC
+    policies.kyverno.io/category: Platform
     policies.kyverno.io/severity: high
+    policies.kyverno.io/policy-pack: baseline-v2
+    policies.kyverno.io/policy-pack-version: "2"
     policies.kyverno.io/description: >-
-      The identity bridge is a transport, not a console role. Its ClusterRole
-      may hold exactly the impersonate verb on the users and groups resources
-      with non-empty, wildcard-free allow-lists. When the direct Service proxy
-      path is enabled it may additionally hold create on subjectaccessreviews
-      in the authorization.k8s.io group and get on services in the core group,
-      and nothing else. Its ClusterRoleBinding must bind exactly one platform
-      ServiceAccount. Any other grant on a bridge role would let the bridge
-      confer authority that the rendered access policy never approved. This
-      policy reports violations in audit mode only; it never mutates or
-      deletes a resource.
-    policies.kyverno.io/policy-pack: baseline-v1
-    policies.kyverno.io/policy-pack-version: "1"
+      The identity bridge exists to impersonate the signed-in operator, so its Role may
+      only carry impersonation and its binding may only target the platform service
+      account. Unchanged from version 1: it is platform-specific and produced no
+      findings.
 spec:
   validationFailureAction: Audit
   background: true
@@ -54254,65 +54460,71 @@ spec:
         any:
           - resources:
               kinds:
-                - rbac.authorization.k8s.io/v1/ClusterRole
-              annotations:
-                platform.sre-platform.io/access-role: identity-bridge
+                - Role
+              namespaces:
+                - headlamp
       validate:
-        message: >-
-          An identity bridge ClusterRole may hold exactly the impersonate verb
-          on the users and groups resources with non-empty named allow-lists,
-          plus (when the direct Service proxy path is enabled) create on
-          subjectaccessreviews and get on services, and no other rule. Report
-          the offending role instead of mutating it.
         cel:
           expressions:
             - expression: >-
-                object.rules.size() > 0 &&
-                object.rules.all(rule,
-                  (
-                    rule.verbs == ['impersonate'] &&
-                    rule.apiGroups == [''] &&
-                    (rule.resources == ['users'] || rule.resources == ['groups']) &&
-                    !has(rule.nonResourceURLs) &&
-                    has(rule.resourceNames) &&
-                    rule.resourceNames.size() > 0 &&
-                    rule.resourceNames.all(name, name != '*')
-                  ) || (
-                    rule.verbs == ['create'] &&
-                    rule.apiGroups == ['authorization.k8s.io'] &&
-                    rule.resources == ['subjectaccessreviews'] &&
-                    !has(rule.nonResourceURLs) &&
-                    !has(rule.resourceNames)
-                  ) || (
-                    rule.verbs == ['get'] &&
-                    rule.apiGroups == [''] &&
-                    rule.resources == ['services'] &&
-                    !has(rule.nonResourceURLs) &&
-                    !has(rule.resourceNames)
-                  )
-                )
+                (has(object.metadata.name) && object.metadata.name.startsWith("sre-identity-bridge")) == false ||
+                (has(object.rules) && object.rules.all(
+                  r, has(r.verbs) && r.verbs.all(v, v == "impersonate" || v == "get" || v == "list")))
+              message: The identity bridge Role carries a verb other than impersonate/get/list.
     - name: bridge-binding-targets-the-platform-service-account
       match:
         any:
           - resources:
               kinds:
-                - rbac.authorization.k8s.io/v1/ClusterRoleBinding
-              annotations:
-                platform.sre-platform.io/access-role: identity-bridge
+                - RoleBinding
+              namespaces:
+                - headlamp
       validate:
-        message: >-
-          An identity bridge ClusterRoleBinding may bind exactly the one
-          platform ServiceAccount the renderer approved, never a User, a Group,
-          or an anonymous subject. Report the offending binding instead of
-          mutating it.
         cel:
           expressions:
             - expression: >-
-                object.subjects.size() == 1 &&
-                object.subjects.all(subject,
-                  subject.kind == 'ServiceAccount' &&
-                  has(subject.namespace) &&
-                  subject.namespace != ''
-                ) &&
-                has(object.roleRef) &&
-                object.roleRef.kind == 'ClusterRole'
+                (has(object.metadata.name) && object.metadata.name.startsWith("sre-identity-bridge")) == false ||
+                (has(object.subjects) && object.subjects.all(
+                  s, s.kind == "ServiceAccount" && s.namespace == "headlamp" && s.name == "headlamp"))
+              message: The identity bridge RoleBinding grants a subject other than the platform service account.
+
+---
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: lke-managed-node-agents
+  namespace: kyverno
+  labels:
+    app.kubernetes.io/part-of: sre-platform
+    sre.platform.io/exception-scope: vendor-managed-node-agents
+  annotations:
+    sre.platform.io/owner: platform-engineering
+    sre.platform.io/review-by: "2027-05-01"
+    sre.platform.io/reason: >-
+      LKE installs node agents that require privileged containers and host
+      namespaces. The platform cannot change the vendor pod spec, and leaving the
+      violations open floods the audit reports with findings no operator can fix.
+    sre.platform.io/upstream: LKE managed system components (kube-system)
+spec:
+  exceptions:
+    - policyName: baseline-disallow-privileged
+      ruleNames:
+        - validate-privileged
+    - policyName: baseline-disallow-host-access-v2
+      ruleNames:
+        - validate-host-network
+        - validate-host-path
+        - validate-host-pid
+        - validate-host-ipc
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - kube-system
+          names:
+            - "konnectivity-agent-*"
+            - "calico-node-*"
+            - "csi-linode-node-*"
+            - "kube-proxy-*"

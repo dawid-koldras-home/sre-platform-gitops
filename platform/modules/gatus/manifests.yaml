@@ -31,7 +31,7 @@ data:
       conditions:
       - '[STATUS] == 200'
       group: Platform
-      interval: 2m
+      interval: 1m
       method: GET
       name: Argo CD
       url: http://argocd.172.104.244.94.nip.io/
@@ -39,7 +39,7 @@ data:
       conditions:
       - '[STATUS] == 200'
       group: Identity
-      interval: 2m
+      interval: 1m
       method: GET
       name: Authelia
       url: https://auth.172.104.244.94.nip.io/
@@ -47,7 +47,7 @@ data:
       conditions:
       - '[STATUS] == 200'
       group: Platform
-      interval: 2m
+      interval: 1m
       method: GET
       name: Headlamp backend health
       url: http://headlamp.headlamp.svc.cluster.local/
@@ -55,7 +55,7 @@ data:
       conditions:
       - '[STATUS] == 200'
       group: Platform
-      interval: 2m
+      interval: 1m
       method: GET
       name: Headlamp public route
       url: https://headlamp.172.104.244.94.nip.io/
@@ -63,7 +63,7 @@ data:
       conditions:
       - '[STATUS] == 200'
       group: Secrets
-      interval: 2m
+      interval: 1m
       method: GET
       name: OpenBao API
       url: https://openbao.172.104.244.94.nip.io/v1/sys/health
@@ -71,7 +71,7 @@ data:
       conditions:
       - '[STATUS] == 200'
       group: Security
-      interval: 2m
+      interval: 1m
       method: GET
       name: Policy Reporter UI
       url: http://policy-reporter.172.104.244.94.nip.io/
@@ -129,7 +129,7 @@ spec:
         app.kubernetes.io/name: gatus
         app.kubernetes.io/instance: gatus
       annotations:
-        checksum/config: 7c3565be9e307d7bd18746d136f0e611a4f568cf05a63801afa58a6523625261
+        checksum/config: 556ec514526d6c0ac0a53590ff21c284b8f6e5b2a9ea156e40027aaa1058311e
     spec:
       
       serviceAccountName: gatus

@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:84e9b06fb7bb3a7da476069cb9d6f000f5fd03ce65e9a43a58f87e47c6b3348b"
+        sre.platform.io/config-checksum: "sha256:7d9d96323442a4b809876bff84b16fb952f03dac691f4fa31164701642c8a6dc"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -508,35 +508,35 @@ data:
             - allowInsecureHttp: true
               group: Platform
               id: argo-cd
-              interval: 2m
+              interval: 1m
               name: Argo CD
               url: http://argocd.172.104.244.94.nip.io/
             - group: Identity
               id: authelia
-              interval: 2m
+              interval: 1m
               name: Authelia
               url: https://auth.172.104.244.94.nip.io/
             - allowClusterInternal: true
               allowInsecureHttp: true
               group: Platform
               id: headlamp-backend-health
-              interval: 2m
+              interval: 1m
               name: Headlamp backend health
               url: http://headlamp.headlamp.svc.cluster.local/
             - group: Platform
               id: headlamp-public-route
-              interval: 2m
+              interval: 1m
               name: Headlamp public route
               url: https://headlamp.172.104.244.94.nip.io/
             - group: Secrets
               id: openbao-api
-              interval: 2m
+              interval: 1m
               name: OpenBao API
               url: https://openbao.172.104.244.94.nip.io/v1/sys/health
             - allowInsecureHttp: true
               group: Security
               id: policy-reporter-ui
-              interval: 2m
+              interval: 1m
               name: Policy Reporter UI
               url: http://policy-reporter.172.104.244.94.nip.io/
           enabled: true
