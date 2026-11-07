@@ -53222,7 +53222,7 @@ spec:
             - --maxAPICallResponseLength=2000000
             - --loggingFormat=text
             - --v=2
-- --omitEvents=PolicyApplied,PolicySkipped,PolicyViolation
+            - --omitEvents=PolicyApplied,PolicySkipped
             - --enablePolicyException=true
             - --reportsChunkSize=0
             - --allowInsecureRegistry=false
@@ -54316,43 +54316,3 @@ spec:
                 ) &&
                 has(object.roleRef) &&
                 object.roleRef.kind == 'ClusterRole'
----
-apiVersion: kyverno.io/v2
-kind: PolicyException
-metadata:
-  name: lke-managed-node-agents
-  namespace: kyverno
-  labels:
-    app.kubernetes.io/part-of: sre-platform
-    sre.platform.io/exception-scope: vendor-managed-node-agents
-  annotations:
-    sre.platform.io/owner: platform-engineering
-    sre.platform.io/review-by: "2027-05-01"
-    sre.platform.io/reason: >-
-      LKE installs node agents that require privileged containers and host
-      namespaces. The platform cannot change the vendor pod spec, and leaving the
-      violations open floods the audit reports with findings no operator can fix.
-    sre.platform.io/upstream: LKE managed system components (kube-system)
-spec:
-  exceptions:
-    - policyName: baseline-disallow-privileged
-      ruleNames:
-        - validate-privileged
-    - policyName: baseline-disallow-host-access-v2
-      ruleNames:
-        - validate-host-network
-        - validate-host-path
-        - validate-host-pid
-        - validate-host-ipc
-  match:
-    any:
-      - resources:
-          kinds:
-            - Pod
-          namespaces:
-            - kube-system
-          names:
-            - "konnectivity-agent-*"
-            - "calico-node-*"
-            - "csi-linode-node-*"
-            - "kube-proxy-*"
