@@ -53216,7 +53216,7 @@ spec:
             - --backgroundScan=true
             - --backgroundScanWorkers=2
             - --backgroundScanInterval=1h
-            - --skipResourceFilters=false
+            - --skipResourceFilters=true
             - --enableConfigMapCaching=true
             - --enableDeferredLoading=true
             - --maxAPICallResponseLength=2000000
