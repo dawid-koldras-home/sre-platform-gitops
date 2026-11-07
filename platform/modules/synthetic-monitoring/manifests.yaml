@@ -16,7 +16,7 @@ data:
             "nodemailer": "10.0.9",
             "tsx": "4.23.13",
             "yaml": "2.9.1",
-            "zod": "4.6.2"
+            "zod": "4.6.6"
           },
           "devDependencies": {
             "@types/node": "22.20.2",
@@ -974,9 +974,9 @@ data:
           }
         },
         "node_modules/zod": {
-          "version": "4.6.2",
-          "resolved": "https://registry.npmjs.org/zod/-/zod-4.6.2.tgz",
-          "integrity": "sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ==",
+          "version": "4.6.6",
+          "resolved": "https://registry.npmjs.org/zod/-/zod-4.6.6.tgz",
+          "integrity": "sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==",
           "license": "MIT",
           "funding": {
             "url": "https://github.com/sponsors/colinhacks"
@@ -1007,7 +1007,7 @@ data:
         "nodemailer": "10.0.9",
         "tsx": "4.23.13",
         "yaml": "2.9.1",
-        "zod": "4.6.2"
+        "zod": "4.6.6"
       },
       "devDependencies": {
         "@types/node": "22.20.2",
@@ -1204,6 +1204,13 @@ data:
     // bases/cronjob.yaml). Local/CI runs keep the default artifact behavior.
     export const NO_ARTIFACTS_ENV = 'SYNTHETIC_NO_ARTIFACTS';
 
+    // Status capture is deliberately separate from the evidence artifacts above. The flag
+    // exists so a scheduled run does not accumulate debugging screenshots and trace zips; a
+    // status capture is the single bounded image the operator-facing dashboard shows, and it
+    // is bounded by target opt-in, size and dimensions rather than by run mode.
+    export const STATUS_CAPTURE_DIR = '.status-artifacts';
+    export const STATUS_SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
+
     export function noArtifactsEnabled(): boolean {
       return process.env[NO_ARTIFACTS_ENV] === '1';
     }
@@ -1238,6 +1245,69 @@ data:
 
     export function failureScreenshotPath(outputDir: string, targetId: string): string {
       return path.join(evidenceDirFor(outputDir, targetId), 'failure.png');
+    }
+
+    /**
+     * statusScreenshotEligible reports whether this target may contribute a status image.
+     *
+     * Two conditions, both required: the target must be anonymous (a credentialed page can
+     * never be captured for a status artifact, whatever it configures), and the target must opt
+     * in explicitly. Absence of the field means no capture. The resolver, this runner and the
+     * status API all apply the same rule, so editing only one of them cannot create an image.
+     */
+    export function statusScreenshotEligible(target: Target): boolean {
+      const optedIn = (target as { statusScreenshot?: boolean }).statusScreenshot === true;
+      return optedIn && target.auth.mode === 'anonymous';
+    }
+
+    export function statusCaptureDir(outputDir: string): string {
+      return path.join(outputDir, STATUS_CAPTURE_DIR);
+    }
+
+    export function statusScreenshotPath(outputDir: string, targetId: string): string {
+      return path.join(statusCaptureDir(outputDir), `${targetId}.png`);
+    }
+
+    export function statusScreenshotMetaPath(outputDir: string, targetId: string): string {
+      return path.join(statusCaptureDir(outputDir), `${targetId}.json`);
+    }
+
+    export interface StatusCapture {
+      targetId: string;
+      path: string;
+      capturedAt: string;
+    }
+
+    /**
+     * readStatusCaptures collects the captures written by this run.
+     *
+     * A capture without its provenance sidecar is skipped rather than guessed at: the status
+     * API requires a capture time and refuses an image it cannot attribute, so uploading an
+     * unattributed file could only ever produce a rejected write.
+     */
+    export function readStatusCaptures(outputDir: string): StatusCapture[] {
+      const dir = statusCaptureDir(outputDir);
+      let entries: string[];
+      try {
+        entries = fs.readdirSync(dir);
+      } catch {
+        return [];
+      }
+      const captures: StatusCapture[] = [];
+      for (const entry of entries) {
+        if (!entry.endsWith('.png')) continue;
+        const targetId = entry.slice(0, -'.png'.length);
+        try {
+          const meta = JSON.parse(fs.readFileSync(statusScreenshotMetaPath(outputDir, targetId), 'utf8')) as {
+            capturedAt?: string;
+          };
+          if (typeof meta.capturedAt !== 'string' || Number.isNaN(Date.parse(meta.capturedAt))) continue;
+          captures.push({ targetId, path: path.join(dir, entry), capturedAt: meta.capturedAt });
+        } catch {
+          continue;
+        }
+      }
+      return captures.sort((left, right) => left.targetId.localeCompare(right.targetId));
     }
   runner.email.ts: |-
     import fs from 'node:fs';
@@ -1377,11 +1447,12 @@ data:
     import fs from 'node:fs';
     import path from 'node:path';
     import { build } from 'esbuild';
-    import { cleanDir, ensureDir } from './artifacts';
+    import { cleanDir, ensureDir, readStatusCaptures } from './artifacts';
     import { loadTargetsOrFail, filterTargetsById, unknownTargetIds, targetsDirectory } from './loader';
     import { writeLock } from './lock';
     import { checkTargetSecrets } from './secrets';
     import { sendFailureNotifications } from './email';
+    import { publishRunStatus } from './statuspublish';
     import { sendNtfyNotifications } from './ntfy';
     import { sendSlackUnifiedAlerts } from './slack';
     import { COMPILED_DIR, ENV_LOCK_FILE, ENV_OUTPUT_DIR, LOCK_FILE_NAME, type Target } from './schema';
@@ -1520,6 +1591,20 @@ data:
       const output = result.stdout ?? '';
       process.stdout.write(output);
       const status = result.status ?? 1;
+      // Publish the sanitized latest result for every target that ran. This is deliberately
+      // best-effort and independent of notifications: a status store that is unavailable must
+      // never turn a passing check into a failing one, and it must not suppress an alert.
+      try {
+        const outcome = await publishRunStatus(output, targets, undefined, readStatusCaptures(args.outputDir));
+        if (outcome !== undefined) {
+          if (outcome.published > 0) console.log(`[status] published ${outcome.published} target result(s)`);
+          if (outcome.failed > 0) {
+            console.warn('[status] some target results were not published; the dashboard reports them as STALE or UNAVAILABLE');
+          }
+        }
+      } catch {
+        console.warn('[status] status publication unavailable; the dashboard reports affected targets as STALE or UNAVAILABLE');
+      }
       try {
         const sent = await sendFailureNotifications(output, status !== 0);
         if (sent > 0) console.log(`[notification] sent ${sent} failure email(s)`);
@@ -1585,7 +1670,17 @@ data:
     import type { Browser, Page, TestInfo } from '@playwright/test';
     import { runActions } from './actions';
     import { checkAttachmentName, formatCheckResult } from './jsonreporter';
-    import { ensureDir, evidenceDirFor, failureScreenshotPath, maskSelectorsFor, noArtifactsEnabled } from './artifacts';
+    import {
+      STATUS_SCREENSHOT_MAX_BYTES,
+      ensureDir,
+      evidenceDirFor,
+      failureScreenshotPath,
+      maskSelectorsFor,
+      noArtifactsEnabled,
+      statusScreenshotEligible,
+      statusScreenshotMetaPath,
+      statusScreenshotPath,
+    } from './artifacts';
     import { resolveLocator } from './locators';
     import { COMPILED_DIR, isCredentialed, type Target } from './schema';
     import { checkTargetSecrets } from './secrets';
@@ -1625,6 +1720,50 @@ data:
 
     function maskLocators(page: Page, target: Target) {
       return maskSelectorsFor(target).map((raw) => resolveLocator(page, raw));
+    }
+
+    /**
+     * captureStatusScreenshot writes the one bounded image the Service Status view may show.
+     *
+     * The capture is a viewport image rather than a full-page one: a full-page screenshot of a
+     * long page can exceed the artifact bound, and the dashboard needs a recognisable page, not
+     * an arbitrarily tall one. It is never produced for a credentialed target, it never changes
+     * the run's outcome, and it is captured for a failing run too - the failing state is exactly
+     * when an operator most needs to see what the page looked like.
+     *
+     * Provenance is written next to the file because the status API refuses an image it cannot
+     * attribute to a capture time, and a stale image next to a newer result is the one pair the
+     * view must never present as current.
+     */
+    async function captureStatusScreenshot(page: Page, target: Target, outputDir: string): Promise<void> {
+      if (!statusScreenshotEligible(target)) {
+        return;
+      }
+      try {
+        const file = statusScreenshotPath(outputDir, target.id);
+        ensureDir(path.dirname(file));
+        await page.screenshot({
+          path: file,
+          fullPage: false,
+          animations: 'disabled',
+          caret: 'hide',
+          mask: maskLocators(page, target),
+          timeout: 15000,
+        });
+        const bytes = fs.statSync(file).size;
+        if (bytes > STATUS_SCREENSHOT_MAX_BYTES) {
+          // Oversized images are dropped rather than uploaded: the API would refuse them and a
+          // silent rejection is worse than an honest "screenshot not captured".
+          fs.rmSync(file, { force: true });
+          return;
+        }
+        fs.writeFileSync(
+          statusScreenshotMetaPath(outputDir, target.id),
+          `${JSON.stringify({ capturedAt: new Date().toISOString(), bytes })}\n`,
+        );
+      } catch {
+        // A capture failure must never fail the monitoring result.
+      }
     }
 
     export async function runTargetJourney(args: {
@@ -1699,6 +1838,9 @@ data:
           if (traceAllowed) {
             await context.tracing.stop();
           }
+          // Captured after the run has settled and before the context closes, for a passing run
+          // and for a failing one.
+          await captureStatusScreenshot(pageRef.current, target, outputDir);
           return { status: 'passed' };
         } catch (err) {
           lastError = err instanceof Error ? err : new Error(String(err));
@@ -1736,6 +1878,9 @@ data:
           } catch {
             // screenshot artifacts are best-effort
           }
+          // A failed run still contributes the latest safe view of the page: the dashboard must
+          // be able to show what broke, not only that something broke.
+          await captureStatusScreenshot(pageRef.current, target, outputDir);
         } finally {
           await context.close();
         }
@@ -2322,6 +2467,11 @@ data:
           .url('baseUrl must be a valid absolute URL')
           .refine((u) => u.startsWith('https://'), 'baseUrl must be HTTPS (never plain http)'),
         auth: authSchema.default({ mode: 'anonymous' }),
+        // Opt in to publishing one sanitized status screenshot for this target. Only an
+        // anonymous target may set this: a credentialed page is never captured for the
+        // status view, whatever the target asks for. Default off, so an existing target
+        // keeps its current behaviour.
+        statusScreenshot: z.boolean().default(false),
         minIntervalMinutes: z.number().int().min(15).max(1440).default(15),
         timeoutMs: z.number().int().min(5000).max(600000).default(120000),
         retries: z.number().int().min(0).max(2).default(0),
@@ -2651,6 +2801,306 @@ data:
       }
       return { uploaded, fallbacks };
     }
+  runner.statuspublish.ts: |-
+    // Publishes one sanitized latest-result record per finished synthetic target.
+    //
+    // The record is what the Headlamp Service Status view reads. It deliberately carries
+    // no URL, host, credential, cookie, response body or raw Playwright error: the caller
+    // passes the parsed run output, and this module reduces it to identity, timing, state
+    // and scrubbed per-check outcomes. The redaction boundary is the same one the runner
+    // already applies to notifications (`redactText`), so a value that cannot be shown in an
+    // alert cannot reach the status store either.
+    //
+    // Publication is best-effort by contract. A status service that is down must never turn
+    // a passing check into a failing one, so a publish error is reported once in scrubbed
+    // form and the run's exit status is unaffected.
+
+    import { readFileSync } from 'node:fs';
+
+    import { redactText, statusScreenshotEligible, type StatusCapture } from './artifacts';
+    import { parseRunOutput } from './email';
+    import type { CheckEvent, TargetSummary } from './email';
+    import type { Target } from './schema';
+
+    /** Service contract version. A server that does not know this value must reject the write. */
+    export const STATUS_SCHEMA_VERSION = 1;
+
+    /** Bounds that keep one malformed run from growing the store. */
+    export const MAX_CHECKS_PER_RECORD = 100;
+    export const MAX_MESSAGE_LENGTH = 200;
+    /** Mirrors the API's own bound; an image above it is not uploaded at all. */
+    export const MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024;
+
+    export type StatusState = 'passed' | 'failed' | 'skipped';
+
+    export interface StatusCheck {
+      id: string;
+      status: 'passed' | 'failed';
+      durationMs: number;
+      message?: string;
+    }
+
+    export interface StatusRecord {
+      schemaVersion: number;
+      targetId: string;
+      runId: string;
+      startedAt: string;
+      finishedAt: string;
+      state: StatusState;
+      durationMs: number;
+      /** True only when the target is anonymous and opted in to status capture. */
+      screenshotEligible: boolean;
+      checks: StatusCheck[];
+    }
+
+    /**
+     * statusScreenshotEligible is re-exported from artifacts so callers have one import for the
+     * whole status contract. The rule itself lives next to the other capture rules.
+     */
+    export { statusScreenshotEligible };
+
+    /**
+     * scrub reduces a check message to a bounded, credential-free string.
+     *
+     * The runner's own redaction handles credential-shaped words; the status record adds two
+     * transformations the notification path does not need, because a record is stored and
+     * rendered rather than read once by a human:
+     *
+     *   - every absolute URL becomes `<url>`, so a failing selector cannot carry a
+     *     customer host, path or query string into the store;
+     *   - the result is collapsed to one line and truncated, so a stack trace cannot bloat a
+     *     record.
+     */
+    export function scrub(message: string | undefined): string | undefined {
+      if (message === undefined) return undefined;
+      const withoutUrls = redactText(message).replace(/https?:\/\/\S+/gi, '<url>');
+      const flattened = withoutUrls.replace(/\s+/g, ' ').trim();
+      if (flattened === '') return undefined;
+      return flattened.length > MAX_MESSAGE_LENGTH ? `${flattened.slice(0, MAX_MESSAGE_LENGTH - 1)}…` : flattened;
+    }
+
+    /**
+     * buildStatusRecord reduces one target summary and its checks to the published record.
+     *
+     * Check order is the canonical action order recorded by the runner, and a record with no
+     * checks is still valid: a target that failed before its first action must remain visible
+     * as failed rather than disappearing.
+     */
+    export function buildStatusRecord(summary: TargetSummary, checks: CheckEvent[], eligible: boolean): StatusRecord {
+      const forTarget = checks
+        .filter((check) => check.target === summary.target)
+        .slice(0, MAX_CHECKS_PER_RECORD)
+        .map((check) => {
+          const record: StatusCheck = {
+            id: check.check,
+            status: check.status === 'passed' ? 'passed' : 'failed',
+            durationMs: Number.isFinite(check.durationMs) ? Math.max(0, Math.round(check.durationMs)) : 0,
+          };
+          const message = scrub(check.error);
+          if (message !== undefined && record.status === 'failed') record.message = message;
+          return record;
+        });
+
+      return {
+        schemaVersion: STATUS_SCHEMA_VERSION,
+        targetId: summary.target,
+        runId: `${summary.startedAt}#${summary.finishedAt}`,
+        startedAt: summary.startedAt,
+        finishedAt: summary.finishedAt,
+        state: summary.status,
+        durationMs: Math.max(0, Math.round(summary.durationMs)),
+        screenshotEligible: eligible,
+        checks: forTarget,
+      };
+    }
+
+    export interface PublishOptions {
+      /** Base URL of the status service, for example http://synthetic-status-api:8080. */
+      endpoint: string;
+      /** Bearer token. Read from a file by the caller; never an argument, never logged. */
+      token: string;
+      /** Injected for tests. */
+      fetchImpl?: typeof fetch;
+      timeoutMs?: number;
+    }
+
+    export interface PublishOutcome {
+      published: number;
+      failed: number;
+      /** Target ids whose record the service accepted. Only these may carry an image. */
+      accepted: string[];
+    }
+
+    /**
+     * publishStatusRecords posts one record per target.
+     *
+     * `unknown` names are targets the server refused (400/409). They are counted as failures
+     * and never retried with a different identity: a duplicate or out-of-order write stays
+     * rejected, which is what stops an older run from overwriting a newer result.
+     */
+    export async function publishStatusRecords(
+      records: StatusRecord[],
+      options: PublishOptions,
+    ): Promise<PublishOutcome> {
+      const doFetch = options.fetchImpl ?? fetch;
+      const timeoutMs = options.timeoutMs ?? 5000;
+      const accepted: string[] = [];
+      let failed = 0;
+
+      for (const record of records) {
+        let ok = false;
+        for (let attempt = 0; attempt < 2 && !ok; attempt += 1) {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            const response = await doFetch(`${options.endpoint.replace(/\/+$/, '')}/v1/results`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', authorization: `Bearer ${options.token}` },
+              body: JSON.stringify(record),
+              signal: controller.signal,
+            });
+            ok = response.ok;
+          } catch {
+            // A transport failure is retried once; the reason is not printed because it can
+            // embed the endpoint and, through it, cluster topology.
+            ok = false;
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+        if (ok) accepted.push(record.targetId);
+        else failed += 1;
+      }
+      return { published: accepted.length, failed, accepted };
+    }
+
+    export interface ScreenshotOutcome {
+      uploaded: number;
+      failed: number;
+    }
+
+    /**
+     * publishStatusScreenshots posts at most one image per accepted target.
+     *
+     * An image is uploaded only after its record was accepted, so a rejected or duplicate run
+     * cannot leave an image attributed to a result the service does not hold. The image bytes
+     * are sent as the request body - never base64, never a data URL, never a path - and the
+     * capture provenance travels in headers so the API can store it atomically with the file.
+     */
+    export async function publishStatusScreenshots(
+      captures: StatusCapture[],
+      accepted: string[],
+      recordByTarget: Map<string, StatusRecord>,
+      options: PublishOptions,
+    ): Promise<ScreenshotOutcome> {
+      const acceptedSet = new Set(accepted);
+      const doFetch = options.fetchImpl ?? fetch;
+      const timeoutMs = options.timeoutMs ?? 5000;
+      let uploaded = 0;
+      let failed = 0;
+
+      for (const capture of captures) {
+        if (!acceptedSet.has(capture.targetId)) continue;
+        const record = recordByTarget.get(capture.targetId);
+        if (record === undefined || !record.screenshotEligible) continue;
+        let bytes: Buffer;
+        try {
+          bytes = readFileSync(capture.path);
+        } catch {
+          failed += 1;
+          continue;
+        }
+        if (bytes.length > MAX_SCREENSHOT_BYTES) {
+          failed += 1;
+          continue;
+        }
+        let ok = false;
+        for (let attempt = 0; attempt < 2 && !ok; attempt += 1) {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            const response = await doFetch(
+              `${options.endpoint.replace(/\/+$/, '')}/v1/screenshots/${encodeURIComponent(capture.targetId)}`,
+              {
+                method: 'POST',
+                headers: {
+                  'content-type': 'image/png',
+                  authorization: `Bearer ${options.token}`,
+                  'x-synthetic-run-id': record.runId,
+                  'x-synthetic-captured-at': capture.capturedAt,
+                },
+                body: bytes,
+                signal: controller.signal,
+              },
+            );
+            ok = response.ok;
+          } catch {
+            ok = false;
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+        if (ok) uploaded += 1;
+        else failed += 1;
+      }
+      return { uploaded, failed };
+    }
+
+    /** loadStatusToken reads the bearer token from a file and never from an argument. */
+    export function loadStatusToken(path: string | undefined): string | undefined {
+      if (path === undefined || path === '') return undefined;
+      try {
+        const value = readFileSync(path, 'utf8').trim();
+        return value === '' ? undefined : value;
+      } catch {
+        return undefined;
+      }
+    }
+
+    /**
+     * publishRunStatus publishes one record per target that ran in this Job.
+     *
+     * It is a no-op unless both `SYNTHETIC_STATUS_URL` and `SYNTHETIC_STATUS_TOKEN_FILE` are
+     * configured, because a target's status is worthless if the store it would reach is not
+     * part of the installation. Nothing here is allowed to change the run's exit status.
+     */
+    export async function publishRunStatus(
+      output: string,
+      targets: Target[],
+      fetchImpl?: typeof fetch,
+      captures: StatusCapture[] = [],
+    ): Promise<PublishOutcome | undefined> {
+      const endpoint = process.env.SYNTHETIC_STATUS_URL;
+      const token = loadStatusToken(process.env.SYNTHETIC_STATUS_TOKEN_FILE);
+      if (endpoint === undefined || endpoint === '' || token === undefined) return undefined;
+
+      const { checks, summaries } = parseRunOutput(output);
+      const byId = new Map(targets.map((target) => [target.id, target]));
+      const records: StatusRecord[] = [];
+      for (const summary of summaries) {
+        const target = byId.get(summary.target);
+        // A summary for a target that is not in the canonical inventory is dropped rather
+        // than published: the store may only answer for targets that exist in Git.
+        if (target === undefined) continue;
+        records.push(buildStatusRecord(summary, checks, statusScreenshotEligible(target)));
+      }
+      if (records.length === 0) return { published: 0, failed: 0, accepted: [] };
+      const outcome = await publishStatusRecords(records, { endpoint, token, fetchImpl });
+      // Images are published only for accepted records, and their failure is reported separately
+      // so a screenshot problem can never read as a monitoring failure.
+      if (captures.length > 0 && outcome.accepted.length > 0) {
+        const byTarget = new Map(records.map((record) => [record.targetId, record]));
+        const screenshots = await publishStatusScreenshots(captures, outcome.accepted, byTarget, {
+          endpoint,
+          token,
+          fetchImpl,
+        });
+        if (screenshots.failed > 0) {
+          console.warn('[status] some status screenshots were not published; affected targets report an unavailable preview');
+        }
+      }
+      return outcome;
+    }
   tests.journeys.spec.ts: |-
     import { test } from '@playwright/test';
     import { readLock } from '../runner/lock';
@@ -2895,6 +3345,10 @@ data:
     id: new-media-consulting
     name: New Media Consulting public site - availability and essential rendering
     baseUrl: https://newmediaconsulting.com/
+    # Publish one bounded status screenshot per run for the Headlamp Service Status view.
+    # This is an anonymous public marketing page, so the capture contains no session, no form
+    # value and no customer data. Credentialed targets are never eligible, whatever they set.
+    statusScreenshot: true
     minIntervalMinutes: 15
     timeoutMs: 120000
     retries: 0
@@ -3131,6 +3585,10 @@ spec:
               value: /synthetic-ntfy
             - name: SYNTHETIC_SLACK_FILES_DIR
               value: /synthetic-slack-files
+            - name: SYNTHETIC_STATUS_URL
+              value: http://synthetic-status-api:8080
+            - name: SYNTHETIC_STATUS_TOKEN_FILE
+              value: /synthetic-status-token/token
             - name: PLANTMASTER_USER
               valueFrom:
                 secretKeyRef:
@@ -3175,6 +3633,9 @@ spec:
               readOnly: true
             - mountPath: /synthetic-slack-files
               name: synthetic-slack-files
+              readOnly: true
+            - mountPath: /synthetic-status-token
+              name: synthetic-status-token
               readOnly: true
             workingDir: /app
           initContainers:
@@ -3235,10 +3696,12 @@ spec:
           - configMap:
               defaultMode: 292
               items:
-              - key: package-lock.json
-                path: package-lock.json
               - key: package.json
                 path: package.json
+              - key: package-lock.json
+                path: package-lock.json
+              - key: tsconfig.json
+                path: tsconfig.json
               - key: playwright.runner.config.ts
                 path: playwright.runner.config.ts
               - key: runner.actions.ts
@@ -3261,16 +3724,16 @@ spec:
                 path: runner/lock.ts
               - key: runner.ntfy.ts
                 path: runner/ntfy.ts
-              - key: runner.slack.ts
-                path: runner/slack.ts
               - key: runner.schema.ts
                 path: runner/schema.ts
               - key: runner.secrets.ts
                 path: runner/secrets.ts
+              - key: runner.slack.ts
+                path: runner/slack.ts
+              - key: runner.statuspublish.ts
+                path: runner/statuspublish.ts
               - key: tests.journeys.spec.ts
                 path: tests/journeys.spec.ts
-              - key: tsconfig.json
-                path: tsconfig.json
               name: synthetic-source
             name: synthetic-source
           - configMap:
@@ -3308,6 +3771,13 @@ spec:
             secret:
               optional: true
               secretName: synthetic-slack-files
+          - name: synthetic-status-token
+            secret:
+              items:
+              - key: token
+                path: token
+              optional: true
+              secretName: synthetic-status-write-token
       ttlSecondsAfterFinished: 600
   schedule: '*/15 * * * *'
   startingDeadlineSeconds: 60
