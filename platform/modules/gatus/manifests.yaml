@@ -66,7 +66,7 @@ data:
       interval: 1m
       method: GET
       name: New Media Consulting fast route probe
-      url: https://newmediaconsulting.com/__synthetic-fast-check-missing__
+      url: https://newmediaconsulting.com:8443/
     - alerts: []
       conditions:
       - '[STATUS] == 200'
@@ -137,7 +137,7 @@ spec:
         app.kubernetes.io/name: gatus
         app.kubernetes.io/instance: gatus
       annotations:
-        checksum/config: 3c74c1b770ce0a53d1e51cf485b94413ad9aae4fabfe62addbbe9a3ff159886a
+        checksum/config: 81a85cc31658ab17c3b027157febdde47d2cbcb453cda5e78651996f1dd21243
     spec:
       
       serviceAccountName: gatus
@@ -264,3 +264,5 @@ spec:
           port: 80
         - protocol: TCP
           port: 443
+        - protocol: TCP
+          port: 8443
