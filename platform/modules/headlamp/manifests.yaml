@@ -783,492 +783,6 @@ data:
       return Array.from(groups.entries()).map(([name, entries]) => ({ name, rows: entries }));
     }
 
-      // ---- src/synthetic.js ----
-    // The synthetic-first Service Status model.
-    //
-    // The page inventory is exactly the canonical synthetic target registry, which reaches this
-    // module already rendered by the installer and already joined with the latest published
-    // result. Nothing here infers a page from an Ingress, from Gatus or from a second list: a
-    // target that is not in the rendered inventory cannot appear, and a target that leaves the
-    // registry cannot linger.
-    //
-    // Two rules are load-bearing and are what make the page honest:
-    //
-    //   1. A result is only green while it is fresh. A successful run from an hour ago is
-    //      evidence of nothing about right now, so STALE is derived before UP/DOWN rather than
-    //      shown alongside a reassuring status.
-    //   2. Gatus is a separate fast-availability layer. It is correlated to a target by exact
-    //      endpoint id and reported next to the browser journey, never merged into it, so a
-    //      disagreement is visible instead of being averaged into a false UP.
-    //
-    // This module is free of React, of the Headlamp registry and of network calls, so the rules
-    // that decide what an operator is told are testable without a browser.
-
-
-    /** The closed set of states the page may display. */
-    const TARGET_STATE = {
-      UP: 'UP',
-      DOWN: 'DOWN',
-      RUNNING: 'RUNNING',
-      PENDING: 'PENDING',
-      STALE: 'STALE',
-      UNAVAILABLE: 'UNAVAILABLE',
-    };
-
-    /**
-     * Display order and copy.
-     *
-     * `tone` is a semantic role, not a colour: the view maps it to a theme colour, and every
-     * state also carries `label` and `glyph` so status is never communicated by colour alone.
-     */
-    const TARGET_STATE_META = {
-      [TARGET_STATE.UP]: { label: 'Up', glyph: '✓', tone: 'success', rank: 0 },
-      [TARGET_STATE.DOWN]: { label: 'Down', glyph: '✕', tone: 'error', rank: 1 },
-      [TARGET_STATE.STALE]: { label: 'Stale', glyph: '◷', tone: 'warning', rank: 2 },
-      [TARGET_STATE.PENDING]: { label: 'Pending', glyph: '…', tone: 'default', rank: 3 },
-      [TARGET_STATE.RUNNING]: { label: 'Running', glyph: '↻', tone: 'info', rank: 4 },
-      [TARGET_STATE.UNAVAILABLE]: { label: 'Unavailable', glyph: '?', tone: 'error', rank: 5 },
-    };
-
-    /** States listed in the filter control, in display order. */
-    const FILTER_STATES = [
-      TARGET_STATE.UP,
-      TARGET_STATE.DOWN,
-      TARGET_STATE.STALE,
-      TARGET_STATE.PENDING,
-      TARGET_STATE.RUNNING,
-      TARGET_STATE.UNAVAILABLE,
-    ];
-
-    const FRESHNESS = {
-      FRESH: 'fresh',
-      STALE: 'stale',
-      UNKNOWN: 'unknown',
-    };
-
-    /** The API contract this page understands. A different version is reported, not guessed at. */
-    const SNAPSHOT_SCHEMA_VERSION = 1;
-
-    /** Bounds copied from the service contract so a malformed payload cannot bloat the page. */
-    const MAX_TARGETS = 200;
-    const MAX_CHECKS = 100;
-    const MAX_TEXT_LENGTH = 200;
-
-    const TARGET_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
-
-    function isRecordValue(value) {
-      return typeof value === 'object' && value !== null && !Array.isArray(value);
-    }
-
-    function text(value, fallback = '') {
-      if (typeof value !== 'string') return fallback;
-      const trimmed = value.replace(/\s+/g, ' ').trim();
-      if (trimmed === '') return fallback;
-      return trimmed.length > MAX_TEXT_LENGTH ? `${trimmed.slice(0, MAX_TEXT_LENGTH - 1)}…` : trimmed;
-    }
-
-    function toMillisValue(value) {
-      const parsed = Date.parse(value);
-      return Number.isNaN(parsed) ? null : parsed;
-    }
-
-    /**
-     * validateSnapshot performs the shape check the page refuses to skip.
-     *
-     * A payload that is not the documented envelope is reported as malformed instead of being
-     * rendered as an empty list, because "no monitored pages" and "the response was not
-     * understood" are different facts and an operator must not confuse them.
-     */
-    function validateSnapshot(payload) {
-      if (!isRecordValue(payload)) return { ok: false, reason: 'envelope' };
-      if (payload.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
-        return { ok: false, reason: 'schema', schemaVersion: payload.schemaVersion };
-      }
-      if (!Array.isArray(payload.targets)) return { ok: false, reason: 'targets' };
-      if (payload.targets.length > MAX_TARGETS) return { ok: false, reason: 'too-many-targets' };
-      return { ok: true, reason: '' };
-    }
-
-    /**
-     * deriveTargetState maps one published target to the displayed state.
-     *
-     * The order is the contract: a malformed record is unavailable, a missing run is pending, a
-     * stale record is stale regardless of its own outcome, and only then may the run's state be
-     * shown. A skipped run stays pending with a reason rather than being reported as healthy,
-     * because a skipped run is no evidence about the page.
-     */
-    function deriveTargetState(journey, freshness) {
-      if (!isRecordValue(journey)) return TARGET_STATE.UNAVAILABLE;
-      const runState = journey.state;
-      const freshnessState = isRecordValue(freshness) ? freshness.state : FRESHNESS.UNKNOWN;
-
-      if (runState === 'pending') return TARGET_STATE.PENDING;
-      if (runState === 'running') return TARGET_STATE.RUNNING;
-      if (runState !== 'up' && runState !== 'down' && runState !== 'skipped') {
-        return TARGET_STATE.UNAVAILABLE;
-      }
-      if (freshnessState === FRESHNESS.STALE || freshnessState === FRESHNESS.UNKNOWN) {
-        return TARGET_STATE.STALE;
-      }
-      if (runState === 'skipped') return TARGET_STATE.PENDING;
-      return runState === 'up' ? TARGET_STATE.UP : TARGET_STATE.DOWN;
-    }
-
-    function normaliseChecks(rawChecks) {
-      if (!Array.isArray(rawChecks)) return [];
-      return rawChecks.slice(0, MAX_CHECKS).map((entry, index) => {
-        if (!isRecordValue(entry)) {
-          return { id: `check-${index + 1}`, status: 'failed', durationMs: null, message: 'this check could not be read' };
-        }
-        const status = entry.status === 'passed' || entry.status === 'failed' ? entry.status : 'failed';
-        const check = {
-          id: text(entry.id, `check-${index + 1}`),
-          status,
-          durationMs: typeof entry.durationMs === 'number' && entry.durationMs >= 0 ? Math.round(entry.durationMs) : null,
-        };
-        if (status === 'failed') {
-          check.message = text(entry.message, '');
-        }
-        return check;
-      });
-    }
-
-    function normaliseScreenshot(raw) {
-      if (!isRecordValue(raw) || raw.available !== true) {
-        return {
-          available: false,
-          reason: text(raw && raw.reason, 'screenshot unavailable'),
-          capturedAt: null,
-          runId: '',
-          matchesLatestRun: false,
-        };
-      }
-      return {
-        available: true,
-        reason: '',
-        capturedAt: typeof raw.capturedAt === 'string' ? raw.capturedAt : '',
-        runId: typeof raw.runId === 'string' ? raw.runId : '',
-        matchesLatestRun: raw.matchesLatestRun === true,
-      };
-    }
-
-    /**
-     * buildTargets turns a validated snapshot into the rows the page renders.
-     *
-     * Malformed entries are dropped and counted rather than rendered as fake rows: a row without
-     * a stable id cannot be deep-linked, cannot be filtered deterministically and cannot be
-     * fetched as an image, so inventing one would only move the failure into the UI.
-     */
-    function buildTargets(payload, nowMs) {
-      const rows = [];
-      let malformed = 0;
-
-      for (const entry of payload.targets) {
-        if (!isRecordValue(entry) || typeof entry.id !== 'string' || !TARGET_ID_PATTERN.test(entry.id)) {
-          malformed += 1;
-          continue;
-        }
-        const journey = isRecordValue(entry.browserJourney) ? entry.browserJourney : null;
-        const freshness = isRecordValue(entry.freshness) ? entry.freshness : null;
-        const state = deriveTargetState(journey, freshness);
-        const checks = normaliseChecks(journey && journey.checks);
-        const finishedAtMs = journey ? toMillisValue(journey.finishedAt) : null;
-        const freshnessState = isRecordValue(freshness) && typeof freshness.state === 'string' ? freshness.state : FRESHNESS.UNKNOWN;
-
-        rows.push({
-          id: entry.id,
-          customer: text(entry.customer, 'unassigned'),
-          name: text(entry.name, entry.id),
-          state,
-          stateLabel: TARGET_STATE_META[state].label,
-          stateGlyph: TARGET_STATE_META[state].glyph,
-          tone: TARGET_STATE_META[state].tone,
-          freshness: freshnessState,
-          ageMs: freshness && typeof freshness.ageMs === 'number' && freshness.ageMs >= 0 ? Math.round(freshness.ageMs) : null,
-          expectedNextRunAt: freshness && typeof freshness.expectedNextRunAt === 'string' ? freshness.expectedNextRunAt : '',
-          run: journey === null || typeof journey.state !== 'string'
-            ? null
-            : {
-              state: journey.state,
-              runId: typeof journey.runId === 'string' ? journey.runId : '',
-              startedAt: typeof journey.startedAt === 'string' ? journey.startedAt : '',
-              finishedAt: typeof journey.finishedAt === 'string' ? journey.finishedAt : '',
-              finishedAtMs,
-              durationMs: typeof journey.durationMs === 'number' && journey.durationMs >= 0 ? Math.round(journey.durationMs) : null,
-              failedChecks: typeof journey.failedChecks === 'number' && journey.failedChecks >= 0
-                ? Math.floor(journey.failedChecks)
-                : checks.filter((check) => check.status === 'failed').length,
-            },
-          checks,
-          screenshot: normaliseScreenshot(entry.screenshot),
-          // Filled in by correlateFastAvailability when the Gatus correlation layer exists.
-          fastAvailability: null,
-          nowMs,
-        });
-      }
-
-      return {
-        rows: sortTargets(rows),
-        malformed,
-        generatedAt: typeof payload.generatedAt === 'string' ? payload.generatedAt : '',
-        nowMs,
-      };
-    }
-
-    /**
-     * sortTargets orders rows by customer, then display name, then id.
-     *
-     * The API already sorts, and the page sorts again because a filter or a correlation pass
-     * must not be able to reorder the dashboard: identical input always yields identical output.
-     */
-    function sortTargets(rows) {
-      return rows.slice().sort((left, right) => {
-        if (left.customer !== right.customer) return left.customer < right.customer ? -1 : 1;
-        if (left.name !== right.name) return left.name < right.name ? -1 : 1;
-        return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
-      });
-    }
-
-    /** Counts for the summary cards. Every row lands in exactly one bucket. */
-    function aggregateTargets(rows) {
-      const counts = {
-        total: rows.length,
-        up: 0,
-        down: 0,
-        stale: 0,
-        pending: 0,
-        running: 0,
-        unavailable: 0,
-      };
-      for (const row of rows) {
-        switch (row.state) {
-          case TARGET_STATE.UP: counts.up += 1; break;
-          case TARGET_STATE.DOWN: counts.down += 1; break;
-          case TARGET_STATE.STALE: counts.stale += 1; break;
-          case TARGET_STATE.PENDING: counts.pending += 1; break;
-          case TARGET_STATE.RUNNING: counts.running += 1; break;
-          default: counts.unavailable += 1; break;
-        }
-      }
-      return counts;
-    }
-
-    /** Group rows by customer for the card grid, preserving the sorted order inside a group. */
-    function groupTargets(rows) {
-      const groups = new Map();
-      for (const row of rows) {
-        if (!groups.has(row.customer)) groups.set(row.customer, []);
-        groups.get(row.customer).push(row);
-      }
-      return Array.from(groups.entries()).map(([customer, entries]) => ({ customer, rows: entries }));
-    }
-
-    /**
-     * filterTargets applies the search and facet filters.
-     *
-     * Each filter is independent and additive. An unknown value is ignored rather than applied,
-     * because a hand-edited URL must not be able to produce an empty page that looks like "no
-     * monitored targets".
-     */
-    function filterTargets(rows, filters) {
-      const query = text(filters && filters.query, '').toLowerCase();
-      const customer = text(filters && filters.customer, '');
-      const requestedState = text(filters && filters.state, '');
-      const requestedFreshness = text(filters && filters.freshness, '');
-      // A hand-edited URL must not be able to produce an empty page that reads as "no monitored
-      // targets", so a facet value this page does not know is ignored rather than applied.
-      const state = Object.prototype.hasOwnProperty.call(TARGET_STATE_META, requestedState) ? requestedState : '';
-      const freshness = requestedFreshness === FRESHNESS.FRESH
-        || requestedFreshness === FRESHNESS.STALE
-        || requestedFreshness === FRESHNESS.UNKNOWN
-        ? requestedFreshness
-        : '';
-
-      return rows.filter((row) => {
-        if (customer !== '' && row.customer !== customer) return false;
-        if (state !== '' && row.state !== state) return false;
-        if (freshness !== '' && row.freshness !== freshness) return false;
-        if (query !== '') {
-          const haystack = `${row.name} ${row.id} ${row.customer}`.toLowerCase();
-          if (!haystack.includes(query)) return false;
-        }
-        return true;
-      });
-    }
-
-    /** The distinct customer names, for the customer filter control. */
-    function customersOf(rows) {
-      const seen = new Set();
-      for (const row of rows) seen.add(row.customer);
-      return Array.from(seen).sort();
-    }
-
-    /**
-     * correlateFastAvailability attaches the optional Gatus state to a row.
-     *
-     * Correlation is by exact endpoint id, never by name: names are display text that an operator
-     * may reword, while the installer id is the stable contract on both sides. An endpoint
-     * without a matching target is reported separately as a technical check, so it cannot become
-     * a page row.
-     */
-    function correlateFastAvailability(rows, gatusPayload, gatusEndpoints, nowMs) {
-      if (!Array.isArray(gatusEndpoints) || gatusEndpoints.length === 0) {
-        return { rows, technicalChecks: [] };
-      }
-      const { byEndpoint } = indexPayload(gatusPayload);
-      const correlatedIds = new Set();
-      const updated = rows.map((row) => {
-        const endpoint = gatusEndpoints.find((candidate) => candidate && candidate.id === row.id);
-        if (!endpoint) return row;
-        correlatedIds.add(endpoint.id);
-        const key = JSON.stringify([String(endpoint.group || ''), String(endpoint.name || '')]);
-        const found = byEndpoint.get(key);
-        if (!found) {
-          return {
-            ...row,
-            fastAvailability: {
-              state: TARGET_STATE.UNAVAILABLE,
-              label: 'Not reported',
-              ageMs: null,
-              detail: 'Gatus did not report this endpoint in the current response.',
-            },
-          };
-        }
-        if (found.malformed) {
-          return {
-            ...row,
-            fastAvailability: {
-              state: TARGET_STATE.UNAVAILABLE,
-              label: 'Unreadable',
-              ageMs: null,
-              detail: 'Gatus returned an entry this page cannot read.',
-            },
-          };
-        }
-        const spec = {
-          intervalMs: typeof endpoint.intervalMs === 'number' && endpoint.intervalMs > 0 ? endpoint.intervalMs : 60000,
-          timeoutMs: typeof endpoint.timeoutMs === 'number' && endpoint.timeoutMs > 0 ? endpoint.timeoutMs : 10000,
-          failureThreshold: typeof endpoint.failureThreshold === 'number' && endpoint.failureThreshold > 0 ? endpoint.failureThreshold : 2,
-          recoveryThreshold: typeof endpoint.recoveryThreshold === 'number' && endpoint.recoveryThreshold > 0 ? endpoint.recoveryThreshold : 2,
-        };
-        const derived = deriveState(found.results, spec, nowMs);
-        const state = derived.state === 'UP'
-          ? TARGET_STATE.UP
-          : derived.state === 'DOWN'
-            ? TARGET_STATE.DOWN
-            : derived.state === 'STALE'
-              ? TARGET_STATE.STALE
-              : TARGET_STATE.PENDING;
-        return {
-          ...row,
-          fastAvailability: {
-            state,
-            label: TARGET_STATE_META[state].label,
-            ageMs: derived.ageMs,
-            detail: describeFast(derived, spec),
-          },
-        };
-      });
-
-      const technicalChecks = gatusEndpoints
-        .filter((endpoint) => endpoint && typeof endpoint.id === 'string' && !correlatedIds.has(endpoint.id))
-        .map((endpoint) => ({ id: endpoint.id, name: text(endpoint.name, endpoint.id), group: text(endpoint.group, 'Ungrouped') }));
-
-      return { rows: updated, technicalChecks };
-    }
-
-    function describeFast(derived, spec) {
-      if (derived.result === null || derived.result === undefined) return 'No evaluation has completed yet.';
-      if (derived.state === 'UP') return 'Last evaluation passed.';
-      if (derived.state === 'STALE') return 'The newest evaluation is older than the freshness window.';
-      if (derived.state === 'DOWN') return 'The endpoint is failing its fast check.';
-      return `Needs ${spec.failureThreshold} consecutive failures (or successes) before the fast state changes.`;
-    }
-
-    /**
-     * disagreements reports rows whose browser journey and fast check do not agree.
-     *
-     * They are surfaced, never reconciled: the two layers answer different questions, and
-     * choosing one silently is exactly the false single status this task exists to remove.
-     */
-    function disagreements(rows) {
-      return rows.filter((row) => {
-        if (row.fastAvailability === null) return false;
-        const browserUp = row.state === TARGET_STATE.UP;
-        const browserDown = row.state === TARGET_STATE.DOWN;
-        const fastUp = row.fastAvailability.state === TARGET_STATE.UP;
-        const fastDown = row.fastAvailability.state === TARGET_STATE.DOWN;
-        return (browserUp && fastDown) || (browserDown && fastUp);
-      });
-    }
-
-    /** Format a duration for display. A missing duration is reported, not shown as zero. */
-    function formatDuration(durationMs) {
-      if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs < 0) return 'not reported';
-      if (durationMs < 1000) return `${Math.round(durationMs)} ms`;
-      if (durationMs < 60000) return `${(durationMs / 1000).toFixed(1)} s`;
-      return `${Math.floor(durationMs / 60000)} min ${Math.round((durationMs % 60000) / 1000)} s`;
-    }
-
-    /** Format an age in whole units. Used for "last run" and the freshness banner. */
-    function formatAge(ageMs) {
-      if (typeof ageMs !== 'number' || !Number.isFinite(ageMs) || ageMs < 0) return 'unknown';
-      const seconds = Math.round(ageMs / 1000);
-      if (seconds < 60) return `${seconds}s ago`;
-      const minutes = Math.floor(seconds / 60);
-      if (minutes < 60) return `${minutes}m ago`;
-      const hours = Math.floor(minutes / 60);
-      if (hours < 48) return `${hours}h ago`;
-      return `${Math.floor(hours / 24)}d ago`;
-    }
-
-    /** Format an absolute timestamp in UTC. An unparseable value is reported as unknown. */
-    function formatTimestamp(value) {
-      const millis = toMillisValue(value);
-      if (millis === null) return 'unknown';
-      return new Date(millis).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
-    }
-
-    /**
-     * screenshotReason explains an absent preview without breaking the monitoring result.
-     *
-     * The text is deliberately about the artifact, never about the page's health: an unavailable
-     * screenshot is not evidence that a target is down.
-     */
-    function screenshotReason(row) {
-      if (!row || !row.screenshot) return 'Screenshot unavailable';
-      if (row.screenshot.available) return '';
-      const reason = row.screenshot.reason || '';
-      if (reason.includes('capture disabled')) {
-        return 'Screenshot unavailable: capture is not enabled for this target';
-      }
-      if (reason.includes('no capture metadata')) {
-        return 'Screenshot unavailable: the stored image cannot be attributed to a run';
-      }
-      if (reason.includes('no synthetic result')) {
-        return 'Screenshot unavailable: no run has completed yet';
-      }
-      return `Screenshot unavailable${reason ? `: ${reason}` : ''}`;
-    }
-
-    /** True when the displayed row is backed by a run whose result may be shown as current. */
-    function hasCurrentRun(row) {
-      return row.state === TARGET_STATE.UP || row.state === TARGET_STATE.DOWN || row.state === TARGET_STATE.RUNNING;
-    }
-
-    /** A stable, human-readable summary of the page for the accessibility live region. */
-    function statusAnnouncement(counts) {
-      const parts = [];
-      if (counts.up > 0) parts.push(`${counts.up} up`);
-      if (counts.down > 0) parts.push(`${counts.down} down`);
-      if (counts.stale > 0) parts.push(`${counts.stale} stale`);
-      if (counts.pending > 0) parts.push(`${counts.pending} pending`);
-      if (counts.running > 0) parts.push(`${counts.running} running`);
-      if (counts.unavailable > 0) parts.push(`${counts.unavailable} unavailable`);
-      if (parts.length === 0) return `${counts.total} monitored pages`;
-      return `${counts.total} monitored pages: ${parts.join(', ')}`;
-    }
-
       // ---- src/contract.js ----
     // Authoritative validation contract for the endpoint editor.
     //
@@ -1533,19 +1047,6 @@ data:
     const SERVICE_PORT = 80;
     const NAMESPACE_OF_SERVICE = 'gatus';
     const STATUS_PATH = '/api/v1/endpoints/statuses';
-
-    // The synthetic result API. The page reads exactly one Service through the API-server
-    // proxy: the bounded status snapshot, and one PNG per eligible target on explicit action.
-    // The namespace, Service and port are pinned here so the granted RBAC resourceName and the
-    // request path cannot drift apart.
-    const SYNTHETIC_NAMESPACE = 'synthetic-monitoring';
-    const SYNTHETIC_SERVICE = 'synthetic-status-api';
-    const SYNTHETIC_PORT = 8080;
-    const SYNTHETIC_PROXY_ROOT =
-      `/api/v1/namespaces/${SYNTHETIC_NAMESPACE}/services/${SYNTHETIC_SERVICE}:${SYNTHETIC_PORT}/proxy`;
-    const SNAPSHOT_PATH = `${SYNTHETIC_PROXY_ROOT}/v1/status`;
-    const SCREENSHOT_PATH_PREFIX = `${SYNTHETIC_PROXY_ROOT}/v1/screenshots/`;
-    const TARGET_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
     /**
      * The one request this plugin makes.
@@ -1851,144 +1352,6 @@ data:
     const PLUGIN_EDITOR_PATH = EDITOR_ROUTE;
     const PLUGIN_PROXY_PATH = PROXY_PATH;
     const PLUGIN_UI_PROXY_PATH = UI_PROXY_PATH;
-    const PLUGIN_SNAPSHOT_PATH = SNAPSHOT_PATH;
-
-    /**
-     * Fetch the bounded synthetic status snapshot through the named Service proxy.
-     *
-     * One scoped read: the installer grants `get` on the exact `services/proxy` resourceName
-     * and nothing else, so this path cannot be widened by editing client state. A non-JSON
-     * answer - a console HTML page, an error page - is reported as malformed rather than
-     * mistaken for an empty inventory.
-     */
-    async function fetchSnapshot() {
-      let payload;
-      try {
-        payload = await apiRequest(SNAPSHOT_PATH, {
-          method: 'GET',
-          isJSON: true,
-          timeout: 10000,
-          headers: { Accept: 'application/json' },
-        });
-      } catch (error) {
-        const status = Number.isInteger(error && error.status) ? error.status : 0;
-        return {
-          ok: false,
-          reason: status === 401 || status === 403 ? 'forbidden' : status ? 'status' : 'network',
-          status,
-          payload: null,
-        };
-      }
-      if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
-        return { ok: false, reason: 'malformed', status: 200, payload: null };
-      }
-      return { ok: true, reason: '', status: 200, payload };
-    }
-
-    /**
-     * Fetch one stored screenshot and hand back an object URL.
-     *
-     * The image is fetched as a binary response (`isJSON: false` returns the console's
-     * `Response`, not a parsed body), converted to a Blob and exposed only as a short-lived
-     * object URL. Two properties follow from that choice: the list API never carries image
-     * bytes or base64, and the `<img>` element never addresses a cluster IP or carries a
-     * credential of its own - it renders bytes the console already authorised.
-     *
-     * The caller owns the URL and must revoke it. The identifier is validated here as well as
-     * server-side: an artifact id cannot be changed into a path or into another target.
-     */
-    async function fetchScreenshotBlob(targetId) {
-      if (typeof targetId !== 'string' || !TARGET_ID.test(targetId)) {
-        return { ok: false, reason: 'invalid-id', status: 0, url: '' };
-      }
-      let response;
-      try {
-        response = await apiRequest(`${SCREENSHOT_PATH_PREFIX}${targetId}`, {
-          method: 'GET',
-          isJSON: false,
-          timeout: 15000,
-        });
-      } catch (error) {
-        const status = Number.isInteger(error && error.status) ? error.status : 0;
-        return {
-          ok: false,
-          reason: status === 401 || status === 403 ? 'forbidden' : status === 404 ? 'missing' : 'unavailable',
-          status,
-          url: '',
-        };
-      }
-      if (response === null || typeof response !== 'object' || typeof response.blob !== 'function') {
-        return { ok: false, reason: 'malformed', status: 0, url: '' };
-      }
-      const okFlag = response.ok !== false;
-      const contentType = typeof response.headers === 'object' && response.headers !== null && typeof response.headers.get === 'function'
-        ? response.headers.get('content-type')
-        : 'image/png';
-      if (!okFlag || typeof contentType !== 'string' || !contentType.startsWith('image/png')) {
-        return { ok: false, reason: 'missing', status: Number(response.status) || 0, url: '' };
-      }
-      let blob;
-      try {
-        blob = await response.blob();
-      } catch (error) {
-        return { ok: false, reason: 'malformed', status: 0, url: '' };
-      }
-      if (!blob || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
-        return { ok: false, reason: 'unavailable', status: 0, url: '' };
-      }
-      return { ok: true, reason: '', status: 200, url: URL.createObjectURL(blob) };
-    }
-
-    /** Revoke an object URL produced by fetchScreenshotBlob. Safe to call with an empty value. */
-    function releaseScreenshotUrl(url) {
-      if (typeof url === 'string' && url !== '' && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
-        URL.revokeObjectURL(url);
-      }
-    }
-
-    /**
-     * Read the optional Gatus correlation metadata the installer renders next to the payload.
-     *
-     * An empty list is a valid, meaningful state: it means this installation has no fast
-     * availability layer, and the page says so instead of issuing a request it has no grant
-     * for. No target URL, hostname or credential is present in this document.
-     */
-    function readGatusMetadata() {
-      const raw = typeof globalThis === 'undefined' ? undefined : globalThis[METADATA_GLOBAL];
-      const endpoints = raw && Array.isArray(raw.endpoints) ? raw.endpoints : [];
-      return { configured: endpoints.length > 0, endpoints, gatusUiUrl: UI_PROXY_PATH };
-    }
-
-    /**
-     * Fetch the Gatus status document through its own named Service proxy.
-     *
-     * Only called when the correlation metadata is present, because that is the signal that the
-     * installer also granted the Gatus read. A failure degrades the correlation panel alone: the
-     * browser-journey inventory is unaffected.
-     */
-    async function fetchGatusStatuses() {
-      let payload;
-      try {
-        payload = await apiRequest(PROXY_PATH, {
-          method: 'GET',
-          isJSON: true,
-          timeout: 10000,
-          headers: { Accept: 'application/json' },
-        });
-      } catch (error) {
-        const status = Number.isInteger(error && error.status) ? error.status : 0;
-        return {
-          ok: false,
-          reason: status === 401 || status === 403 ? 'forbidden' : status ? 'status' : 'network',
-          status,
-          payload: null,
-        };
-      }
-      if (!Array.isArray(payload)) {
-        return { ok: false, reason: 'malformed', status: 200, payload: null };
-      }
-      return { ok: true, reason: '', status: 200, payload };
-    }
 
     /**
      * Copy text to the clipboard, used for the YAML fragment this page produces.
@@ -4325,486 +3688,263 @@ data:
       // ---- src/view.js ----
     // The Service Status page.
     //
-    // The page inventory is the canonical synthetic target registry, rendered by the installer
-    // and read through one bounded API. Every row is a customer page that is actually monitored:
-    // nothing is inferred from an Ingress, from Gatus or from a second hand-written list, and a
-    // target that leaves the registry cannot linger as a row.
-    //
-    // Three properties are deliberate and are what the tests pin:
-    //
-    //   1. A failure to read is never rendered as an empty dashboard. Unauthorized, unreachable,
-    //      malformed, empty and partial are five different messages, because "no pages are
-    //      monitored" and "the page could not read its inventory" lead an operator to opposite
-    //      conclusions.
-    //   2. Status is never conveyed by colour alone. Every state carries its own label and glyph,
-    //      the summary is announced in a live region, and controls are ordinary focusable
-    //      elements with accessible names.
-    //   3. The screenshot preview is bytes fetched on demand, never inline data. The list API has
-    //      no image field, and an `<img>` renders only an object URL produced from an authorised
-    //      binary response.
-    //
-    // Gatus, when the installer enables its correlation integration, is shown as a separate
-    // "Fast availability" field on the detail surface. It is correlated by exact endpoint id and
-    // a disagreement is stated rather than collapsed into a single reassuring status.
+    // This is a read-only view over what Gatus already reported. It performs one GET
+    // per refresh through the Kubernetes Service proxy, holds no credential in the
+    // browser, embeds no iframe, never addresses the Gatus ClusterIP directly and
+    // exposes no create, update or delete action. Every failure mode of that single
+    // read is rendered as an explicit state, because the alternative — a page that
+    // shows an empty table when it could not read anything — is indistinguishable from
+    // "everything is down", which is the one conclusion this page must never suggest
+    // without evidence.
 
 
-    /** Poll a little slower than the runner cadence; a refresh is always available. */
+    /** Poll a little faster than the slowest configured interval, and never tighter. */
     const REFRESH_MS = 60000;
 
-    const FILTER_KEYS = ['q', 'customer', 'state', 'freshness'];
+    const STATE_COLOUR = {
+      [STATE.UP]: 'success',
+      [STATE.UNSTABLE]: 'warning',
+      [STATE.DOWN]: 'error',
+      [STATE.STALE]: 'warning',
+      [STATE.PENDING]: 'default',
+      [STATE.MISSING]: 'default',
+      [STATE.MALFORMED]: 'error',
+    };
 
     /**
-     * Read the filters from the URL.
-     *
-     * The URL is the filter state's home so a filtered view can be bookmarked, shared with a
-     * colleague and restored by back/forward. An unreadable location yields the unfiltered view
-     * rather than throwing: a hand-edited query string must not break the page.
+     * A single full-width message, used for every page-level state so loading,
+     * unavailable, malformed and empty are all visually distinct from a populated
+     * table. Keeping one component for them means a new failure mode cannot invent a
+     * look that an operator has to learn.
      */
-    function readFiltersFromLocation() {
-      const filters = { query: '', customer: '', state: '', freshness: '' };
-      if (typeof window === 'undefined' || !window.location) return filters;
-      let params;
-      try {
-        params = new URLSearchParams(window.location.search || '');
-      } catch (error) {
-        return filters;
-      }
-      filters.query = params.get('q') || '';
-      filters.customer = params.get('customer') || '';
-      filters.state = params.get('state') || '';
-      filters.freshness = params.get('freshness') || '';
-      return filters;
-    }
-
-    /** Write the filters back to the URL without adding a history entry per keystroke. */
-    function writeFiltersToLocation(filters) {
-      if (typeof window === 'undefined' || !window.location || !window.history || typeof window.history.replaceState !== 'function') {
-        return;
-      }
-      let url;
-      try {
-        url = new URL(window.location.href);
-      } catch (error) {
-        return;
-      }
-      const params = url.searchParams;
-      const values = {
-        q: filters.query,
-        customer: filters.customer,
-        state: filters.state,
-        freshness: filters.freshness,
-      };
-      for (const key of FILTER_KEYS) {
-        if (values[key] === undefined || values[key] === '') params.delete(key);
-        else params.set(key, values[key]);
-      }
-      try {
-        window.history.replaceState(null, '', `${url.pathname}${params.toString() ? `?${params.toString()}` : ''}`);
-      } catch (error) {
-        // A console that forbids history updates must not lose the in-memory filter.
-      }
-    }
-
-    /** One full-width message for every page-level state. */
-    function Notice({ tone, heading, body, role }) {
+    function Notice({ tone, heading, body }) {
       return h(
         Paper,
-        { variant: 'outlined', sx: { p: 2, mb: 2 }, role: role || undefined },
+        { variant: 'outlined', sx: { p: 2, mb: 2 } },
         h(Typography, { variant: 'h6', gutterBottom: true, color: `${tone}.main` }, heading),
-        h(Typography, { variant: 'body2' }, body),
+        h(Typography, { variant: 'body2' }, body)
       );
     }
 
-    function statusChip(state, key) {
-      const meta = TARGET_STATE_META[state] || TARGET_STATE_META[TARGET_STATE.UNAVAILABLE];
-      return h(Chip, {
-        key: key || 'state',
-        size: 'small',
-        color: meta.tone === 'default' ? 'default' : meta.tone,
-        label: `${meta.glyph} ${meta.label}`,
-        // The accessible name states the meaning in words, so a screen reader or a colour-blind
-        // operator receives the same information as sighted colour vision.
-        'aria-label': `Status: ${meta.label}`,
-      });
+    function stateChip(row) {
+      return h(
+        Chip,
+        { key: 'state', label: row.state, size: 'small', color: STATE_COLOUR[row.state] || 'default' }
+      );
     }
 
-    function SummaryCards(counts) {
-      const cards = [
-        { key: 'total', label: 'Monitored pages', value: counts.total, tone: 'inherit' },
-        { key: 'up', label: 'Healthy', value: counts.up, tone: 'success.main' },
-        { key: 'down', label: 'Failing', value: counts.down, tone: 'error.main' },
-        { key: 'stale', label: 'Stale', value: counts.stale, tone: 'warning.main' },
-        { key: 'pending', label: 'Pending', value: counts.pending, tone: 'text.secondary' },
+    function formatDuration(durationMs) {
+      if (typeof durationMs !== 'number') {
+        return 'n/a';
+      }
+      return durationMs >= 1000 ? `${(durationMs / 1000).toFixed(2)} s` : `${durationMs} ms`;
+    }
+
+    function formatTime(timestamp, nowMs) {
+      if (typeof timestamp !== 'number') {
+        return 'never';
+      }
+      const absolute = new Date(timestamp).toISOString();
+      if (typeof nowMs !== 'number') {
+        return absolute;
+      }
+      const ageSeconds = Math.max(0, Math.round((nowMs - timestamp) / 1000));
+      return `${absolute} (${ageSeconds}s ago)`;
+    }
+
+    function aggregatePanel(counts, gatusUiUrl) {
+      const parts = [
+        h(Chip, { key: 'total', size: 'small', label: `${counts.total} configured`, sx: { mr: 1 } }, null),
       ];
-      if (counts.running > 0) cards.push({ key: 'running', label: 'Running', value: counts.running, tone: 'info.main' });
-      if (counts.unavailable > 0) cards.push({ key: 'unavailable', label: 'Unavailable', value: counts.unavailable, tone: 'error.main' });
-
-      return h(
-        Box,
-        { sx: { display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }, role: 'group', 'aria-label': 'Status summary' },
-        cards.map(card => h(
-          Paper,
-          { key: card.key, variant: 'outlined', sx: { p: 1.5, minWidth: 130 }, 'aria-label': `${card.label}: ${card.value}` },
-          h(Typography, { variant: 'h5', sx: { color: card.tone } }, String(card.value)),
-          h(Typography, { variant: 'caption' }, card.label),
-        )),
-      );
-    }
-
-    function FilterChip({ label, active, onClick, ariaLabel }) {
-      return h(
-        Link,
-        {
-          component: 'button',
-          type: 'button',
-          underline: 'none',
-          onClick,
-          'aria-pressed': active ? 'true' : 'false',
-          'aria-label': `${ariaLabel}${active ? ' (selected)' : ''}`,
-          sx: { display: 'inline-block', mr: 1, mb: 1 },
-        },
-        h(Chip, { size: 'small', variant: active ? 'filled' : 'outlined', color: active ? 'primary' : 'default', label }),
-      );
-    }
-
-    function Filters({ filters, rows, onChange }) {
-      const Input = TextField();
-      const customers = customersOf(rows);
-      const set = (patch) => onChange({ ...filters, ...patch });
-
-      return h(
-        Box,
-        { sx: { mb: 2 }, role: 'search', 'aria-label': 'Filter monitored pages' },
-        h(Input, {
-          size: 'small',
-          fullWidth: true,
-          label: 'Search monitored pages',
-          placeholder: 'Name, id or customer',
-          inputProps: { 'aria-label': 'Search monitored pages' },
-          value: filters.query,
-          onChange: (event) => set({ query: event && event.target ? String(event.target.value) : '' }),
-          sx: { mb: 1 },
-        }),
-        h(Box, { sx: { mt: 1 } },
-          h(Typography, { variant: 'caption', component: 'span', sx: { mr: 1 } }, 'Customer:'),
-          FilterChip({ label: 'All', active: filters.customer === '', ariaLabel: 'Show all customers', onClick: () => set({ customer: '' }) }),
-          customers.map(customer => FilterChip({
-            key: `customer-${customer}`,
-            label: customer,
-            active: filters.customer === customer,
-            ariaLabel: `Show only ${customer}`,
-            onClick: () => set({ customer }),
-          })),
-        ),
-        h(Box, { sx: { mt: 1 } },
-          h(Typography, { variant: 'caption', component: 'span', sx: { mr: 1 } }, 'Status:'),
-          FilterChip({ label: 'All', active: filters.state === '', ariaLabel: 'Show all statuses', onClick: () => set({ state: '' }) }),
-          FILTER_STATES.map(state => FilterChip({
-            key: `state-${state}`,
-            label: `${TARGET_STATE_META[state].glyph} ${TARGET_STATE_META[state].label}`,
-            active: filters.state === state,
-            ariaLabel: `Show only ${TARGET_STATE_META[state].label} pages`,
-            onClick: () => set({ state }),
-          })),
-        ),
-        h(Box, { sx: { mt: 1 } },
-          h(Typography, { variant: 'caption', component: 'span', sx: { mr: 1 } }, 'Freshness:'),
-          FilterChip({ label: 'All', active: filters.freshness === '', ariaLabel: 'Show any freshness', onClick: () => set({ freshness: '' }) }),
-          [FRESHNESS.FRESH, FRESHNESS.STALE].map(freshness => FilterChip({
-            key: `freshness-${freshness}`,
-            label: freshness === FRESHNESS.FRESH ? 'Fresh' : 'Stale',
-            active: filters.freshness === freshness,
-            ariaLabel: `Show only ${freshness} results`,
-            onClick: () => set({ freshness }),
-          })),
-        ),
-      );
+      const ordered = [
+        STATE.UP,
+        STATE.UNSTABLE,
+        STATE.DOWN,
+        STATE.STALE,
+        STATE.PENDING,
+        STATE.MISSING,
+        STATE.MALFORMED,
+      ];
+      for (const state of ordered) {
+        if (!counts[state]) {
+          continue;
+        }
+        parts.push(
+          h(
+            Chip,
+            {
+              key: state,
+              size: 'small',
+              label: `${counts[state]} ${state}`,
+              color: STATE_COLOUR[state],
+              sx: { mr: 1 },
+            },
+            null
+          )
+        );
+      }
+      if (gatusUiUrl) {
+        parts.push(
+          h(
+            Link,
+            {
+              key: 'ui',
+              href: gatusUiUrl,
+              target: '_blank',
+              rel: 'noreferrer noopener',
+              variant: 'body2',
+            },
+            'Open the protected Gatus dashboard'
+          )
+        );
+      }
+      return h(Box, { sx: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', mb: 2 } }, parts);
     }
 
     /**
-     * The card shown for one monitored page.
-     *
-     * The card is a button so the whole surface is one keyboard stop that opens the detail view.
-     * The thumbnail is bytes produced on demand; when none is available the card carries the
-     * honest reason instead of an empty frame that looks like a rendering fault.
+     * Rows are emitted as a flat child list rather than through a wrapper component,
+     * so the element tree stays exactly the TableHead/TableBody structure Headlamp's
+     * own components expect and no custom element is introduced.
      */
-    function PageCard({ row, onOpen, thumbnail }) {
-      const meta = TARGET_STATE_META[row.state] || TARGET_STATE_META[TARGET_STATE.UNAVAILABLE];
-      const checks = row.run ? `${row.run.failedChecks} failed check${row.run.failedChecks === 1 ? '' : 's'}` : 'no completed run';
-      const thumb = thumbnail(row);
-      const parts = [
-        h(
-          Box,
-          { key: 'head', sx: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 1 } },
-          h(Typography, { variant: 'subtitle1', component: 'span' }, row.name),
-          statusChip(row.state, 'chip'),
-        ),
-        h(
-          Typography,
-          { key: 'meta', variant: 'caption', component: 'div', sx: { mt: 0.5 } },
-          `${row.customer} · ${row.id}`,
-        ),
-        h(
-          Typography,
-          { key: 'timing', variant: 'body2', sx: { mt: 0.5 } },
-          `Last run ${row.ageMs === null ? 'unknown' : formatAge(row.ageMs)} · ${formatDuration(row.run ? row.run.durationMs : null)} · ${checks}`,
-        ),
-        h(
-          Typography,
-          { key: 'next', variant: 'caption', component: 'div' },
-          row.expectedNextRunAt ? `Next expected run ${formatTimestamp(row.expectedNextRunAt)}` : 'Next expected run unknown',
-        ),
-      ];
-
-      if (thumb.state === 'ready') {
-        parts.push(h('img', {
-          key: 'thumb',
-          src: thumb.url,
-          alt: `Latest screenshot of ${row.name}`,
-          loading: 'lazy',
-          style: { marginTop: 8, maxWidth: '100%', maxHeight: 120, objectFit: 'contain', border: '1px solid rgba(128,128,128,0.4)' },
-        }));
-        if (thumb.caption) {
-          parts.push(h(Typography, { key: 'thumb-caption', variant: 'caption', component: 'div' }, thumb.caption));
+    function dataTable(groups, nowMs) {
+      const children = [];
+      for (const group of groups) {
+        children.push(
+          h(
+            TableRow,
+            { key: `g:${group.name}` },
+            h(TableCell, { colSpan: 6, variant: 'head' }, group.name)
+          )
+        );
+        for (const row of group.rows) {
+          children.push(
+            h(
+              TableRow,
+              { key: `r:${row.id || row.name}`, hover: true },
+              h(TableCell, null, row.name),
+              h(TableCell, null, row.group || 'Ungrouped'),
+              h(TableCell, null, stateChip(row)),
+              h(TableCell, null, formatTime(row.evaluatedAt, nowMs)),
+              h(TableCell, null, formatDuration(row.durationMs)),
+              h(TableCell, null, row.detail)
+            )
+          );
         }
-      } else if (thumb.state === 'loading') {
-        parts.push(h(Typography, { key: 'thumb-loading', variant: 'caption', component: 'div', sx: { mt: 1 } }, 'Loading screenshot preview…'));
-      } else {
-        parts.push(h(Typography, { key: 'thumb-missing', variant: 'caption', component: 'div', sx: { mt: 1 } }, screenshotReason(row)));
       }
 
       return h(
-        Paper,
-        {
-          key: `card-${row.id}`,
-          variant: 'outlined',
-          sx: { p: 1.5, display: 'flex', flexDirection: 'column', gap: 0.5 },
-          role: 'button',
-          tabIndex: 0,
-          'aria-label': `${row.name}, ${meta.label}, last run ${row.ageMs === null ? 'unknown' : formatAge(row.ageMs)}. Open details.`,
-          onClick: () => onOpen(row.id),
-          onKeyDown: (event) => {
-            if (event && (event.key === 'Enter' || event.key === ' ')) {
-              event.preventDefault();
-              onOpen(row.id);
-            }
-          },
-        },
-        parts,
-      );
-    }
-
-    function checkTimeline(checks) {
-      if (!checks || checks.length === 0) {
-        return h(Typography, { variant: 'body2' }, 'This target has no recorded checks yet.');
-      }
-      return h(
-        Box,
-        { component: 'ol', sx: { pl: 2, m: 0 }, 'aria-label': 'Latest check timeline' },
-        checks.map(check => h(
-          Typography,
-          { key: `check-${check.id}`, component: 'li', variant: 'body2', sx: { mb: 0.5 } },
-          `${check.status === 'passed' ? '✓' : '✕'} ${check.id} — ${check.status} (${formatDuration(check.durationMs)})${check.message ? `: ${check.message}` : ''}`,
-        )),
-      );
-    }
-
-    function FastAvailability({ row, technicalChecks, gatusError, gatusUrl }) {
-      const parts = [
-        h(Typography, { key: 'heading', variant: 'subtitle2' }, 'Fast availability (Gatus)'),
-      ];
-
-      if (gatusError) {
-        parts.push(h(Typography, { key: 'error', variant: 'body2', color: 'warning.main' },
-          'The fast-availability layer could not be read. The browser journey above is unaffected.'));
-      } else if (row && row.fastAvailability) {
-        const fast = row.fastAvailability;
-        const disagrees = (row.state === TARGET_STATE.UP && fast.state === TARGET_STATE.DOWN)
-          || (row.state === TARGET_STATE.DOWN && fast.state === TARGET_STATE.UP);
-        parts.push(h(
-          Typography,
-          { key: 'state', variant: 'body2' },
-          `Fast state: ${fast.label}${fast.ageMs === null ? '' : ` · last evaluation ${formatAge(fast.ageMs)}`} — ${fast.detail}`,
-        ));
-        if (disagrees) {
-          parts.push(h(
-            Typography,
-            { key: 'disagreement', variant: 'body2', color: 'warning.main' },
-            `The two layers disagree: the browser journey reports ${TARGET_STATE_META[row.state].label} while the fast check reports ${fast.label}. Both are shown; neither overrides the other.`,
-          ));
-        }
-      } else if (row) {
-        parts.push(h(Typography, { key: 'none', variant: 'body2' },
-          'No correlated fast-availability check is configured for this page.'));
-      }
-
-      if (technicalChecks && technicalChecks.length > 0) {
-        parts.push(h(
-          Typography,
-          { key: 'technical', variant: 'caption', component: 'div', sx: { mt: 1 } },
-          `Other fast checks without a synthetic target (diagnostics only, not monitored pages): ${technicalChecks.map(check => check.id).join(', ')}`,
-        ));
-      }
-
-      parts.push(h(
-        Link,
-        { key: 'gatus-link', href: gatusUrl, target: '_blank', rel: 'noreferrer noopener', variant: 'caption', sx: { display: 'block', mt: 1 } },
-        'Open the protected Gatus dashboard',
-      ));
-
-      return h(Box, { sx: { mt: 2 } }, parts);
-    }
-
-    function DetailPanel({ row, technicalChecks, gatusError, gatusUrl, editorHref, onClose, onPreview, preview }) {
-      if (!row) return null;
-      return h(
-        Paper,
-        { variant: 'outlined', sx: { p: 2, mb: 2 }, role: 'region', 'aria-label': `Details for ${row.name}` },
+        TableContainer,
+        { component: Paper, variant: 'outlined' },
         h(
-          Box,
-          { sx: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' } },
-          h(Typography, { variant: 'h6', component: 'h2' }, row.name),
-          h(Link, { component: 'button', type: 'button', onClick: onClose, 'aria-label': 'Close details' }, 'Close'),
-        ),
-        h(Box, { sx: { mt: 1 } }, statusChip(row.state), h(Typography, { variant: 'caption', component: 'span', sx: { ml: 1 } },
-          `${row.customer} · target ${row.id}`)),
-        h(Typography, { variant: 'body2', sx: { mt: 1 } },
-          `Browser journey: ${row.run ? row.run.state : 'no completed run'} · freshness ${row.freshness}`
-          + `${row.ageMs === null ? '' : ` · ${formatAge(row.ageMs)}`}`),
-        h(Typography, { variant: 'body2' },
-          `Started ${row.run ? formatTimestamp(row.run.startedAt) : 'unknown'} · finished ${row.run ? formatTimestamp(row.run.finishedAt) : 'unknown'}`),
-        h(Typography, { variant: 'body2' },
-          `Duration ${formatDuration(row.run ? row.run.durationMs : null)} · ${row.run ? row.run.failedChecks : 0} failed check(s)`
-          + `${row.expectedNextRunAt ? ` · next expected ${formatTimestamp(row.expectedNextRunAt)}` : ''}`),
-        h(Typography, { variant: 'subtitle2', sx: { mt: 2 } }, 'Latest checks'),
-        checkTimeline(row.checks),
-        h(Box, { sx: { mt: 2 } }, FastAvailability({ row, technicalChecks, gatusError, gatusUrl })),
-        h(Box, { sx: { mt: 2 } },
-          h(Typography, { variant: 'subtitle2' }, 'Latest screenshot'),
-          row.screenshot.available
-            ? h(Box, null,
-              h(Link, { component: 'button', type: 'button', onClick: () => onPreview(row), 'aria-label': `Preview latest screenshot of ${row.name}` },
-                'Open latest screenshot preview'),
-              h(Typography, { variant: 'caption', component: 'div' },
-                `Captured ${formatTimestamp(row.screenshot.capturedAt)}`
-                + `${row.screenshot.runId ? ` · run ${row.screenshot.runId}` : ''}`
-                + `${row.screenshot.matchesLatestRun ? '' : ' · from an earlier run than the result shown above'}`))
-            : h(Typography, { variant: 'body2' }, screenshotReason(row))),
-        preview ? h(Box, { sx: { mt: 2 } }, previewBlock(preview)) : null,
-        h(Box, { sx: { mt: 2 } },
-          editorHref
-            ? h(Link, { href: editorHref, variant: 'body2' }, 'Open the endpoint fragment editor (changes are not applied)')
-            : h(Typography, { variant: 'caption' }, 'The endpoint editor is unavailable because this console reported no active cluster.')),
+          Table,
+          { size: 'small' },
+          h(
+            TableHead,
+            null,
+            h(
+              TableRow,
+              null,
+              h(TableCell, null, 'Endpoint'),
+              h(TableCell, null, 'Group'),
+              h(TableCell, null, 'Status'),
+              h(TableCell, null, 'Last evaluation'),
+              h(TableCell, null, 'Response'),
+              h(TableCell, null, 'Detail')
+            )
+          ),
+          h(TableBody, null, children)
+        )
       );
     }
 
-    function previewBlock(preview) {
-      if (preview.state === 'loading') {
-        return h(Typography, { variant: 'body2' }, 'Loading the latest screenshot…');
-      }
-      if (preview.state === 'error') {
-        return h(Typography, { variant: 'body2', color: 'warning.main' },
-          `Screenshot unavailable: ${preview.reason || 'the image could not be read'}`);
-      }
-      return h(
-        Box,
-        { role: 'figure', 'aria-label': `Screenshot preview for ${preview.name}` },
-        h('img', {
-          src: preview.url,
-          alt: `Latest screenshot of ${preview.name}, captured ${formatTimestamp(preview.capturedAt)}`,
-          style: { maxWidth: '100%', maxHeight: 480, objectFit: 'contain', border: '1px solid rgba(128,128,128,0.4)' },
-        }),
-        h(Typography, { variant: 'caption', component: 'div' },
-          `${preview.name} · captured ${formatTimestamp(preview.capturedAt)} · run ${preview.runId || 'unknown'}`),
-      );
-    }
-
-    function skeleton() {
-      return h(
-        Box,
-        { 'aria-busy': 'true', 'aria-live': 'polite' },
-        h(Paper, { variant: 'outlined', sx: { p: 2, mb: 1 } }, h(Typography, { variant: 'body2' }, 'Loading monitored pages…')),
-        h(Box, { sx: { display: 'grid', gap: 1 } },
-          [0, 1, 2].map(index => h(Paper, {
-            key: `skeleton-${index}`,
-            variant: 'outlined',
-            sx: { p: 2, minHeight: 96 },
-            'aria-hidden': 'true',
-          }))),
-      );
-    }
-
-    function unavailability(reason, status) {
-      if (reason === 'forbidden') {
+    function unavailabilityNotice(state) {
+      if (state.reason === 'forbidden') {
         return Notice({
           tone: 'error',
           heading: 'Service Status is not permitted',
-          body: 'The Headlamp ServiceAccount may not read the synthetic status API. This is expected only '
-            + 'when the synthetic-status module is disabled, or when its exact namespaced proxy grant is missing. '
-            + 'No other Headlamp page is affected.',
-          role: 'alert',
+          body:
+            'The Headlamp ServiceAccount may not read the Gatus Service proxy. This is expected ' +
+            'only when the gatus headlamp integration is disabled, or when the namespaced proxy ' +
+            'grant is missing. No other Headlamp page is affected.',
         });
       }
-      if (reason === 'malformed') {
+      if (state.reason === 'malformed') {
         return Notice({
           tone: 'error',
-          heading: 'The status API answered with a document this page cannot read',
-          body: 'The response was not the documented status envelope, so nothing is shown rather than something '
-            + 'misleading. The service is reachable; its contract and this payload have diverged.',
-          role: 'alert',
+          heading: 'Gatus returned a response this page cannot read',
+          body:
+            'The status document was not the expected list of endpoint status entries. Gatus is ' +
+            'reachable but its response shape is not what this page understands, so nothing is ' +
+            'shown rather than something misleading.',
         });
       }
-      if (reason === 'network') {
+      if (state.reason === 'network') {
         return Notice({
           tone: 'error',
-          heading: 'The status API could not be reached',
-          body: 'The request failed before a response was received. Check that the synthetic-status-api pod is '
-            + 'Ready and that the Headlamp ServiceAccount can reach the named Service proxy. No other Headlamp '
-            + 'page is affected.',
-          role: 'alert',
+          heading: 'Could not reach Gatus',
+          body:
+            'The request for Gatus status failed before a response was received. Check that the ' +
+            'Gatus pod is Ready and that the Headlamp ServiceAccount can reach the named Service ' +
+            'proxy. No other Headlamp page is affected.',
+        });
+      }
+      if (state.reason === 'fetch-unavailable') {
+        return Notice({
+          tone: 'error',
+          heading: 'This console build cannot issue the status request',
+          body: 'The browser did not provide a fetch implementation, so no status could be read.',
         });
       }
       return Notice({
         tone: 'error',
-        heading: `The status API did not answer (HTTP ${status || 'unknown'})`,
-        body: 'The request reached the API server but not the status service. Check the Service endpoints and its '
-          + 'container logs.',
-        role: 'alert',
+        heading: `Gatus did not answer (HTTP ${state.status || 'unknown'})`,
+        body:
+          'The status request reached the API server but not the Gatus backend. Check the Gatus ' +
+          'Service endpoints and the container logs. No other Headlamp page is affected.',
+      });
+    }
+
+    function emptyNotice(endpointsConfigured) {
+      return Notice({
+        tone: 'warning',
+        heading: 'No endpoints are configured',
+        body: endpointsConfigured
+          ? 'Gatus is running but reports no endpoints. Add endpoints to the installation ' +
+            'configuration and apply; this is an empty result set, not a failure to read.'
+          : 'Gatus reported no endpoint statuses and none are configured in the installation.',
       });
     }
 
     function ServiceStatusPage() {
-      const metadata = useMemo(() => readGatusMetadata(), []);
+      const metadata = useMemo(() => readEndpointMetadata(), []);
+      // The endpoint editor is reached from this page rather than from a second sidebar item.
+      // It is a Service Status plugin page, not a control inside Headlamp's own plugin-details
+      // screen, which 0.43.0 gives plugins no way to extend.
+      //
+      // The href is cluster-scoped. A plugin route is registered cluster-relative and rendered
+      // by the console at `/c/<active-cluster><route>`, so the unprefixed route is not a usable
+      // href: it leaves the cluster layout and renders the console 404. An empty result means no
+      // active cluster could be resolved, and is reported rather than linked.
       const editorHref = useMemo(() => clusterScopedEditorHref(), []);
-      const [filters, setFilters] = useState(() => readFiltersFromLocation());
-      const [selectedId, setSelectedId] = useState('');
-      const [tick, setTick] = useState(0);
-      const [preview, setPreview] = useState(null);
-      const [thumbnails, setThumbnails] = useState({});
       const [state, setState] = useState({
         loading: true,
         reason: '',
         status: 0,
-        snapshot: null,
-        gatus: null,
+        payload: null,
         nowMs: Date.now(),
       });
+      const [tick, setTick] = useState(0);
 
       const load = useCallback(async () => {
-        const snapshotResult = await fetchSnapshot();
-        let gatus = null;
-        if (snapshotResult.ok && metadata.configured) {
-          gatus = await fetchGatusStatuses();
-        }
+        const result = await fetchStatuses();
         setState({
           loading: false,
-          reason: snapshotResult.reason,
-          status: snapshotResult.status,
-          snapshot: snapshotResult.ok ? snapshotResult.payload : null,
-          gatus,
+          reason: result.reason,
+          status: result.status,
+          payload: result.payload,
           nowMs: Date.now(),
         });
-      }, [metadata.configured]);
+      }, []);
 
       useEffect(() => {
         load();
@@ -4812,260 +3952,87 @@ data:
         return () => clearInterval(timer);
       }, [load, tick]);
 
+      // `tick` lets an operator force a re-read without waiting a minute. It is the
+      // only interaction on the page and it changes nothing but when the read happens.
       const refresh = useCallback(() => setTick(value => value + 1), []);
-      const changeFilters = useCallback((next) => {
-        setFilters(next);
-        writeFiltersToLocation(next);
-      }, []);
-
-      const built = useMemo(() => {
-        if (state.snapshot === null) return null;
-        const validation = validateSnapshot(state.snapshot);
-        if (!validation.ok) return { invalid: validation.reason };
-        const model = buildTargets(state.snapshot, state.nowMs);
-        const gatusPayload = state.gatus && state.gatus.ok ? state.gatus.payload : null;
-        const correlated = correlateFastAvailability(
-          model.rows,
-          gatusPayload,
-          metadata.configured ? metadata.endpoints : [],
-          state.nowMs,
-        );
-        return {
-          invalid: '',
-          rows: correlated.rows,
-          technicalChecks: correlated.technicalChecks,
-          malformed: model.malformed,
-          generatedAt: model.generatedAt,
-        };
-      }, [state.snapshot, state.gatus, state.nowMs, metadata]);
-
-      const rows = built && built.rows ? built.rows : [];
-      const visible = useMemo(() => filterTargets(rows, filters), [rows, filters]);
-      const counts = useMemo(() => aggregateTargets(rows), [rows]);
-      const selected = rows.find(row => row.id === selectedId) || null;
-      const gatusError = metadata.configured && state.gatus !== null && !state.gatus.ok;
-
-      // Thumbnails are fetched one at a time, after the inventory is known, only for targets that
-      // actually have a stored image. A page with fifty targets therefore issues no image request
-      // for the forty-nine without one, and the list API never carries bytes.
-      const availableSignature = useMemo(
-        () => rows.filter(row => row.screenshot.available).map(row => `${row.id}:${row.screenshot.runId}`).sort().join('|'),
-        [rows],
-      );
-      useEffect(() => {
-        if (availableSignature === '') return undefined;
-        let cancelled = false;
-        (async () => {
-          for (const row of rows) {
-            if (cancelled) return;
-            if (!row.screenshot.available) continue;
-            const key = `${row.id}:${row.screenshot.runId}`;
-            if (thumbnails[key] !== undefined) continue;
-            setThumbnails(current => ({ ...current, [key]: { state: 'loading' } }));
-            const result = await fetchScreenshotBlob(row.id);
-            if (cancelled) {
-              if (result.ok) releaseScreenshotUrl(result.url);
-              return;
-            }
-            setThumbnails(current => {
-              // Replace, never accumulate: a refreshed run produces a new object URL for the same
-              // target, and the previous blob must be released or a long-lived console session
-              // would keep every image it ever rendered in memory.
-              const previous = current[key];
-              if (result.ok && previous && previous.state === 'ready' && previous.url !== result.url) {
-                releaseScreenshotUrl(previous.url);
-              }
-              return {
-                ...current,
-                [key]: result.ok
-                  ? {
-                    state: 'ready',
-                    url: result.url,
-                    caption: row.screenshot.matchesLatestRun ? '' : `Earlier run · captured ${formatTimestamp(row.screenshot.capturedAt)}`,
-                  }
-                  : { state: 'error', reason: result.reason },
-              };
-            });
-          }
-        })();
-        return () => { cancelled = true; };
-      }, [availableSignature]);
-
-      const thumbnail = useCallback((row) => {
-        const key = `${row.id}:${row.screenshot.runId}`;
-        return thumbnails[key] || { state: 'none' };
-      }, [thumbnails]);
-
-      const openPreview = useCallback(async (row) => {
-        setPreview({ state: 'loading', name: row.name });
-        const cached = thumbnails[`${row.id}:${row.screenshot.runId}`];
-        if (cached && cached.state === 'ready') {
-          setPreview({
-            state: 'ready',
-            name: row.name,
-            url: cached.url,
-            capturedAt: row.screenshot.capturedAt,
-            runId: row.screenshot.runId,
-          });
-          return;
-        }
-        const result = await fetchScreenshotBlob(row.id);
-        setPreview(result.ok
-          ? { state: 'ready', name: row.name, url: result.url, capturedAt: row.screenshot.capturedAt, runId: row.screenshot.runId }
-          : { state: 'error', name: row.name, reason: result.reason });
-      }, [thumbnails]);
 
       if (state.loading) {
-        return skeleton();
+        return Notice({
+          tone: 'info',
+          heading: 'Loading service status',
+          body: 'Reading the current status of every configured endpoint from Gatus.',
+        });
       }
 
-      if (state.snapshot === null) {
-        return h(Box, null, unavailability(state.reason, state.status), refreshLink(refresh));
+      if (!state.payload) {
+        return unavailabilityNotice(state);
       }
 
-      if (!built || built.invalid) {
-        return h(
-          Box,
-          null,
-          Notice({
-            tone: 'error',
-            heading: 'The status document does not match the supported contract',
-            body: `This page understands snapshot schema version 1. The service answered with ${built && built.invalid ? built.invalid : 'an unreadable document'}, so nothing is rendered rather than a partial list.`,
-            role: 'alert',
-          }),
-          refreshLink(refresh),
-        );
+      if (metadata.degraded) {
+        return Notice({
+          tone: 'error',
+          heading: 'Endpoint metadata is missing',
+          body:
+            'The installer did not render the endpoint list next to this plugin, so results cannot ' +
+            'be matched to endpoints or aged correctly. Re-apply the installation to restore it; ' +
+            'no status is shown rather than an unlabelled list.',
+        });
       }
 
-      if (rows.length === 0) {
-        return h(
-          Box,
-          null,
-          Notice({
-            tone: 'warning',
-            heading: 'No monitored pages are configured',
-            body: 'The canonical synthetic target registry is empty, so there is nothing to monitor. Add a target '
-              + 'under synthetic/targets/customers and apply; this is an empty result set, not a read failure.',
-          }),
-          refreshLink(refresh),
-        );
+      if (state.payload.length === 0) {
+        return emptyNotice(metadata.endpoints.length > 0);
       }
 
-      const groups = groupTargets(visible);
-      const staleCount = counts.stale;
-      const conflicting = disagreements(rows);
+      const built = buildRows(metadata.endpoints, state.payload, state.nowMs);
+      const counts = aggregate(built.rows);
+
+      if (counts.total === 0) {
+        return emptyNotice(false);
+      }
 
       return h(
         Box,
         null,
+        aggregatePanel(counts, metadata.gatusUiUrl),
+        built.partial
+          ? Notice({
+              tone: 'warning',
+              heading: 'Partial response',
+              body:
+                'Gatus reported fewer endpoints than the installation configures. The missing ones ' +
+                'are shown as MISSING rather than omitted, so a short read cannot be mistaken for ' +
+                'full coverage.',
+            })
+          : null,
+        dataTable(groupRows(built.rows), state.nowMs),
+        h(
+          Typography,
+          { variant: 'caption', sx: { display: 'block', mt: 1 } },
+          `Read every ${Math.round(REFRESH_MS / 1000)}s through ${PLUGIN_PROXY_PATH}. Gatus is the ` +
+            'authoritative current-status source; this page only reads it. A Gatus instance inside ' +
+            'the cluster cannot detect a total cluster outage.'
+        ),
+        h(Link, { component: 'button', variant: 'body2', onClick: refresh, sx: { mt: 1 } }, 'Refresh now'),
         h(
           Box,
-          { sx: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', mb: 1 } },
-          h(Typography, { variant: 'h5', component: 'h1' }, 'Customer page status'),
-          h(Typography, { variant: 'caption' }, `Last refresh ${formatTimestamp(new Date(state.nowMs).toISOString())}`),
-        ),
-        h(Typography, { variant: 'body2', sx: { mb: 2 } },
-          `${counts.total} monitored page${counts.total === 1 ? '' : 's'} from the canonical synthetic target registry.`),
-        h(Box, { 'aria-live': 'polite', sx: { position: 'absolute', left: -10000, top: 'auto', width: 1, height: 1, overflow: 'hidden' } },
-          statusAnnouncement(counts)),
-
-        SummaryCards(counts),
-
-        staleCount > 0
-          ? Notice({
-            tone: 'warning',
-            heading: `${staleCount} page${staleCount === 1 ? ' has' : 's have'} a stale result`,
-            body: 'A result older than twice the schedule plus the timeout is not evidence about the page right now. '
-              + 'These are shown as STALE rather than as their last outcome.',
-          })
-          : null,
-
-        conflicting.length > 0
-          ? Notice({
-            tone: 'warning',
-            heading: 'The two monitoring layers disagree',
-            body: `${conflicting.length} page${conflicting.length === 1 ? '' : 's'} report a different browser journey and fast-availability state (${conflicting.map(row => row.id).join(', ')}). Open a page for both values; neither is collapsed into a single status.`,
-          })
-          : null,
-
-        built.malformed > 0
-          ? Notice({
-            tone: 'warning',
-            heading: 'Partial response',
-            body: `${built.malformed} entr${built.malformed === 1 ? 'y' : 'ies'} in the status document could not be read and ${built.malformed === 1 ? 'is' : 'are'} not shown. The readable pages are listed below.`,
-          })
-          : null,
-
-        gatusError
-          ? Notice({
-            tone: 'warning',
-            heading: 'Fast availability is unavailable',
-            body: 'The optional Gatus correlation could not be read. Browser journeys below are unaffected.',
-          })
-          : null,
-
-        h(Box, { sx: { display: 'flex', gap: 1, alignItems: 'center', mb: 2, flexWrap: 'wrap' } },
-          refreshLink(refresh),
-          h(Typography, { variant: 'caption' }, `Refreshes every ${Math.round(REFRESH_MS / 1000)}s.`)),
-
-        FilterChipRow(filters, changeFilters, rows),
-        Filters({ filters, rows, onChange: changeFilters }),
-
-        visible.length === 0
-          ? Notice({
-            tone: 'info',
-            heading: 'No page matches these filters',
-            body: 'Clear the search or choose “All” for each filter to see every monitored page again.',
-          })
-          : groups.map(group => h(
-            Box,
-            { key: `group-${group.customer}`, component: 'section', 'aria-label': `Customer ${group.customer}`, sx: { mb: 2 } },
-            h(Typography, { variant: 'subtitle1', component: 'h2', sx: { mb: 1 } }, `${group.customer} (${group.rows.length})`),
-            h(
-              Box,
-              { sx: { display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' } } },
-              group.rows.map(row => h(Box, { key: row.id }, PageCard({ row, onOpen: setSelectedId, thumbnail }))),
-            ),
-          )),
-
-        selected
-          ? DetailPanel({
-            row: selected,
-            technicalChecks: built.technicalChecks,
-            gatusError,
-            gatusUrl: metadata.gatusUiUrl,
-            editorHref,
-            onClose: () => setSelectedId(''),
-            onPreview: openPreview,
-            preview,
-          })
-          : null,
+          { sx: { mt: 2 } },
+          editorHref
+            ? h(
+                Link,
+                { href: editorHref, variant: 'body2' },
+                'Open the endpoint fragment editor (a Service Status page; changes are not applied)'
+              )
+            : Notice({
+                tone: 'warning',
+                heading: 'Endpoint editor unavailable',
+                body:
+                  'This console did not report an active cluster, so the endpoint editor has no ' +
+                  'address on this page. Select a cluster in the console and reload; the editor is ' +
+                  'deliberately not linked without one, because the unprefixed route renders the ' +
+                  'console 404 page.',
+              })
+        )
       );
-    }
-
-    // The reset control is a peer of the filters rather than part of them, because it is the one
-    // action that must remain available when the filtered result set is empty.
-    function FilterChipRow(filters, onChange, rows) {
-      const active = filters.query !== '' || filters.customer !== '' || filters.state !== '' || filters.freshness !== '';
-      if (!active) return null;
-      return h(Box, { sx: { mb: 1 } },
-        h(Link, {
-          component: 'button',
-          type: 'button',
-          onClick: () => onChange({ query: '', customer: '', state: '', freshness: '' }),
-          'aria-label': `Clear all filters, showing all ${rows.length} monitored pages`,
-        }, 'Clear filters'));
-    }
-
-    function refreshLink(refresh) {
-      return h(Link, {
-        component: 'button',
-        type: 'button',
-        onClick: refresh,
-        variant: 'body2',
-        'aria-label': 'Refresh the monitored page status now',
-        sx: { mr: 2 },
-      }, 'Refresh now');
     }
 
     registerSidebarEntry({
@@ -5086,8 +4053,13 @@ data:
     });
 
     // The endpoint editor is an ordinary plugin route in a plugin-owned namespace, reached from
-    // the detail surface rather than from the primary navigation. TASK-209's write path is
-    // unchanged: this task changes the status inventory and presentation only.
+    // the dashboard link above, and it is a Service Status page rather than a control inside
+    // Headlamp's native plugin-details screen. Headlamp 0.43.0 exposes no plugin API for adding
+    // a row to Settings -> Plugins or anything to that details page, so that remains an unmet
+    // criterion needing a newer extension API or a separate upstream change. The route is
+    // registered cluster-relative: the console owns the `/c/<cluster>` prefix and this plugin
+    // registers no cluster name. Registering a sidebar entry would change the navigation
+    // TASK-207 established, so the dashboard keeps the single entry.
     registerEditorRoute({
       path: PLUGIN_EDITOR_PATH,
       sidebar: null,
@@ -5098,18 +4070,18 @@ data:
     });
 
     })();
-  package.json: |
+  package.json: |-
     {
       "name": "@sre-platform/headlamp-service-status",
-      "version": "0.2.0",
-      "description": "Read-only synthetic-first customer page status view for the Headlamp operator console, with an optional correlated Gatus layer and the GitOps-safe endpoint fragment editor",
+      "version": "0.1.7",
+      "description": "Read-only Gatus availability view and endpoint fragment editor for the Headlamp operator console",
       "private": true,
       "license": "Apache-2.0",
       "main": "src/view.js",
       "type": "module",
       "scripts": {
         "build": "node build.mjs",
-        "test": "node --test test/status.test.mjs test/synthetic.test.mjs test/payload.test.mjs test/editor.test.mjs"
+        "test": "node --test test/status.test.mjs test/payload.test.mjs test/editor.test.mjs"
       },
       "devDependencies": {
         "@kinvolk/headlamp-plugin": "0.13.1"
@@ -13125,7 +12097,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: 0a0ed95ca4b89b2488a0656fb79f15e18bd17a8654d91bdab3ffc4be2cf93b50
+        sre.platform.io/headlamp-plugins-sha256: 9866c1d73cda729472921ccdf78742904a20b0dc2d4d083b01f25b5faa735807
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
