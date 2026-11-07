@@ -1,8 +1,6 @@
 customerId: sre-tools
 installerVersion: 0.1.0-rc.19
 lastSucceeded:
-  modules: {}
-pending:
   modules:
     access-change-api:
       chartVersion: 0.1.0
@@ -64,6 +62,7 @@ pending:
       chartVersion: 0.1.0
       manifestDigest: ad0fec434c90386eece1ea77b96936b6fba2006de876e5e19b7a9212bd830e72
       version: 0.1.0
-phase: pending
+  revision: 41b76782f9679a0b14ad7777c174f8605472e3e9
+phase: succeeded
 platformVersion: 0.1.0-rc.19
 schemaVersion: 2
