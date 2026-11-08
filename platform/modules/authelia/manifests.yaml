@@ -242,9 +242,6 @@ data:
         path: '/config/db.sqlite3'
     notifier:
       disable_startup_check: false
-      filesystem:
-        enabled: false
-        filename: '/config/notification.txt'
       smtp:
         address: 'submission://smtp.gmail.com:587'
         sender: 'dkoldras@maximaconsulting.com'
@@ -467,6 +464,8 @@ spec:
           items:
           - key: identity_validation.reset_password.jwt.hmac.key
             path: identity_validation.reset_password.jwt.hmac.key
+          - key: notifier.smtp.password.txt
+            path: notifier.smtp.password.txt
           - key: session.encryption.key
             path: session.encryption.key
           - key: storage.encryption.key
