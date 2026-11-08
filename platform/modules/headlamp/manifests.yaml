@@ -83,6 +83,16 @@ spec:
     ports:
     - protocol: TCP
       port: 5050
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: synthetic-monitoring
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: synthetic-status
+    ports:
+    - protocol: TCP
+      port: 8080
 ---
 # Source: headlamp/templates/extra-manifests.yaml
 apiVersion: networking.k8s.io/v1
@@ -165,6 +175,34 @@ spec:
     ports:
     - protocol: TCP
       port: 5050
+---
+# Source: headlamp/templates/extra-manifests.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sre-identity-bridge-service-proxy-ingress
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: sre-identity-bridge
+    app.kubernetes.io/part-of: sre-platform
+    app.kubernetes.io/component: headlamp-identity-bridge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: synthetic-status
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: headlamp
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: sre-identity-bridge
+    ports:
+    - protocol: TCP
+      port: 8080
 ---
 # Source: headlamp/templates/extra-manifests.yaml
 apiVersion: networking.k8s.io/v1
