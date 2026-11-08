@@ -5789,7 +5789,6 @@ data:
     const Menu = component('MuiMaterial.Menu');
     const MenuItem = component('MuiMaterial.MenuItem');
     const Paper = component('MuiMaterial.Paper');
-    const Stack = component('MuiMaterial.Stack');
     const Tab = component('MuiMaterial.Tab');
     const Table = component('MuiMaterial.Table');
     const TableBody = component('MuiMaterial.TableBody');
@@ -14999,7 +14998,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: d8ed54af11cada7bb6336596982cf1443e8da84f39fa1f5bef754dc0214ea82f
+        sre.platform.io/headlamp-plugins-sha256: 025e5a9d129195924075afa276fd55e31e1cc244029fb91f4cd000ef878f380d
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
