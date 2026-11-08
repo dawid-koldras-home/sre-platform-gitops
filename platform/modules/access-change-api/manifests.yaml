@@ -268,7 +268,7 @@ spec:
             - --identity-database-secret=authelia-users-database
             - --identity-database-key=users_database.yml
             - --identity-database-sync-interval=5m
-            # TASK-231 rollback drill: onboarding email disabled
+            - --onboarding-email-enabled
             - --onboarding-auth-url=https://auth.172.104.244.94.nip.io
             - --onboarding-smtp-host=smtp.gmail.com
             - --onboarding-smtp-port=587
