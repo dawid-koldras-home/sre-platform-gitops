@@ -3165,6 +3165,10 @@ data:
     id: electrocraft-updates
     name: ElectroCraft MotionPRO update catalog - availability and listing rendering
     baseUrl: https://updates.electrocraft.com/motionpro/
+    # Publish one bounded status screenshot per run for the Headlamp Service Status view.
+    # This is an anonymous public page, so the capture contains no session, form value or
+    # customer data. Credentialed targets are never eligible, whatever they set.
+    statusScreenshot: true
     minIntervalMinutes: 15
     timeoutMs: 120000
     retries: 0
@@ -3208,6 +3212,10 @@ data:
     id: hansen-dc-motors
     name: Hansen DC Brush Motors catalog - availability and essential rendering
     baseUrl: https://www.hansen-motor.com/products/dc-motors/
+    # Publish one bounded status screenshot per run for the Headlamp Service Status view.
+    # This is an anonymous public page, so the capture contains no session, form value or
+    # customer data. Credentialed targets are never eligible, whatever they set.
+    statusScreenshot: true
     minIntervalMinutes: 15
     timeoutMs: 120000
     retries: 0
@@ -3262,6 +3270,10 @@ data:
     id: hansen-motor
     name: Hansen Corporation public site - availability and essential rendering
     baseUrl: https://www.hansen-motor.com/
+    # Publish one bounded status screenshot per run for the Headlamp Service Status view.
+    # This is an anonymous public page, so the capture contains no session, form value or
+    # customer data. Credentialed targets are never eligible, whatever they set.
+    statusScreenshot: true
     minIntervalMinutes: 15
     timeoutMs: 120000
     retries: 0
@@ -3304,6 +3316,10 @@ data:
     id: mechatronics-bearing
     name: Mechatronics Bearing Group public site - availability and essential rendering
     baseUrl: https://www.mechatronicsbearing.com/
+    # Publish one bounded status screenshot per run for the Headlamp Service Status view.
+    # This is an anonymous public page, so the capture contains no session, form value or
+    # customer data. Credentialed targets are never eligible, whatever they set.
+    statusScreenshot: true
     minIntervalMinutes: 15
     timeoutMs: 120000
     retries: 0
@@ -3476,6 +3492,10 @@ data:
     id: plantmaster
     name: PlantMaster public site - availability and essential rendering
     baseUrl: https://plantmaster.com/
+    # Publish one bounded status screenshot per run for the Headlamp Service Status view.
+    # This is an anonymous public page, so the capture contains no session, form value or
+    # customer data. Credentialed targets are never eligible, whatever they set.
+    statusScreenshot: true
     # Bounded schedule: 15 minutes is the maximum permitted frequency
     # (minIntervalMinutes >= 15 enforced by the schema).
     minIntervalMinutes: 15
