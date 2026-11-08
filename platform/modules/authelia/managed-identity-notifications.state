@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "customer_id": "sre-tools",
+  "environment": "dev",
+  "baseline_revision": "482e3ab3ed384c192235a9f7e511166a81c8014f",
+  "entries": {
+    "platform-admin": {
+      "identity_id": "platform-admin",
+      "email": "",
+      "kind": "baseline",
+      "delivery_key": "platform-admin:482e3ab3ed384c192235a9f7e511166a81c8014f",
+      "applied_revision": "482e3ab3ed384c192235a9f7e511166a81c8014f",
+      "state": "not_required",
+      "attempts": 0,
+      "created_at": "2026-11-08T19:06:31Z",
+      "updated_at": "2026-11-08T19:06:31Z"
+    },
+    "testuser": {
+      "identity_id": "testuser",
+      "email": "dkoldras@maximaconsulting.com",
+      "kind": "baseline",
+      "delivery_key": "testuser:482e3ab3ed384c192235a9f7e511166a81c8014f",
+      "applied_revision": "482e3ab3ed384c192235a9f7e511166a81c8014f",
+      "state": "not_required",
+      "attempts": 0,
+      "created_at": "2026-11-08T19:06:31Z",
+      "updated_at": "2026-11-08T19:06:31Z"
+    }
+  }
+}
