@@ -29,69 +29,6 @@ lastSucceeded:
       version: 1.5.0
     headlamp:
       chartVersion: 0.43.0
-      manifestDigest: b850047e192d88c3e01d5bd3259276e356718221875158077a4f1416e4362f6f
-      version: 0.43.0
-    holmes:
-      chartVersion: 0.42.0
-      manifestDigest: 3ab9cace8b5d781e722a54ed431fa15c6bd999fc755386ae7efff2b8287618c5
-      version: 0.42.0
-    ingress-nginx:
-      chartVersion: 4.15.1
-      manifestDigest: 425247c5110ab16d02af6731e98dea4eeb59e419c41c0c8f519d6c58cb74e7f8
-      version: 4.15.1
-    kyverno:
-      chartVersion: 3.2.0
-      manifestDigest: 441a2588508e13b8132c494a8a7d954aa847df53a5bb080daf091e8792166155
-      version: 1.12.0
-    metrics-server:
-      chartVersion: 3.12.2
-      manifestDigest: dc3e1f1735f0697d65302ad9f611b62c7e4707fb8b24705d107e38fe9eb890fc
-      version: 0.7.2
-    opencost:
-      chartVersion: 2.2.1
-      manifestDigest: 8beaa541da018c1972b25de30fe899ace4038476af22abdbfbf1c951c3937841
-      version: 1.116.1
-    prometheus:
-      chartVersion: 29.18.0
-      manifestDigest: 99b2c6ad8f339f0226ee6e659e8787ae68ce18206ef4d01d8bfb5abcb9776c4e
-      version: 29.18.0
-    synthetic-monitoring:
-      manifestDigest: d0e0d740c3578ae2e7017c6a2093c9e31c2fb3654020f9c771e9cbf2dead6f45
-      version: 2.0.0
-    synthetic-status:
-      chartVersion: 0.1.0
-      manifestDigest: 26ffd2c6d1b51e7d04558fa0942e7fc4208cd39ccbdb9b936fbe5d9ccb62f7f3
-      version: 0.1.0
-  revision: a87bbc9880d3a4d2582f4339012cb7c331b97544
-pending:
-  modules:
-    access-change-api:
-      chartVersion: 0.1.0
-      manifestDigest: d936ef3e4af32183b3729ef795542a84250aff6b2a73044fdc057eaa4c73fbfd
-      version: 0.1.0
-    argocd:
-      chartVersion: 7.3.11
-      imageVersion: v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
-      manifestDigest: 01ad9be16ea95ec78547b2205354a50dcc1d95de6a66c7c80525b5dff1891fb3
-      version: 2.11.7
-    audit-sink:
-      chartVersion: 0.1.0
-      manifestDigest: 9c98b9a52454bbd1845275a7545f401e235ed564fdb84422037dd72ab6ea3f63
-      version: 0.1.0
-    authelia:
-      chartVersion: 0.11.22
-      manifestDigest: 68a1e67bbb19f5e12a5b9db4d5463421b0293ba10579e748bd2804f2e8ccef6b
-      version: 4.39.24
-    cert-manager:
-      chartVersion: v1.15.0
-      manifestDigest: eaff493e8271f19feb84886fe3a6d151af16e82a8644decd66ea9dbea4f4655e
-      version: 1.15.0
-    gatus:
-      chartVersion: 1.5.0
-      manifestDigest: 363b4e29f0144e3721caf3af3e9668510f8848d83501cac5d1b4282c4a1b7614
-      version: 1.5.0
-    headlamp:
-      chartVersion: 0.43.0
       manifestDigest: 39b90807c58cabcd38ddaf52ec7c9e6c7d9a24599f9d290fadc0b2484299e05e
       version: 0.43.0
     holmes:
@@ -125,6 +62,7 @@ pending:
       chartVersion: 0.1.0
       manifestDigest: 26ffd2c6d1b51e7d04558fa0942e7fc4208cd39ccbdb9b936fbe5d9ccb62f7f3
       version: 0.1.0
-phase: pending
+  revision: 4ca20d08b1dcaa77ad4f6a6ec5191b1d5aa4211f
+phase: succeeded
 platformVersion: 0.1.0-rc.19
 schemaVersion: 2
