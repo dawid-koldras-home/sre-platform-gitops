@@ -6657,18 +6657,80 @@ data:
 
     const UNREADABLE = new Set(['', 'undefined', 'null', '[object object]']);
 
+    // Headlamp's own request wrapper builds its Error message as
+    // `statusText + " - " + body.message`. The access-change API answers with the
+    // coded envelope `{"error": ..., "code": ...}` and has no `message` field, so a
+    // refused request becomes a string such as "Bad Request - undefined" or, when
+    // HTTP/2 supplies no statusText, exactly "- undefined". That is not a readable
+    // operator message even though it is a non-empty string. It is refused here so
+    // the status mapping below can produce an actionable sentence instead.
+    const MISSING_FIELD_MESSAGE = /(^|[\s\-:])(undefined|null|\[object object\])($|[\s.,;])/i;
+    const WRAPPER_PREFIX = /^(?:[-–—]\s*|[A-Za-z][A-Za-z ]{0,48}\s+[-–—]\s+)/;
+
+    /** The first readable string, or '' when none of the candidates is usable. */
+    function cleanString(value) {
+      if (typeof value !== 'string') {
+        return '';
+      }
+      let text = value.trim();
+      if (text === '') {
+        return '';
+      }
+      const lower = text.toLowerCase();
+      if (UNREADABLE.has(lower) || MISSING_FIELD_MESSAGE.test(text)) {
+        return '';
+      }
+      // Strip the wrapper's status prefix so the operator sees the API's own
+      // sentence rather than "Bad Request - ...". A legitimate message may contain
+      // a dash, so only the leading prefix is removed.
+      text = text.replace(WRAPPER_PREFIX, '').trim();
+      if (text === '' || UNREADABLE.has(text.toLowerCase()) || MISSING_FIELD_MESSAGE.test(text)) {
+        return '';
+      }
+      return text;
+    }
+
     /** The first non-empty, readable string among the candidates. */
     function firstString(...values) {
       for (const value of values) {
         if (typeof value !== 'string') {
           continue;
         }
-        const trimmed = value.trim();
-        if (trimmed !== '' && !UNREADABLE.has(trimmed.toLowerCase())) {
-          return trimmed;
+        const cleaned = cleanString(value);
+        if (cleaned !== '') {
+          return cleaned;
         }
       }
       return '';
+    }
+
+    /**
+     * A concise, actionable sentence for an HTTP status when no readable API
+     * message survived. It is deliberately static: it names the class of failure
+     * and the next safe action, never a response body, credential or endpoint.
+     */
+    function messageForStatus(status) {
+      switch (status) {
+        case 400:
+        case 422:
+          return 'The request was rejected as invalid. Review the values and try again.';
+        case 401:
+        case 403:
+          return 'The request was not permitted for this session. Sign in again or ask an access administrator.';
+        case 404:
+          return 'The requested item no longer exists. Reload and try again.';
+        case 409:
+          return 'The data changed since it was loaded. Reload and preview again.';
+        case 413:
+          return 'The request was too large. Reduce its size and try again.';
+        case 429:
+          return 'Too many requests were sent. Wait a moment and try again.';
+        default:
+          if (status >= 500) {
+            return 'The access-change API is unavailable right now. Check the API and its audit sink, then retry.';
+          }
+          return 'The request could not be completed. Check the connection and try again.';
+      }
     }
 
     /** Reduce an arbitrary value to a readable string or the empty string. */
@@ -6728,7 +6790,7 @@ data:
         readable(value && value.data && (value.data.error || value.data.message)),
         readable(value && value.body && (value.body.error || value.body.message)),
         readable(typeof value === 'string' ? value : undefined),
-        'request failed'
+        messageForStatus(status)
       );
 
       const code = firstString(
@@ -6750,6 +6812,23 @@ data:
     }
 
     /**
+     * Operator-facing text for any failed result or thrown value.
+     *
+     * The caller supplies the sentence to use when the failure carries no readable
+     * detail. A successful result never reaches this function; `result.message` is
+     * sanitized by the normalizer, so a stale wrapper artefact such as
+     * "- undefined" can never be rendered even if it survives another code path.
+     */
+    function requestErrorMessage(value, fallback) {
+      const normalized = normalizeRequestError(value);
+      if (normalized.message && normalized.message !== messageForStatus(0)) {
+        return normalized.message;
+      }
+      const text = cleanString(fallback);
+      return text !== '' ? text : messageForStatus(0);
+    }
+
+    /**
      * The friendly text for a failed credential provisioning request. The raw API
      * message is deliberately not shown here: a 503 provisioning failure means the
      * credential store (OpenBao) is unreachable or unauthorized, which is an
@@ -6759,7 +6838,7 @@ data:
       if (normalized && normalized.status === 503) {
         return 'Credential provisioning is unavailable. Contact an operator.';
       }
-      return normalized && normalized.message ? normalized.message : 'request failed';
+      return requestErrorMessage(normalized, 'Credential provisioning failed. Try again or contact an operator.');
     }
 
       // ---- src/fetch.js ----
@@ -8425,7 +8504,7 @@ data:
         return h(
           Alert,
           { severity: error.reason === 'unauthorized' ? 'error' : 'warning', sx: { mt: 2 } },
-          `Change request status is not available: ${error.message || error.reason || 'the read failed'}.`
+          `Change request status is not available: ${requestErrorMessage(error, 'the read failed')}.`
         );
       }
       return h(
@@ -8622,7 +8701,7 @@ data:
         const result = await fetchEditorPolicy(name);
         setBusy(false);
         if (!result.ok) {
-          setSubmitError(result.message || 'The entry could not be read.');
+          setSubmitError(requestErrorMessage(result, 'The entry could not be read. Reload and try again.'));
           return;
         }
         const entry = result.payload && result.payload.policy ? result.payload.policy : null;
@@ -8686,7 +8765,7 @@ data:
         const result = await submitChange(operation, policy, name);
         setBusy(false);
         if (!result.ok) {
-          setSubmitError(result.message || `The API refused the change request (${result.reason}).`);
+          setSubmitError(requestErrorMessage(result, `The API refused the change request (${result.reason}).`));
           return;
         }
         const request = result.payload && result.payload.request ? result.payload.request : null;
@@ -8709,7 +8788,7 @@ data:
         const result = await submitChange('delete', null, entry.name);
         setBusy(false);
         if (!result.ok) {
-          setSubmitError(result.message || `The API refused the delete request (${result.reason}).`);
+          setSubmitError(requestErrorMessage(result, `The API refused the delete request (${result.reason}).`));
           return;
         }
         const request = result.payload && result.payload.request ? result.payload.request : null;
@@ -8757,7 +8836,7 @@ data:
                     : 'No entry is declared. A new entry can be created and submitted for approval.'
                 )
               )
-          : h(Alert, { severity: 'warning' }, `The entries could not be read: ${list.message || list.reason}.`);
+          : h(Alert, { severity: 'warning' }, `The entries could not be read: ${requestErrorMessage(list, 'reload and try again')}.`);
 
       return h(
         Box,
@@ -8962,10 +9041,7 @@ data:
     }
 
     function errorText(result, fallback) {
-      if (result && typeof result.message === 'string' && result.message !== '') {
-        return result.message;
-      }
-      return fallback;
+      return requestErrorMessage(result, fallback);
     }
 
     // Delivery watching is bounded on purpose: the panel never spins forever and
@@ -9524,11 +9600,17 @@ data:
       }, [clearCredentialForm, credentialTarget, load, onChanged]);
 
       const showPreview = useCallback(async request => {
+        setNotice(null);
         const result = await previewIdentityChange(request);
         if (!result.ok) {
-          setNotice({ severity: 'error', text: errorText(result, 'The identity preview failed.') });
+          // A failed attempt must never leave the previous preview visible and
+          // actionable: the operator would be looking at an older document while
+          // the banner describes a different failure.
+          setPreview(null);
+          setNotice({ severity: 'error', text: errorText(result, 'The identity preview failed. Review the values and try again.') });
           return false;
         }
+        setNotice(null);
         setPendingRequest(request);
         setPreview(result.payload);
         return true;
@@ -11662,7 +11744,7 @@ data:
   package.json: |
     {
       "name": "@sre-platform/headlamp-access-control-view",
-      "version": "0.7.0",
+      "version": "0.7.1",
       "description": "Access control and managed-user view with bounded GitOps editors for the Headlamp operator console",
       "private": true,
       "license": "Apache-2.0",
@@ -14998,7 +15080,7 @@ spec:
   template:
     metadata:
       annotations:
-        sre.platform.io/headlamp-plugins-sha256: 025e5a9d129195924075afa276fd55e31e1cc244029fb91f4cd000ef878f380d
+        sre.platform.io/headlamp-plugins-sha256: f7d5f7e651da1368ffd99e3c0412713f721eece14f98b64ef17f637a0b54c916
       labels:
         app.kubernetes.io/name: headlamp
         app.kubernetes.io/instance: headlamp
