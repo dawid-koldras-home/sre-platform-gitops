@@ -37,12 +37,6 @@ spec:
       - namespaceSelector:
           matchLabels:
             kubernetes.io/metadata.name: kube-system
-    - ports:
-      - port: 587
-        protocol: TCP
-      to:
-      - ipBlock:
-          cidr: 0.0.0.0/0
 ---
 # Source: authelia/templates/configMap.yaml
 apiVersion: v1
@@ -242,14 +236,8 @@ data:
         path: '/config/db.sqlite3'
     notifier:
       disable_startup_check: false
-      smtp:
-        address: 'submission://smtp.gmail.com:587'
-        sender: 'dkoldras@maximaconsulting.com'
-        username: 'dkoldras@maximaconsulting.com'
-        identifier: 'platform.local'
-        disable_require_tls: false
-        tls:
-          server_name: 'smtp.gmail.com'
+      filesystem:
+        filename: '/config/notification.txt'
     access_control:
       default_policy: 'deny'
       rules:
@@ -387,8 +375,6 @@ spec:
           value: '/configuration.yaml'
         - name: X_AUTHELIA_CONFIG_FILTERS
           value: template
-        - name: AUTHELIA_NOTIFIER_SMTP_PASSWORD_FILE
-          value: '/secrets/internal/notifier.smtp.password.txt'
         startupProbe:
           failureThreshold: 6
           httpGet:
@@ -464,8 +450,6 @@ spec:
           items:
           - key: identity_validation.reset_password.jwt.hmac.key
             path: identity_validation.reset_password.jwt.hmac.key
-          - key: notifier.smtp.password.txt
-            path: notifier.smtp.password.txt
           - key: session.encryption.key
             path: session.encryption.key
           - key: storage.encryption.key
