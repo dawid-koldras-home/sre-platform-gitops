@@ -58,19 +58,6 @@ data:
       - kind: user
         name: task230-admin
         reason: disposable TASK-230 acceptance administrator
-    - name: task230-ui-policy
-      role: viewer
-      scope:
-        clusters:
-        - lke643351
-        environments:
-        - dev
-        namespaces:
-        - gatus
-        - headlamp
-      subjects:
-      - kind: group
-        name: task230-acceptance
     privilegeCeiling:
       roles:
       - viewer
@@ -81,7 +68,7 @@ metadata:
   annotations:
     access.sre.platform.io/customer-id: sre-tools
     access.sre.platform.io/environment: dev
-    access.sre.platform.io/request-id: ec7bc5a9dd72a3db
+    access.sre.platform.io/request-id: bd9f2ea9d5391a7b
     access.sre.platform.io/submitted-by: task230-admin
   labels:
     app.kubernetes.io/component: access-change
