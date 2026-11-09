@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:6c82c6adab4b241c4eb00006fea8a3c0c785714f0d06859df90e2dc19b565ecd"
+        sre.platform.io/config-checksum: "sha256:35deac7b15b78caef5ac962548837371f8ce2bcb78f37f41662438a25cd7a927"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -377,6 +377,18 @@ data:
           - kind: user
             name: platform-admin
             reason: sole access administrator for this installation
+        - name: task230-admin-access-administrator
+          role: accessAdministrator
+          scope:
+            clusterWide: true
+            clusters:
+            - lke643351
+            environments:
+            - dev
+          subjects:
+          - kind: user
+            name: task230-admin
+            reason: disposable TASK-230 acceptance administrator
         - name: platform-read-only
           role: viewer
           scope:
