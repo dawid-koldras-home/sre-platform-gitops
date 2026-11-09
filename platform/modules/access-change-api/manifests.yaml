@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:c8b6998956ac158dd6c35eb63a131c96ed7c1624a28e03a86383c8edc8fdca11"
+        sre.platform.io/config-checksum: "sha256:6c82c6adab4b241c4eb00006fea8a3c0c785714f0d06859df90e2dc19b565ecd"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -240,7 +240,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: access-change-api
-          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:788981756ba8ea1fe19e76a3c77ac1e15a659587549c6462653f22a18c3e4383"
+          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:1896ebe5fdd80aada4c806466352109be88351705f742e1172cfde0d8b9064d1"
           imagePullPolicy: IfNotPresent
           workingDir: /app
           args:
@@ -252,7 +252,7 @@ spec:
             - --audit-url=https://audit-sink.audit-sink.svc.cluster.local:8443
             - --audit-ca-file=/etc/access-change/audit/ca.crt
             - --audit-token-file=/etc/access-change/audit/token
-            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:788981756ba8ea1fe19e76a3c77ac1e15a659587549c6462653f22a18c3e4383
+            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:1896ebe5fdd80aada4c806466352109be88351705f742e1172cfde0d8b9064d1
             - --service-namespace=access-change-api
             - --service-name=access-change-api
             - --git-credentials-file=/etc/access-change/git-credentials/credentials
@@ -464,7 +464,7 @@ data:
               - platform-operators
               enabled: true
             image:
-              digest: sha256:788981756ba8ea1fe19e76a3c77ac1e15a659587549c6462653f22a18c3e4383
+              digest: sha256:1896ebe5fdd80aada4c806466352109be88351705f742e1172cfde0d8b9064d1
               repository: ghcr.io/dawid-koldras-home/access-change-api
             ingress:
               enabled: true
