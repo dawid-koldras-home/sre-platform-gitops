@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:c8b6998956ac158dd6c35eb63a131c96ed7c1624a28e03a86383c8edc8fdca11"
+        sre.platform.io/config-checksum: "sha256:75fab97496ca6f89455641d6dcafffa80dbbf7e3998c1c710eab1d50326c1a64"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -365,6 +365,18 @@ data:
     spec:
       accessPolicy:
         policies:
+        - name: task230-admin-access
+          role: accessAdministrator
+          scope:
+            clusterWide: true
+            clusters:
+            - lke643351
+            environments:
+            - dev
+          subjects:
+          - kind: user
+            name: task230-admin
+            reason: disposable TASK-230 acceptance
         - name: platform-admin-access-administrator
           role: accessAdministrator
           scope:
@@ -428,6 +440,16 @@ data:
       identity:
         backend: file
         identities:
+        - credentialRef:
+            property: password
+            secretKey: sre-tools/identity/task230-admin
+            storeKey: identities/task230-admin
+          displayLabel: TASK-230 disposable admin
+          email: task230xd6741bf3e0@fldubai.com
+          groups:
+          - platform-operators
+          id: task230-admin
+          state: enabled
         - credentialRef:
             property: password
             secretKey: sre-tools/identity/platform-admin
