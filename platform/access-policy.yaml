@@ -58,18 +58,6 @@ data:
       - kind: user
         name: task230-admin
         reason: disposable TASK-230 acceptance administrator
-    - name: task230-probe-policy
-      role: viewer
-      scope:
-        clusters:
-        - lke643351
-        environments:
-        - dev
-        namespaces:
-        - headlamp
-      subjects:
-      - kind: group
-        name: task230-acceptance
     privilegeCeiling:
       roles:
       - viewer
@@ -80,7 +68,7 @@ metadata:
   annotations:
     access.sre.platform.io/customer-id: sre-tools
     access.sre.platform.io/environment: dev
-    access.sre.platform.io/request-id: f261bf02df8da759
+    access.sre.platform.io/request-id: 5e1cb956ba269409
     access.sre.platform.io/submitted-by: platform-admin
   labels:
     app.kubernetes.io/component: access-change
