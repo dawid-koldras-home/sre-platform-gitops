@@ -46,18 +46,6 @@ data:
       subjects:
       - kind: group
         name: platform-operators
-    - name: task230-admin-access-administrator
-      role: accessAdministrator
-      scope:
-        clusterWide: true
-        clusters:
-        - lke643351
-        environments:
-        - dev
-      subjects:
-      - kind: user
-        name: task230-admin
-        reason: disposable TASK-230 acceptance administrator
     privilegeCeiling:
       roles:
       - viewer
@@ -68,8 +56,8 @@ metadata:
   annotations:
     access.sre.platform.io/customer-id: sre-tools
     access.sre.platform.io/environment: dev
-    access.sre.platform.io/request-id: bd9f2ea9d5391a7b
-    access.sre.platform.io/submitted-by: task230-admin
+    access.sre.platform.io/request-id: 15e858cb2cf83e5d
+    access.sre.platform.io/submitted-by: platform-admin
   labels:
     app.kubernetes.io/component: access-change
     app.kubernetes.io/managed-by: access-change-api
