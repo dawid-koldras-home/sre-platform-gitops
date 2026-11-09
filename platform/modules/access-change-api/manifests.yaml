@@ -228,7 +228,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:8b3a4b138f78f8c2801a4e697707ce96e2dc3c801c93d4ce49431b456bdc424a"
+        sre.platform.io/config-checksum: "sha256:c8b6998956ac158dd6c35eb63a131c96ed7c1624a28e03a86383c8edc8fdca11"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -240,7 +240,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: access-change-api
-          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:4ec521bfc0ceb28496546edfd62e1e6ff19413837298d17b26f65b6535f43d6d"
+          image: "ghcr.io/dawid-koldras-home/access-change-api@sha256:788981756ba8ea1fe19e76a3c77ac1e15a659587549c6462653f22a18c3e4383"
           imagePullPolicy: IfNotPresent
           workingDir: /app
           args:
@@ -252,7 +252,7 @@ spec:
             - --audit-url=https://audit-sink.audit-sink.svc.cluster.local:8443
             - --audit-ca-file=/etc/access-change/audit/ca.crt
             - --audit-token-file=/etc/access-change/audit/token
-            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:4ec521bfc0ceb28496546edfd62e1e6ff19413837298d17b26f65b6535f43d6d
+            - --image-digest=ghcr.io/dawid-koldras-home/access-change-api@sha256:788981756ba8ea1fe19e76a3c77ac1e15a659587549c6462653f22a18c3e4383
             - --service-namespace=access-change-api
             - --service-name=access-change-api
             - --git-credentials-file=/etc/access-change/git-credentials/credentials
@@ -365,18 +365,6 @@ data:
     spec:
       accessPolicy:
         policies:
-        - name: task230-admin-access
-          role: accessAdministrator
-          scope:
-            clusterWide: true
-            clusters:
-            - lke643351
-            environments:
-            - dev
-          subjects:
-          - kind: user
-            name: task230-admin
-            reason: disposable TASK-230 acceptance
         - name: platform-admin-access-administrator
           role: accessAdministrator
           scope:
@@ -442,16 +430,6 @@ data:
         identities:
         - credentialRef:
             property: password
-            secretKey: sre-tools/identity/task230-admin
-            storeKey: identities/task230-admin
-          displayLabel: TASK-230 disposable admin
-          email: task230afd299b94a4@fldubai.com
-          groups:
-          - platform-operators
-          id: task230-admin
-          state: enabled
-        - credentialRef:
-            property: password
             secretKey: sre-tools/identity/platform-admin
             storeKey: identities/platform-admin
           displayLabel: Platform Admin
@@ -486,12 +464,25 @@ data:
               - platform-operators
               enabled: true
             image:
-              digest: sha256:4ec521bfc0ceb28496546edfd62e1e6ff19413837298d17b26f65b6535f43d6d
+              digest: sha256:788981756ba8ea1fe19e76a3c77ac1e15a659587549c6462653f22a18c3e4383
               repository: ghcr.io/dawid-koldras-home/access-change-api
             ingress:
               enabled: true
               host: headlamp.172.104.244.94.nip.io
               pathPrefix: /access-change
+            onboardingEmail:
+              authURL: https://auth.172.104.244.94.nip.io
+              enabled: true
+              maxAttempts: 5
+              passwordSecret:
+                key: password
+                name: access-change-api-onboarding-smtp
+              smtpFrom: dkoldras@maximaconsulting.com
+              smtpHost: smtp.gmail.com
+              smtpPort: 587
+              smtpUsername: dkoldras@maximaconsulting.com
+              supportContact: Contact your platform administrator
+              syncInterval: 1m
             serviceName: access-change-api
             serviceNamespace: access-change-api
           enabled: true
@@ -507,6 +498,13 @@ data:
             cookieDomain: 172.104.244.94.nip.io
             host: auth.172.104.244.94.nip.io
             ingressClassName: nginx
+            notifierSmtp:
+              enabled: true
+              host: smtp.gmail.com
+              passwordKey: notifier.smtp.password.txt
+              port: 587
+              sender: dkoldras@maximaconsulting.com
+              username: dkoldras@maximaconsulting.com
             protectedHost: headlamp.172.104.244.94.nip.io
             secretsExistingSecret: authelia-secrets
             tlsSecretName: authelia-tls
