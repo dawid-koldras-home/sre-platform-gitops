@@ -66,6 +66,7 @@ data:
         environments:
         - dev
         namespaces:
+        - gatus
         - headlamp
       subjects:
       - kind: group
@@ -80,7 +81,7 @@ metadata:
   annotations:
     access.sre.platform.io/customer-id: sre-tools
     access.sre.platform.io/environment: dev
-    access.sre.platform.io/request-id: 5a75e71f024c27f0
+    access.sre.platform.io/request-id: ec7bc5a9dd72a3db
     access.sre.platform.io/submitted-by: task230-admin
   labels:
     app.kubernetes.io/component: access-change
