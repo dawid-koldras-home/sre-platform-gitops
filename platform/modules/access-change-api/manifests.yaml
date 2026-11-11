@@ -235,7 +235,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:2f7463a80627b3337ee7318101d9ed775f3d5c712e1bb338216994d73893b708"
+        sre.platform.io/config-checksum: "sha256:ea6af38eaa130455657e0aafff6fa7c676de44c86a10d17dbd767a5225cd7384"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -659,11 +659,7 @@ data:
             publicURL: https://headlamp.172.105.93.230.nip.io
           enabled: true
         holmes:
-          config:
-            acknowledgeOpenCodeUse: false
-            provider: gemini
-            providerSecretName: holmes-provider
-          enabled: true
+          enabled: false
         openbao:
           enabled: false
         opencost:
