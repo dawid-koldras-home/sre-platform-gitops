@@ -705,7 +705,7 @@ data:
     mcp_servers: 
       {}
   model_list.yaml: |-
-    primary:
+    deepseek-v4.1-flash:
       api_base: http://holmes-opencode-adapter.holmes.svc.cluster.local:8080/v1
       api_key: "{{ env.OPENAI_API_KEY }}"
       model: openai/deepseek-v4.1-flash
@@ -756,7 +756,7 @@ spec:
         
       annotations:
         # checksum annotation triggering pod reload when .Values.toolsets changes by helm upgrade
-        checksum/toolset-config: 4a0dd0e37956b0e1ac9f13da7d0d452452067800b101740c83fcdb460a1fd4fb
+        checksum/toolset-config: 1b03c63328fcf62efb63948c027a0d666abc3adc262b47bb890c952ea821e414
     spec:
       serviceAccountName: holmes
       securityContext:
@@ -818,6 +818,8 @@ spec:
             value: "1500"
           - name: TEMPERATURE
             value: "1"
+          - name: MODEL
+            value: deepseek-v4.1-flash
         envFrom:
         - secretRef:
             name: holmes-opencode
