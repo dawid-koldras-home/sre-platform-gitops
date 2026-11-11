@@ -150,7 +150,7 @@ data:
   statusbadge.enabled: "false"
   timeout.hard.reconciliation: 0s
   timeout.reconciliation: 60s
-  url: https://argocd.172.104.244.94.nip.io
+  url: https://argocd.172.105.93.230.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-cmd-params-cm.yaml
 apiVersion: v1
@@ -229,7 +229,7 @@ metadata:
     app.kubernetes.io/version: "v2.11.7-sha256-47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b"
 data:
   context: |
-    argocdUrl: https://argocd.172.104.244.94.nip.io
+    argocdUrl: https://argocd.172.105.93.230.nip.io
 ---
 # Source: argo-cd/templates/argocd-configs/argocd-rbac-cm.yaml
 apiVersion: v1
@@ -22164,7 +22164,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
-        checksum/cm: 24a51cbf4e2c0b1f93004a399c6c6e89de6d8ccfffb49f9d141eed9eeb3016e3
+        checksum/cm: ad0d3e8b79d3710b3214628c2858a34bb5827e0b47417aa2d9047b5d56113172
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-repo-server
@@ -22535,7 +22535,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
-        checksum/cm: 24a51cbf4e2c0b1f93004a399c6c6e89de6d8ccfffb49f9d141eed9eeb3016e3
+        checksum/cm: ad0d3e8b79d3710b3214628c2858a34bb5827e0b47417aa2d9047b5d56113172
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-server
@@ -23160,7 +23160,7 @@ spec:
     metadata:
       annotations:
         checksum/cmd-params: 6872bb44a198f64b32918aa35e21294d875f6f67a9b38670b9be1e9a9b7a1834
-        checksum/cm: 24a51cbf4e2c0b1f93004a399c6c6e89de6d8ccfffb49f9d141eed9eeb3016e3
+        checksum/cm: ad0d3e8b79d3710b3214628c2858a34bb5827e0b47417aa2d9047b5d56113172
       labels:
         helm.sh/chart: argo-cd-7.3.11
         app.kubernetes.io/name: argocd-application-controller
@@ -23466,7 +23466,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: argocd.172.104.244.94.nip.io
+    - host: argocd.172.105.93.230.nip.io
       http:
         paths:
           - path: /
