@@ -68,6 +68,13 @@ spec:
       ports:
         - port: 8443
           protocol: TCP
+    # Onboarding email: NetworkPolicy matches addresses, not DNS names, so the
+    # narrowest expressible rule is the configured relay port. It is the only
+    # port this service adds for mail; no other destination is opened.
+    - to: []
+      ports:
+        - port: 587
+          protocol: TCP
 ---
 # Source: access-change-api/templates/serviceaccount.yaml
 apiVersion: v1
@@ -228,7 +235,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:35deac7b15b78caef5ac962548837371f8ce2bcb78f37f41662438a25cd7a927"
+        sre.platform.io/config-checksum: "sha256:4b6e335d4c0f3be56bb589f7f3de7f8036d09e28c30298ba757c5e4235f841cd"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -246,7 +253,7 @@ spec:
           args:
             - --config=/etc/access-change/customer.yaml
             - --listen=:8080
-            - --allowed-origin=https://headlamp.172.104.244.94.nip.io
+            - --allowed-origin=https://headlamp.172.105.93.230.nip.io
             - --argo-application=authelia
             - --argo-namespace=argocd
             - --audit-url=https://audit-sink.audit-sink.svc.cluster.local:8443
@@ -257,6 +264,16 @@ spec:
             - --service-name=access-change-api
             - --git-credentials-file=/etc/access-change/git-credentials/credentials
             - --review-repository=dawid-koldras-home/sre-platform-gitops
+            - --onboarding-email-enabled
+            - --onboarding-auth-url=https://auth.172.105.93.230.nip.io
+            - --onboarding-smtp-host=smtp.gmail.com
+            - --onboarding-smtp-port=587
+            - --onboarding-smtp-username=dkoldras@maximaconsulting.com
+            - --onboarding-smtp-from=dkoldras@maximaconsulting.com
+            - --onboarding-smtp-password-file=/var/run/secrets/sre-platform/onboarding-smtp/password
+            - --onboarding-support-contact=Contact your platform administrator
+            - --onboarding-max-attempts=5
+            - --onboarding-sync-interval=1m
             - --credential-provisioning-enabled
             - --credential-provisioner=kubernetes-secret
             - --identity-secret-namespace=authelia
@@ -319,6 +336,9 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            - name: onboarding-smtp
+              mountPath: /var/run/secrets/sre-platform/onboarding-smtp
+              readOnly: true
       volumes:
         - name: customer-config
           configMap:
@@ -352,6 +372,13 @@ spec:
                 path: credentials
         - name: tmp
           emptyDir: {}
+        - name: onboarding-smtp
+          secret:
+            secretName: access-change-api-onboarding-smtp
+            items:
+              - key: password
+                path: password
+            defaultMode: 0440
 
 ---
 apiVersion: v1
@@ -377,18 +404,6 @@ data:
           - kind: user
             name: platform-admin
             reason: sole access administrator for this installation
-        - name: task230-admin-access-administrator
-          role: accessAdministrator
-          scope:
-            clusterWide: true
-            clusters:
-            - lke643351
-            environments:
-            - dev
-          subjects:
-          - kind: user
-            name: task230-admin
-            reason: disposable TASK-230 acceptance administrator
         - name: platform-read-only
           role: viewer
           scope:
@@ -458,7 +473,7 @@ data:
         access-change-api:
           config:
             allowedOrigin:
-            - https://headlamp.172.104.244.94.nip.io
+            - https://headlamp.172.105.93.230.nip.io
             argoApplication: authelia
             argoNamespace: argocd
             audit:
@@ -480,10 +495,10 @@ data:
               repository: ghcr.io/dawid-koldras-home/access-change-api
             ingress:
               enabled: true
-              host: headlamp.172.104.244.94.nip.io
+              host: headlamp.172.105.93.230.nip.io
               pathPrefix: /access-change
             onboardingEmail:
-              authURL: https://auth.172.104.244.94.nip.io
+              authURL: https://auth.172.105.93.230.nip.io
               enabled: true
               maxAttempts: 5
               passwordSecret:
@@ -502,13 +517,13 @@ data:
           config:
             ingress:
               className: nginx
-              host: argocd.172.104.244.94.nip.io
+              host: argocd.172.105.93.230.nip.io
           enabled: true
         authelia:
           config:
             clusterIssuerName: sre-tools-letsencrypt
-            cookieDomain: 172.104.244.94.nip.io
-            host: auth.172.104.244.94.nip.io
+            cookieDomain: 172.105.93.230.nip.io
+            host: auth.172.105.93.230.nip.io
             ingressClassName: nginx
             notifierSmtp:
               enabled: true
@@ -517,7 +532,7 @@ data:
               port: 587
               sender: dkoldras@maximaconsulting.com
               username: dkoldras@maximaconsulting.com
-            protectedHost: headlamp.172.104.244.94.nip.io
+            protectedHost: headlamp.172.105.93.230.nip.io
             secretsExistingSecret: authelia-secrets
             tlsSecretName: authelia-tls
           enabled: true
@@ -547,12 +562,12 @@ data:
               id: argo-cd
               interval: 1m
               name: Argo CD
-              url: http://argocd.172.104.244.94.nip.io/
+              url: http://argocd.172.105.93.230.nip.io/
             - group: Identity
               id: authelia
               interval: 1m
               name: Authelia
-              url: https://auth.172.104.244.94.nip.io/
+              url: https://auth.172.105.93.230.nip.io/
             - allowClusterInternal: true
               allowInsecureHttp: true
               group: Platform
@@ -564,18 +579,18 @@ data:
               id: headlamp-public-route
               interval: 1m
               name: Headlamp public route
-              url: https://headlamp.172.104.244.94.nip.io/
+              url: https://headlamp.172.105.93.230.nip.io/
             - group: Secrets
               id: openbao-api
               interval: 1m
               name: OpenBao API
-              url: https://openbao.172.104.244.94.nip.io/v1/sys/health
+              url: https://openbao.172.105.93.230.nip.io/v1/sys/health
             - allowInsecureHttp: true
               group: Security
               id: policy-reporter-ui
               interval: 1m
               name: Policy Reporter UI
-              url: http://policy-reporter.172.104.244.94.nip.io/
+              url: http://policy-reporter.172.105.93.230.nip.io/
           enabled: true
         headlamp:
           config:
@@ -620,12 +635,12 @@ data:
             authProxy:
               clusterIssuerName: sre-tools-letsencrypt
               enabled: true
-              providerURL: https://auth.172.104.244.94.nip.io
+              providerURL: https://auth.172.105.93.230.nip.io
               serviceName: authelia
               serviceNamespace: authelia
             ingress:
               className: nginx
-              host: headlamp.172.104.244.94.nip.io
+              host: headlamp.172.105.93.230.nip.io
               tlsSecretName: headlamp-tls
             plugins:
               accessControlView:
@@ -637,7 +652,7 @@ data:
               maximaBranding: true
               opencost: true
               prometheus: true
-            publicURL: https://headlamp.172.104.244.94.nip.io
+            publicURL: https://headlamp.172.105.93.230.nip.io
           enabled: true
         holmes:
           config:
@@ -1436,14 +1451,14 @@ metadata:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/auth-method: GET
     nginx.ingress.kubernetes.io/auth-url: http://authelia.authelia.svc.cluster.local/api/authz/auth-request
-    nginx.ingress.kubernetes.io/auth-signin: https://auth.172.104.244.94.nip.io?rm=$request_method
+    nginx.ingress.kubernetes.io/auth-signin: https://auth.172.105.93.230.nip.io?rm=$request_method
     nginx.ingress.kubernetes.io/auth-response-headers: Remote-User,Remote-Groups,Remote-Email,Remote-Id-Token
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
   rules:
-    - host: headlamp.172.104.244.94.nip.io
+    - host: headlamp.172.105.93.230.nip.io
       http:
         paths:
           - path: /access-change(/|$)(api/v1/access/(policies|requests|actions|identities|identity-previews|identity-requests|identity-credentials).*)
