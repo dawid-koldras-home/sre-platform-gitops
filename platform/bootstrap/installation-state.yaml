@@ -4,7 +4,7 @@ lastSucceeded:
   modules:
     access-change-api:
       chartVersion: 0.1.0
-      manifestDigest: 617a3d5d8feaaa0842e9d8049d3a2f6853271ff327d0d1f338262bd6ed6f1610
+      manifestDigest: 304cf32ed6e293dd3fe706d510b1044070804d6958cec57025abfd011351db81
       version: 0.1.0
     argocd:
       chartVersion: 7.3.11
@@ -29,7 +29,7 @@ lastSucceeded:
       version: 1.5.0
     headlamp:
       chartVersion: 0.43.0
-      manifestDigest: be435295fbc5b6bf7ed20a983175eb2233cc2846320de5a4a9884d6f01c1fe32
+      manifestDigest: 65313fe135794436f9fe78cc4256c7c293666bc7f33012936b19b210005f6236
       version: 0.43.0
     holmes:
       chartVersion: 0.42.0
@@ -62,17 +62,17 @@ lastSucceeded:
       chartVersion: 0.1.0
       manifestDigest: 26ffd2c6d1b51e7d04558fa0942e7fc4208cd39ccbdb9b936fbe5d9ccb62f7f3
       version: 0.1.0
-  revision: 7afd398794af5950f99b486734e63c490f67302e
+  revision: dfbb6e8852a0c4bc5b2d4a1e862c771a7f2ea44c
 pending:
   modules:
     access-change-api:
       chartVersion: 0.1.0
-      manifestDigest: a09cd189bff7b86af96c66c7a1c780157a6c620ff9d1453632c1f4f184971999
+      manifestDigest: 617a3d5d8feaaa0842e9d8049d3a2f6853271ff327d0d1f338262bd6ed6f1610
       version: 0.1.0
     argocd:
       chartVersion: 7.3.11
       imageVersion: v2.11.7@sha256:47e3e00dc501680e77b2496c67ed2e6bff8de1c71e55b56b37b9b11fc34f2ed4
-      manifestDigest: 3bbfea4ae0b6fc2efb85c562a71aa5011a5d949cb66c3b9c50184244ab28ac36
+      manifestDigest: 01ad9be16ea95ec78547b2205354a50dcc1d95de6a66c7c80525b5dff1891fb3
       version: 2.11.7
     audit-sink:
       chartVersion: 0.1.0
@@ -80,7 +80,7 @@ pending:
       version: 0.1.0
     authelia:
       chartVersion: 0.11.22
-      manifestDigest: e86b554de035f1d5ff3f6b76c41f9cc0361513430e12f742385f6fb4c1752451
+      manifestDigest: 4990efc6002d13796631bd0245c3a12f78e4082d53b6808bdd9f844439a6046d
       version: 4.39.24
     cert-manager:
       chartVersion: v1.15.0
@@ -88,15 +88,15 @@ pending:
       version: 1.15.0
     gatus:
       chartVersion: 1.5.0
-      manifestDigest: c7972325a55d7150a77a85a5e0d5022f9807e60ddfde781d3cac5c5dbd746b4c
+      manifestDigest: 363b4e29f0144e3721caf3af3e9668510f8848d83501cac5d1b4282c4a1b7614
       version: 1.5.0
     headlamp:
       chartVersion: 0.43.0
-      manifestDigest: 14e56bd5af95064803da1e20dd25f54d3f2b2c703b9d5586f1d7512b54becd33
+      manifestDigest: be435295fbc5b6bf7ed20a983175eb2233cc2846320de5a4a9884d6f01c1fe32
       version: 0.43.0
     holmes:
       chartVersion: 0.42.0
-      manifestDigest: 02b02d7db7bd57ed278f7f1a23fb3f4cc50f0cea462795d4734a36884b5c263a
+      manifestDigest: 3ab9cace8b5d781e722a54ed431fa15c6bd999fc755386ae7efff2b8287618c5
       version: 0.42.0
     ingress-nginx:
       chartVersion: 4.15.1
