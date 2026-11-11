@@ -705,10 +705,9 @@ data:
     mcp_servers: 
       {}
   model_list.yaml: |-
-    deepseek-v4.1-flash:
-      api_base: http://holmes-opencode-adapter.holmes.svc.cluster.local:8080/v1
-      api_key: "{{ env.OPENAI_API_KEY }}"
-      model: openai/deepseek-v4.1-flash
+    gemini-3.6-flash:
+      api_key: "{{ env.GEMINI_API_KEY }}"
+      model: gemini/gemini-3.6-flash
 ---
 # Source: holmes/templates/holmes.yaml
 apiVersion: v1
@@ -756,7 +755,7 @@ spec:
         
       annotations:
         # checksum annotation triggering pod reload when .Values.toolsets changes by helm upgrade
-        checksum/toolset-config: 1b03c63328fcf62efb63948c027a0d666abc3adc262b47bb890c952ea821e414
+        checksum/toolset-config: 452f1fd76b2c35eb7faf599e627b726afc93f3b041a0eddc99bd56918cfe7b4f
     spec:
       serviceAccountName: holmes
       securityContext:
@@ -819,10 +818,10 @@ spec:
           - name: TEMPERATURE
             value: "1"
           - name: MODEL
-            value: deepseek-v4.1-flash
+            value: gemini-3.6-flash
         envFrom:
         - secretRef:
-            name: holmes-opencode
+            name: holmes-provider
         lifecycle:
           preStop:
             exec:
@@ -1021,8 +1020,8 @@ metadata:
     app.kubernetes.io/name: holmes
     app.kubernetes.io/part-of: sre-platform
   annotations:
-    platform.sre-platform.io/provider: "opencode-go"
-    platform.sre-platform.io/provider-endpoint: "https://opencode.ai/inference/go/openai/v1"
+    platform.sre-platform.io/provider: "gemini"
+    platform.sre-platform.io/provider-endpoint: "https://generativelanguage.googleapis.com"
     platform.sre-platform.io/provider-user-agent: "sre-platform-holmes/0.42.0"
 spec:
   podSelector:
@@ -1030,150 +1029,6 @@ spec:
       app: holmes
   policyTypes: ["Egress"]
   egress:
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-      ports:
-        - protocol: TCP
-          port: 443
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: holmes-opencode-adapter
-      ports:
-        - protocol: TCP
-          port: 8080
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: holmes-opencode-adapter
-  namespace: holmes
-  labels:
-    app.kubernetes.io/name: holmes-opencode-adapter
-    app.kubernetes.io/part-of: sre-platform
-spec:
-  replicas: 1
-  revisionHistoryLimit: 3
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: holmes-opencode-adapter
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: holmes-opencode-adapter
-        app.kubernetes.io/part-of: sre-platform
-    spec:
-      automountServiceAccountToken: false
-      imagePullSecrets:
-        - name: "holmes-registry-pull"
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 65532
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-        - name: adapter
-          image: "ghcr.io/dawid-koldras-home/sre-platform-holmes-opencode-adapter@sha256:6e69dbbeb6de2b4d9ef26b5d70d48e6b828d78eb181f628a95cbe8bd2d48a5db"
-          imagePullPolicy: IfNotPresent
-          ports:
-            - name: http
-              containerPort: 8080
-          env:
-            - name: OPENCODE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: "holmes-opencode"
-                  key: OPENAI_API_KEY
-            - name: OPENCODE_USER_AGENT
-              value: "sre-platform-holmes/0.42.0"
-          readinessProbe:
-            httpGet:
-              path: /readyz
-              port: http
-            initialDelaySeconds: 3
-            periodSeconds: 10
-            timeoutSeconds: 3
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: http
-            initialDelaySeconds: 10
-            periodSeconds: 20
-            timeoutSeconds: 3
-          resources:
-            requests:
-              cpu: 25m
-              memory: 64Mi
-            limits:
-              cpu: 250m
-              memory: 256Mi
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: holmes-opencode-adapter
-  namespace: holmes
-  labels:
-    app.kubernetes.io/name: holmes-opencode-adapter
-    app.kubernetes.io/part-of: sre-platform
-spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: holmes-opencode-adapter
-  ports:
-    - name: http
-      port: 8080
-      targetPort: http
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: holmes-opencode-adapter-ingress
-  namespace: holmes
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: holmes-opencode-adapter
-  policyTypes: ["Ingress"]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app: holmes
-      ports:
-        - protocol: TCP
-          port: 8080
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: holmes-opencode-adapter-egress
-  namespace: holmes
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: holmes-opencode-adapter
-  policyTypes: ["Egress"]
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-          podSelector:
-            matchLabels:
-              k8s-app: kube-dns
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
