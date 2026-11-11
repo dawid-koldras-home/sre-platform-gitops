@@ -67,7 +67,7 @@ pending:
   modules:
     access-change-api:
       chartVersion: 0.1.0
-      manifestDigest: 7ff88c4d514df1eb8d1092d1bc55b03ff172fb86c5b1b57a138081edde34a648
+      manifestDigest: d073dbb2a92cc0b118fcd6cff324f1236cb35c338dccd8d21da3488d98ca7926
       version: 0.1.0
     argocd:
       chartVersion: 7.3.11
@@ -96,7 +96,7 @@ pending:
       version: 0.43.0
     holmes:
       chartVersion: 0.42.0
-      manifestDigest: 3ab9cace8b5d781e722a54ed431fa15c6bd999fc755386ae7efff2b8287618c5
+      manifestDigest: c3fe206386d2c125943e2b976758709c23775fcd9427630308251ab44d8c7dc7
       version: 0.42.0
     ingress-nginx:
       chartVersion: 4.15.1
