@@ -235,7 +235,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:c0d217eca3201af6d27262c27d7ec2aacc9546d663c06f092c96bf3597fb0143"
+        sre.platform.io/config-checksum: "sha256:18fb377bdedf50542306696ee3d2ecf68808ea3dfb0a204bb043ae8aa0c744a9"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -660,9 +660,7 @@ data:
           enabled: true
         holmes:
           config:
-            acknowledgeOpenCodeUse: true
-            provider: opencode-go
-            providerSecretName: holmes-opencode
+            providerSecretName: holmes-provider
           enabled: true
         openbao:
           enabled: false
