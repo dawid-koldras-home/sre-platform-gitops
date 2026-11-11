@@ -235,7 +235,7 @@ spec:
         app.kubernetes.io/name: access-change-api
         app.kubernetes.io/instance: access-change-api
       annotations:
-        sre.platform.io/config-checksum: "sha256:ea6af38eaa130455657e0aafff6fa7c676de44c86a10d17dbd767a5225cd7384"
+        sre.platform.io/config-checksum: "sha256:73c7dc57a3910972159a30273a4bb35b11ea1cdcdedd2ac057174938bef62e27"
     spec:
       serviceAccountName: access-change-api
       securityContext:
@@ -659,7 +659,12 @@ data:
             publicURL: https://headlamp.172.105.93.230.nip.io
           enabled: true
         holmes:
-          enabled: false
+          config:
+            acknowledgeOpenCodeUse: true
+            imagePullSecretName: holmes-registry-pull
+            provider: opencode-go
+            providerSecretName: holmes-opencode
+          enabled: true
         openbao:
           enabled: false
         opencost:
