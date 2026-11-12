@@ -15324,7 +15324,7 @@ spec:
             app.kubernetes.io/name: sre-identity-bridge
       containers:
       - name: bridge
-        image: ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b
+        image: ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:c891c569a502e48f3d74f9f702931c124b5f6f0bd9092119df77cdcc8799c2d7
         imagePullPolicy: IfNotPresent
         args:
         - --upstream-url=https://kubernetes.default.svc
@@ -15339,7 +15339,7 @@ spec:
         - --audit-sink-url=https://audit-sink.audit-sink.svc.cluster.local:8443
         - --audit-sink-ca-file=/etc/identity-bridge/audit-ca/ca.crt
         - --audit-token-path=/etc/identity-bridge/audit-token/token
-        - --bridge-image-digest=ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b
+        - --bridge-image-digest=ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:c891c569a502e48f3d74f9f702931c124b5f6f0bd9092119df77cdcc8799c2d7
         - --audit-impersonating-namespace=headlamp
         - --audit-impersonating-name=sre-identity-bridge
         ports:
@@ -15447,6 +15447,11 @@ metadata:
     sre.platform.io/component: headlamp
   annotations:
     sre-platform.io/ingress-type: headlamp-ui
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
     cert-manager.io/cluster-issuer: sre-tools-letsencrypt
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
