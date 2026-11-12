@@ -1819,7 +1819,7 @@ data:
         retries_total: int = 0
         budget_rejections: Dict[str, int] = field(default_factory=dict)
         requests_total: Dict[str, int] = field(default_factory=dict)
-        upstream_failures_total: int = 0
+        upstream_failures_total: Dict[str, int] = field(default_factory=dict)
         validation_rejections: Dict[str, int] = field(default_factory=dict)
         _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -1956,7 +1956,8 @@ data:
                 usage.cached_tokens = reported["cached_tokens"]
                 usage.total_tokens = reported["total_tokens"]
                 usage.tool_calls = tool_call_count(response_payload)
-                self.metrics.inc(self.metrics.model_calls_total, "ok")
+                with self.metrics._lock:
+                    self.metrics.model_calls_total += 1
                 with self.metrics._lock:
                     self.metrics.tool_calls_total += usage.tool_calls
                     self.metrics.tool_output_bytes_total += usage.tool_output_bytes
@@ -2013,8 +2014,10 @@ data:
                 f"holmes_operator_retries_total {self.metrics.retries_total}",
                 "# HELP holmes_operator_upstream_failures_total Upstream failures by class.",
                 "# TYPE holmes_operator_upstream_failures_total counter",
-                f"holmes_operator_upstream_failures_total {self.metrics.upstream_failures_total}",
+                f"holmes_operator_upstream_failures_total {sum(self.metrics.upstream_failures_total.values())}",
             ]
+            for key, value in sorted(self.metrics.upstream_failures_total.items()):
+                lines.append(f'holmes_operator_upstream_failures_total{{class="{key}"}} {value}')
             for key, value in sorted(self.metrics.tokens_total.items()):
                 lines.append(f'holmes_operator_tokens_total{{kind="{key}"}} {value}')
             for key, value in sorted(self.metrics.budget_rejections.items()):
@@ -2192,6 +2195,7 @@ data:
 
     if __name__ == "__main__":
         main()
+    
   bounds.py: |
     """Bounded validation and sanitization for the Holmes Operator guard.
 
