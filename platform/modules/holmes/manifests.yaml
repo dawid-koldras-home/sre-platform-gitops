@@ -781,7 +781,7 @@ spec:
           capabilities:
             drop:
             - ALL
-        command: ["python3", "-u", "/app/experimental/ag-ui/server-agui.py"]
+        command: ["python3", "-u", "/opt/sre-agui/server.py"]
         ports:
         - containerPort: 5050
           name: http
@@ -837,6 +837,9 @@ spec:
           - mountPath: /etc/holmes/kubeconfig
             name: in-cluster-kubeconfig
             readOnly: true
+          - mountPath: /opt/sre-agui
+            name: agui-delta-guard
+            readOnly: true
         resources:
           requests:
             cpu: 100m
@@ -859,6 +862,9 @@ spec:
         - configMap:
             name: holmes-kubeconfig
           name: in-cluster-kubeconfig
+        - configMap:
+            name: holmes-agui-delta-guard
+          name: agui-delta-guard
 
 ---
 apiVersion: v1
@@ -1180,3 +1186,254 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+---
+apiVersion: v1
+data:
+  delta_guard.py: |
+    """Pure AG-UI text-delta contract for the pinned Holmes AG-UI server (TASK-238).
+
+    The pinned Holmes 0.42.0 ``experimental/ag-ui/server-agui.py`` emits a
+    ``TEXT_MESSAGE_CONTENT`` event for every streamed text fragment, including the
+    empty string. The AG-UI client schema in ``@ag-ui/core`` 0.0.45 rejects an empty
+    delta with ``"Delta must not be an empty string"``, so the Headlamp assistant
+    card aborts a run after a textless model turn.
+
+    This module holds the whole decision and the ordered event plan. It imports
+    nothing from Holmes or AG-UI, so repository tests can execute it directly with
+    the standard library only. ``server.py`` maps the plan to the pinned upstream
+    event classes.
+
+    Rules:
+
+    - only the semantically empty string is filtered;
+    - whitespace, tabs and newlines are preserved verbatim because the schema
+      admits any non-empty string;
+    - an empty message produces no start/content/end triple at all, so the console
+      does not render an empty chat bubble;
+    - valid events keep the untouched start/content/end order.
+    """
+
+    from __future__ import annotations
+
+    import uuid
+
+    # Event plan steps. The wrapper maps each tuple to the pinned upstream class.
+    START = "start"
+    CONTENT = "content"
+    END = "end"
+
+
+    def is_emittable_text(message: object) -> bool:
+        """Return True only for a message that may become a non-empty delta."""
+        if message is None:
+            return False
+        if not isinstance(message, str):
+            message = str(message)
+        return message != ""
+
+
+    def text_message_plan(message: object, message_id: str | None = None) -> list[tuple]:
+        """Return the ordered AG-UI text event plan for one message.
+
+        An empty or missing message returns an empty list: no text message is
+        opened and no delta is emitted. A non-empty message returns exactly
+        ``start``, ``content`` and ``end`` in that order for one message id.
+        """
+        if not is_emittable_text(message):
+            return []
+        text = message if isinstance(message, str) else str(message)
+        identifier = message_id or str(uuid.uuid4())
+        return [(START, identifier), (CONTENT, identifier, text), (END, identifier)]
+
+
+    def _expected(text: object) -> int:
+        return 1 if is_emittable_text(text) else 0
+
+
+    def self_check() -> int:
+        """Assert the contract locally and return the number of checked cases.
+
+        Raises ``AssertionError`` rather than returning a failure flag: the wrapper
+        treats any failure as a startup error and never serves an unfixed path.
+        """
+        cases = [
+            ("", 0),
+            (None, 0),
+            ("\n", 1),
+            ("\t", 1),
+            (" ", 1),
+            ("tool done\n", 1),
+            ("line one\nline two", 1),
+            ("0", 1),
+            (0, 1),
+            (False, 1),
+        ]
+        checked = 0
+        for message, expected in cases:
+            plan = text_message_plan(message)
+            assert len(plan) == expected * 3, (message, plan)
+            if expected:
+                kinds = [step[0] for step in plan]
+                assert kinds == [START, CONTENT, END], (message, kinds)
+                text = plan[1][2]
+                assert text != "", (message, plan)
+                if isinstance(message, str):
+                    assert text == message, (message, plan)
+            checked += 1
+
+        empty_plan = text_message_plan("")
+        assert empty_plan == [], empty_plan
+
+        first = text_message_plan("a", "same")
+        second = text_message_plan("b", "same")
+        assert first[1][2] == "a" and second[1][2] == "b", (first, second)
+        assert first[0][1] == second[0][1] == "same"
+        checked += 2
+
+        # A tool lifecycle event is never converted into text: the plan only ever
+        # describes a text message, and the wrapper only replaces the text helper.
+        return checked
+
+
+    if __name__ == "__main__":
+        count = self_check()
+        print(f"delta_guard: ok checks={count}")
+  server.py: |
+    """AG-UI non-empty delta guard for the pinned Holmes AG-UI server (TASK-238).
+
+    The official Holmes image starts ``/app/experimental/ag-ui/server-agui.py``.
+    That script emits ``TEXT_MESSAGE_CONTENT`` with an empty ``delta`` whenever a
+    model turn carries no text, which the pinned Headlamp AG-UI client rejects.
+
+    This wrapper is mounted read-only at ``/opt/sre-agui`` and is started instead of
+    the upstream file. It:
+
+    - loads the pinned upstream module by path, so every upstream route, tool and
+      provider behaviour is unchanged;
+    - replaces exactly one helper, ``_stream_agui_text_message_event``, with the
+      contract in ``delta_guard.py``;
+    - fails closed at startup if the pinned upstream no longer exposes the helper,
+      the event classes or the app, rather than silently serving the defect;
+    - verifies the contract once before serving and logs only a count.
+
+    It adds no network listener, no credential, no file write and no state.
+    """
+
+    import importlib.util
+    import os
+    import sys
+
+    sys.dont_write_bytecode = True
+
+    GUARD_DIR = os.path.dirname(os.path.abspath(__file__))
+    UPSTREAM = "/app/experimental/ag-ui/server-agui.py"
+
+    if GUARD_DIR not in sys.path:
+        sys.path.insert(0, GUARD_DIR)
+
+    from delta_guard import self_check, text_message_plan  # noqa: E402
+
+
+    def _fail(reason: str) -> "NoReturn":  # noqa: F821 - typing kept minimal on purpose
+        print(f"holmes-agui-guard: refusing to start: {reason}", flush=True)
+        raise SystemExit(1)
+
+
+    def _load_upstream(path: str):
+        if not os.path.isfile(path):
+            _fail(f"pinned upstream script not found at {path}")
+        spec = importlib.util.spec_from_file_location("sre_holmes_agui_upstream", path)
+        if spec is None or spec.loader is None:
+            _fail(f"pinned upstream script at {path} is not loadable")
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)
+        except BaseException as error:  # noqa: BLE001 - startup must never continue
+            _fail(f"pinned upstream script failed to load: {type(error).__name__}")
+        return module
+
+
+    _MODULE = _load_upstream(UPSTREAM)
+
+    _REQUIRED = (
+        "_stream_agui_text_message_event",
+        "TextMessageStartEvent",
+        "TextMessageContentEvent",
+        "TextMessageEndEvent",
+        "EventType",
+        "app",
+        "HOLMES_HOST",
+        "HOLMES_PORT",
+    )
+    for _name in _REQUIRED:
+        if not hasattr(_MODULE, _name):
+            _fail(f"pinned upstream module is missing {_name}")
+
+
+    async def _stream_agui_text_message_event(message):
+        """Emit one ordered text message, or nothing for a semantically empty one."""
+        for step in text_message_plan(message):
+            kind = step[0]
+            if kind == "start":
+                yield _MODULE.TextMessageStartEvent(
+                    type=_MODULE.EventType.TEXT_MESSAGE_START,
+                    message_id=step[1],
+                    role="assistant",
+                )
+            elif kind == "content":
+                yield _MODULE.TextMessageContentEvent(
+                    type=_MODULE.EventType.TEXT_MESSAGE_CONTENT,
+                    message_id=step[1],
+                    delta=step[2],
+                )
+            elif kind == "end":
+                yield _MODULE.TextMessageEndEvent(
+                    type=_MODULE.EventType.TEXT_MESSAGE_END,
+                    message_id=step[1],
+                )
+            else:  # pragma: no cover - the plan is closed above
+                _fail(f"unknown text event plan step {kind}")
+
+
+    _MODULE._stream_agui_text_message_event = _stream_agui_text_message_event
+
+    if _MODULE._stream_agui_text_message_event is not _stream_agui_text_message_event:
+        _fail("the text helper replacement did not take effect")
+
+
+    def _main() -> None:
+        checks = self_check()
+        print(
+            f"holmes-agui-guard: active self_checks={checks} "
+            f"upstream={os.path.basename(UPSTREAM)}",
+            flush=True,
+        )
+
+        import uvicorn
+
+        log_config = uvicorn.config.LOGGING_CONFIG
+        log_config["formatters"]["access"]["fmt"] = (
+            "%(asctime)s %(levelname)-8s %(message)s"
+        )
+        log_config["formatters"]["default"]["fmt"] = (
+            "%(asctime)s %(levelname)-8s %(message)s"
+        )
+        uvicorn.run(
+            _MODULE.app,
+            host=_MODULE.HOLMES_HOST,
+            port=_MODULE.HOLMES_PORT,
+            log_config=log_config,
+            reload=False,
+        )
+
+
+    if __name__ == "__main__":
+        _main()
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/name: holmes
+    app.kubernetes.io/part-of: sre-platform
+  name: holmes-agui-delta-guard
+  namespace: holmes
+
