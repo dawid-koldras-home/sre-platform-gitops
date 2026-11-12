@@ -1558,6 +1558,7 @@ data:
     CIRCUIT_COOLDOWN_SECONDS = _int("GUARD_CIRCUIT_COOLDOWN_SECONDS", 900)
     UPSTREAM_ATTEMPTS = max(1, min(_int("GUARD_UPSTREAM_ATTEMPTS", 2), 3))
     UPSTREAM_TIMEOUT = _int("GUARD_UPSTREAM_TIMEOUT_SECONDS", 330)
+    STALE_RUN_SECONDS = UPSTREAM_TIMEOUT + 120
     HISTORY_LIMIT = _int("GUARD_HISTORY_LIMIT", 20)
     MAX_REQUEST_BYTES = _int("GUARD_MAX_REQUEST_BYTES", 8 * 1024 * 1024)
 
@@ -1695,7 +1696,33 @@ data:
                 self._roll_day_locked()
                 moment = time.time() if now is None else now
                 if self.active is not None:
-                    return None, "concurrency_limit"
+                    # A crash or a hung upstream must not wedge the single run slot.
+                    # The HTTP client is bounded, but a process that was killed and
+                    # restarted can leave the persisted active marker behind.
+                    if moment - self.active.started_at <= STALE_RUN_SECONDS:
+                        return None, "concurrency_limit"
+                    stale = self.active
+                    self.active = None
+                    self.consecutive_failures += 1
+                    self.last_result = "error"
+                    self.last_error_class = "stale_run_recovered"
+                    self.history = summarize_history(
+                        self.history
+                        + [
+                            {
+                                "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(stale.started_at)),
+                                "name": stale.name[:80],
+                                "result": "error",
+                                "errorClass": "stale_run_recovered",
+                                "durationSeconds": round(moment - stale.started_at, 3),
+                                "modelCalls": stale.usage.model_calls,
+                                "toolCalls": stale.usage.tool_calls,
+                                "tokens": stale.usage.total_tokens,
+                            }
+                        ],
+                        HISTORY_LIMIT,
+                    )
+                    self._persist_locked()
                 if moment < self.circuit_open_until:
                     return None, "circuit_open"
                 if self.runs_today >= MAX_RUNS_PER_DAY:
@@ -2630,7 +2657,7 @@ spec:
       annotations:
         platform.sre-platform.io/operator-mode: "monitor-only"
         platform.sre-platform.io/chart-version: "0.42.0"
-        platform.sre-platform.io/guard-checksum: "23b51c8e639696b65e37cbdf0e77389047863486421bf3362fcc9e784540b011"
+        platform.sre-platform.io/guard-checksum: "ba59333c8ec5a784716ac59aaf319a6e8026297304c99105878b31d856deb086"
     spec:
       serviceAccountName: holmes-operator
       automountServiceAccountToken: true
