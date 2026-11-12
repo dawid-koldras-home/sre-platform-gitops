@@ -2729,7 +2729,7 @@ spec:
             - name: GUARD_MAX_TOKENS_PER_DAY
               value: "1000000"
             - name: GUARD_MAX_MODEL_CALLS_PER_RUN
-              value: "6"
+              value: "8"
             - name: GUARD_MAX_TOOL_CALLS_PER_RUN
               value: "12"
             - name: GUARD_MAX_PROMPT_TOKENS_PER_RUN
