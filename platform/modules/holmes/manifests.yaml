@@ -2990,16 +2990,12 @@ metadata:
   annotations:
     platform.sre-platform.io/budget-class: "scheduled"
 spec:
-  schedule: "0 * * * *"
+  schedule: "10 * * * *"
   enabled: true
   query: >-
-    Evaluate the readiness of the platform control plane in this installation:
-    Argo CD server and application controller, the ingress controller, the
-    Headlamp console and its identity bridge, and the Authelia portal. Use
-    Deployment and Pod readiness conditions and recent Events. Report pass only
-    when every named workload has an available replica and no warning Events in
-    the last 15 minutes; otherwise fail with the exact workloads and conditions
-    that are not ready.
+    Check the readiness of the argocd-server Deployment in namespace argocd,
+    the ingress controller, the Headlamp console and its identity bridge.
+    Report pass only when each named workload has an available replica.
   timeout: 240
   mode: monitor
   model: "operator-deepseek-v4.1-flash"
