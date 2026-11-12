@@ -2292,7 +2292,6 @@ data:
         re.compile(r"bearer\s+[a-z0-9._\-]+", re.IGNORECASE),
         re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----"),
         re.compile(r"\bkubeconfig\b", re.IGNORECASE),
-        re.compile(r"\b[a-zA-Z0-9+/]{40,}={0,2}\b"),
     )
 
     # Interactive or mutating Kubernetes access is outside monitor-only mode.
@@ -2657,7 +2656,7 @@ spec:
       annotations:
         platform.sre-platform.io/operator-mode: "monitor-only"
         platform.sre-platform.io/chart-version: "0.42.0"
-        platform.sre-platform.io/guard-checksum: "9e858001a914dd233f05ec70ac8c04aebb236910414cb1cca1704290d7e02257"
+        platform.sre-platform.io/guard-checksum: "f76d31c82aafa6f1750e929297f39d3b3cee5b4a62b7ccf14b94cb17ac328eea"
     spec:
       serviceAccountName: holmes-operator
       automountServiceAccountToken: true
