@@ -2884,7 +2884,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: holmes-opencode-adapter-guard-ingress
-  namespace: %!s(MISSING)
+  namespace: holmes
   labels:
     app.kubernetes.io/name: holmes-operator
     app.kubernetes.io/part-of: sre-platform
