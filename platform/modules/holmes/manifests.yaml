@@ -2853,6 +2853,28 @@ spec:
         - protocol: TCP
           port: 443
 ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: holmes-guarded-model-egress
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: holmes
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: holmes-operator
+      ports:
+        - protocol: TCP
+          port: 8099
+---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
