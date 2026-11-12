@@ -4,6 +4,10 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: healthchecks.holmesgpt.dev
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    platform.sre-platform.io/module: holmes
+    platform.sre-platform.io/ownership: platform-adopted-compatible
 spec:
   group: holmesgpt.dev
   names:
@@ -186,6 +190,10 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: scheduledhealthchecks.holmesgpt.dev
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    platform.sre-platform.io/module: holmes
+    platform.sre-platform.io/ownership: platform-adopted-compatible
 spec:
   group: holmesgpt.dev
   names:
@@ -388,6 +396,10 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: triggeredhealthchecks.holmesgpt.dev
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    platform.sre-platform.io/module: holmes
+    platform.sre-platform.io/ownership: platform-adopted-compatible
 spec:
   group: holmesgpt.dev
   names:
@@ -589,7 +601,6 @@ spec:
         - name: Age
           type: date
           jsonPath: .metadata.creationTimestamp
-
 ---
 # Source: holmes/templates/toolset-config.yaml
 apiVersion: v1
@@ -709,6 +720,10 @@ data:
       api_base: http://holmes-opencode-adapter.holmes.svc.cluster.local:8080/v1
       api_key: "{{ env.OPENAI_API_KEY }}"
       model: openai/deepseek-v4.1-flash
+    operator-deepseek-v4.1-flash:
+      api_base: http://holmes-operator-guard.holmes.svc.cluster.local:8099/v1
+      api_key: "{{ env.OPENAI_API_KEY }}"
+      model: openai/deepseek-v4.1-flash
 ---
 # Source: holmes/templates/holmes.yaml
 apiVersion: v1
@@ -757,6 +772,7 @@ spec:
       annotations:
         # checksum annotation triggering pod reload when .Values.toolsets changes by helm upgrade
         checksum/toolset-config: 1b03c63328fcf62efb63948c027a0d666abc3adc262b47bb890c952ea821e414
+        platform.sre-platform.io/operator-model-list: guarded-v1
     spec:
       serviceAccountName: holmes
       securityContext:
@@ -1437,3 +1453,1620 @@ metadata:
   name: holmes-agui-delta-guard
   namespace: holmes
 
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: holmes-operator-guard-code
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator-guard
+    app.kubernetes.io/part-of: sre-platform
+data:
+  guard.py: |
+    #!/usr/bin/env python3
+    """Holmes Operator guard: monitor-only admission, budget and sanitization sidecar.
+
+    Two listeners run in one process and share one budget:
+
+    * ``GUARD_API_LISTEN`` (loopback) proxies the operator's
+      ``POST /api/checks/execute`` to Holmes. It validates the monitor-only boundary,
+      enforces one active run, the daily run budget, a minimum gap between runs and a
+      circuit breaker, then sanitizes every field the operator will store.
+    * ``GUARD_PROVIDER_LISTEN`` proxies the guarded model entry's
+      ``POST /v1/chat/completions`` to the reviewed OpenCode relay. It counts model
+      calls, tool calls, compacted tool-output bytes and provider-reported token
+      usage, and refuses a call that would exceed a per-run or daily budget. It only
+      accepts traffic that belongs to an active run; interactive Headlamp traffic
+      uses the unguarded model entry and never reaches this listener.
+    * ``GUARD_METRICS_LISTEN`` exposes Prometheus text metrics. No prompt, response,
+      query, host, token or customer value is ever used as a label or metric.
+
+    The process is deliberately stdlib-only: it is delivered as a ConfigMap into the
+    digest-pinned operator image, so no package is installed at runtime and the
+    reviewed bytes are exactly the bytes the repository tests execute.
+    """
+
+    from __future__ import annotations
+
+    import json
+    import os
+    import secrets
+    import threading
+    import time
+    import urllib.error
+    import urllib.request
+    from dataclasses import dataclass, field
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from typing import Any, Dict, Optional, Tuple
+
+    from bounds import (
+        BoundaryError,
+        DEFAULT_LIMITS,
+        error_class_for_status,
+        sanitize_status,
+        summarize_history,
+        tool_call_count,
+        tool_output_bytes,
+        usage_from_provider_response,
+        validate_execution_request,
+    )
+
+    STATE_DIR = os.environ.get("GUARD_STATE_DIR", "/var/lib/holmes-operator-guard")
+    STATE_FILE = os.path.join(STATE_DIR, "state.json")
+    API_LISTEN = os.environ.get("GUARD_API_LISTEN", "127.0.0.1:8098")
+    PROVIDER_LISTEN = os.environ.get("GUARD_PROVIDER_LISTEN", "0.0.0.0:8099")
+    METRICS_LISTEN = os.environ.get("GUARD_METRICS_LISTEN", "0.0.0.0:8097")
+    HOLMES_UPSTREAM = os.environ.get("HOLMES_UPSTREAM", "http://holmesgpt-holmes.holmes.svc.cluster.local:80")
+    PROVIDER_UPSTREAM = os.environ.get(
+        "PROVIDER_UPSTREAM", "http://holmes-opencode-adapter.holmes.svc.cluster.local:8080/v1"
+    )
+    GUARDED_MODEL = os.environ.get("GUARD_MODEL_KEY", "holmes-operator-guarded")
+
+
+    def _int(name: str, default: int) -> int:
+        try:
+            return int(os.environ.get(name, str(default)))
+        except ValueError:
+            return default
+
+
+    MAX_RUNS_PER_DAY = _int("GUARD_MAX_RUNS_PER_DAY", 36)
+    MAX_MODEL_CALLS_PER_RUN = _int("GUARD_MAX_MODEL_CALLS_PER_RUN", 6)
+    MAX_TOOL_CALLS_PER_RUN = _int("GUARD_MAX_TOOL_CALLS_PER_RUN", 12)
+    MAX_PROMPT_TOKENS_PER_RUN = _int("GUARD_MAX_PROMPT_TOKENS_PER_RUN", 120000)
+    MAX_COMPLETION_TOKENS_PER_RUN = _int("GUARD_MAX_COMPLETION_TOKENS_PER_RUN", 12000)
+    MAX_INPUT_BYTES_PER_RUN = _int("GUARD_MAX_INPUT_BYTES_PER_RUN", 262144)
+    MAX_TOOL_OUTPUT_BYTES_PER_RUN = _int("GUARD_MAX_TOOL_OUTPUT_BYTES_PER_RUN", 524288)
+    MAX_MODEL_CALLS_PER_DAY = _int("GUARD_MAX_MODEL_CALLS_PER_DAY", 216)
+    MAX_TOKENS_PER_DAY = _int("GUARD_MAX_TOKENS_PER_DAY", 1000000)
+    MIN_RUN_GAP_SECONDS = _int("GUARD_MIN_RUN_GAP_SECONDS", 60)
+    CIRCUIT_FAILURE_THRESHOLD = _int("GUARD_CIRCUIT_FAILURE_THRESHOLD", 3)
+    CIRCUIT_COOLDOWN_SECONDS = _int("GUARD_CIRCUIT_COOLDOWN_SECONDS", 900)
+    UPSTREAM_ATTEMPTS = max(1, min(_int("GUARD_UPSTREAM_ATTEMPTS", 2), 3))
+    UPSTREAM_TIMEOUT = _int("GUARD_UPSTREAM_TIMEOUT_SECONDS", 330)
+    HISTORY_LIMIT = _int("GUARD_HISTORY_LIMIT", 20)
+    MAX_REQUEST_BYTES = _int("GUARD_MAX_REQUEST_BYTES", 8 * 1024 * 1024)
+
+
+    def _utc_day(now: Optional[float] = None) -> str:
+        return time.strftime("%Y-%m-%d", time.gmtime(time.time() if now is None else now))
+
+
+    def _split_addr(value: str) -> Tuple[str, int]:
+        host, _, port = value.rpartition(":")
+        if not host or not port.isdigit():
+            raise SystemExit(f"invalid listen address {value!r}")
+        return host, int(port)
+
+
+    @dataclass
+    class Usage:
+        model_calls: int = 0
+        tool_calls: int = 0
+        prompt_tokens: int = 0
+        completion_tokens: int = 0
+        cached_tokens: int = 0
+        total_tokens: int = 0
+        tool_output_bytes: int = 0
+        input_bytes: int = 0
+
+        def add(self, other: "Usage") -> None:
+            self.model_calls += other.model_calls
+            self.tool_calls += other.tool_calls
+            self.prompt_tokens += other.prompt_tokens
+            self.completion_tokens += other.completion_tokens
+            self.cached_tokens += other.cached_tokens
+            self.total_tokens += other.total_tokens
+            self.tool_output_bytes += other.tool_output_bytes
+            self.input_bytes += other.input_bytes
+
+        def as_dict(self) -> Dict[str, int]:
+            return dict(self.__dict__)
+
+
+    @dataclass
+    class Run:
+        run_id: str
+        name: str
+        started_at: float
+        usage: Usage = field(default_factory=Usage)
+
+
+    class State:
+        """Thread-safe, restart-safe budget and bounded history state."""
+
+        def __init__(self, path: str):
+            self._path = path
+            self._lock = threading.RLock()
+            self.day = _utc_day()
+            self.day_usage = Usage()
+            self.runs_today = 0
+            self.active: Optional[Run] = None
+            self.last_run_at = 0.0
+            self.last_success_at = 0.0
+            self.last_result = ""
+            self.last_error_class = ""
+            self.consecutive_failures = 0
+            self.circuit_open_until = 0.0
+            self.history: list[Dict[str, Any]] = []
+            self.state_load_errors = 0
+            self._load()
+
+        def _load(self) -> None:
+            try:
+                with open(self._path, "r", encoding="utf-8") as handle:
+                    raw = json.load(handle)
+            except FileNotFoundError:
+                return
+            except (OSError, ValueError):
+                self.state_load_errors += 1
+                return
+            if not isinstance(raw, dict):
+                self.state_load_errors += 1
+                return
+            if raw.get("day") != self.day:
+                return
+            try:
+                usage = raw.get("day_usage") or {}
+                self.day_usage = Usage(**{key: max(0, int(usage.get(key, 0))) for key in Usage().as_dict()})
+                self.runs_today = max(0, int(raw.get("runs_today", 0)))
+                self.last_run_at = float(raw.get("last_run_at", 0.0))
+                self.last_success_at = float(raw.get("last_success_at", 0.0))
+                self.last_result = str(raw.get("last_result", ""))[:40]
+                self.last_error_class = str(raw.get("last_error_class", ""))[:60]
+                self.consecutive_failures = max(0, int(raw.get("consecutive_failures", 0)))
+                self.circuit_open_until = max(0.0, float(raw.get("circuit_open_until", 0.0)))
+                history = raw.get("history")
+                if isinstance(history, list):
+                    self.history = [item for item in history if isinstance(item, dict)][-HISTORY_LIMIT:]
+            except (TypeError, ValueError):
+                self.state_load_errors += 1
+
+        def _persist_locked(self) -> None:
+            payload = {
+                "day": self.day,
+                "day_usage": self.day_usage.as_dict(),
+                "runs_today": self.runs_today,
+                "last_run_at": self.last_run_at,
+                "last_success_at": self.last_success_at,
+                "last_result": self.last_result,
+                "last_error_class": self.last_error_class,
+                "consecutive_failures": self.consecutive_failures,
+                "circuit_open_until": self.circuit_open_until,
+                "history": self.history[-HISTORY_LIMIT:],
+            }
+            try:
+                os.makedirs(STATE_DIR, exist_ok=True)
+                temporary = self._path + ".tmp"
+                with open(temporary, "w", encoding="utf-8") as handle:
+                    json.dump(payload, handle, sort_keys=True)
+                os.replace(temporary, self._path)
+            except OSError:
+                # State is a cost-control aid, not a correctness dependency. A
+                # read-only or full volume must not stop health checks; the hard
+                # per-run caps still bound every call.
+                pass
+
+        def _roll_day_locked(self) -> None:
+            today = _utc_day()
+            if today != self.day:
+                self.day = today
+                self.day_usage = Usage()
+                self.runs_today = 0
+                # The circuit breaker is time based, not day based.
+                self._persist_locked()
+
+        def begin_run(self, name: str, now: Optional[float] = None) -> Tuple[Optional[Run], str]:
+            with self._lock:
+                self._roll_day_locked()
+                moment = time.time() if now is None else now
+                if self.active is not None:
+                    return None, "concurrency_limit"
+                if moment < self.circuit_open_until:
+                    return None, "circuit_open"
+                if self.runs_today >= MAX_RUNS_PER_DAY:
+                    return None, "daily_run_budget"
+                if self.last_run_at and moment - self.last_run_at < MIN_RUN_GAP_SECONDS:
+                    return None, "run_gap"
+                run = Run(run_id=secrets.token_hex(8), name=name, started_at=moment)
+                self.active = run
+                self.runs_today += 1
+                self.last_run_at = moment
+                self._persist_locked()
+                return run, ""
+
+        def finish_run(self, run: Run, result: str, error_class: str) -> None:
+            with self._lock:
+                if self.active is not None and self.active.run_id == run.run_id:
+                    self.active = None
+                self.last_result = result
+                self.last_error_class = error_class
+                if result == "pass" or result == "fail":
+                    self.last_success_at = time.time()
+                    self.consecutive_failures = 0
+                elif result == "error":
+                    self.consecutive_failures += 1
+                    if self.consecutive_failures >= CIRCUIT_FAILURE_THRESHOLD:
+                        self.circuit_open_until = time.time() + CIRCUIT_COOLDOWN_SECONDS
+                duration = max(0.0, time.time() - run.started_at)
+                self.history = summarize_history(
+                    self.history
+                    + [
+                        {
+                            "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(run.started_at)),
+                            "name": run.name[:80],
+                            "result": result,
+                            "errorClass": error_class[:60],
+                            "durationSeconds": round(duration, 3),
+                            "modelCalls": run.usage.model_calls,
+                            "toolCalls": run.usage.tool_calls,
+                            "tokens": run.usage.total_tokens,
+                        }
+                    ],
+                    HISTORY_LIMIT,
+                )
+                self._persist_locked()
+
+        def reject_provider_call(self, run_id: str, usage: Usage, error_class: str) -> None:
+            with self._lock:
+                if self.active is not None and self.active.run_id == run_id:
+                    self.active.usage.add(usage)
+                    self.day_usage.add(usage)
+                self._persist_locked()
+
+        def record_provider_call(self, run_id: str, usage: Usage) -> bool:
+            """Reserve one model call and record its usage. False means refused."""
+            with self._lock:
+                self._roll_day_locked()
+                if self.active is None or self.active.run_id != run_id:
+                    return False
+                projected_run_calls = self.active.usage.model_calls + 1
+                if projected_run_calls > MAX_MODEL_CALLS_PER_RUN:
+                    return False
+                if self.day_usage.model_calls + 1 > MAX_MODEL_CALLS_PER_DAY:
+                    return False
+                if self.active.usage.input_bytes + usage.input_bytes > MAX_INPUT_BYTES_PER_RUN:
+                    return False
+                if self.active.usage.tool_output_bytes + usage.tool_output_bytes > MAX_TOOL_OUTPUT_BYTES_PER_RUN:
+                    return False
+                if self.active.usage.tool_calls + usage.tool_calls > MAX_TOOL_CALLS_PER_RUN:
+                    return False
+                if self.active.usage.prompt_tokens + usage.prompt_tokens > MAX_PROMPT_TOKENS_PER_RUN:
+                    return False
+                if self.active.usage.completion_tokens + usage.completion_tokens > MAX_COMPLETION_TOKENS_PER_RUN:
+                    return False
+                if self.day_usage.total_tokens + usage.total_tokens > MAX_TOKENS_PER_DAY:
+                    return False
+                self.active.usage.add(usage)
+                self.day_usage.add(usage)
+                self._persist_locked()
+                return True
+
+        def provider_budget_class(self, run_id: str, usage: Usage) -> str:
+            with self._lock:
+                if self.active is None or self.active.run_id != run_id:
+                    return "no_active_run"
+                if self.active.usage.tool_calls + usage.tool_calls > MAX_TOOL_CALLS_PER_RUN:
+                    return "per_run_tool_calls"
+                if self.active.usage.input_bytes + usage.input_bytes > MAX_INPUT_BYTES_PER_RUN:
+                    return "per_run_input_bytes"
+                if self.active.usage.tool_output_bytes + usage.tool_output_bytes > MAX_TOOL_OUTPUT_BYTES_PER_RUN:
+                    return "per_run_tool_output_bytes"
+                if self.active.usage.prompt_tokens + usage.prompt_tokens > MAX_PROMPT_TOKENS_PER_RUN:
+                    return "per_run_prompt_tokens"
+                if self.day_usage.total_tokens + usage.total_tokens > MAX_TOKENS_PER_DAY:
+                    return "daily_token_budget"
+                if self.day_usage.model_calls + 1 > MAX_MODEL_CALLS_PER_DAY:
+                    return "daily_model_call_budget"
+                if self.active.usage.model_calls + 1 > MAX_MODEL_CALLS_PER_RUN:
+                    return "per_run_model_calls"
+                return ""
+
+        def snapshot(self) -> Dict[str, Any]:
+            with self._lock:
+                self._roll_day_locked()
+                active = None
+                if self.active is not None:
+                    active = {"runId": self.active.run_id, "name": self.active.name, "usage": self.active.usage.as_dict()}
+                return {
+                    "day": self.day,
+                    "dayUsage": self.day_usage.as_dict(),
+                    "runsToday": self.runs_today,
+                    "activeRun": active,
+                    "lastRunAt": self.last_run_at,
+                    "lastSuccessAt": self.last_success_at,
+                    "lastResult": self.last_result,
+                    "lastErrorClass": self.last_error_class,
+                    "consecutiveFailures": self.consecutive_failures,
+                    "circuitOpenUntil": self.circuit_open_until,
+                    "history": list(self.history),
+                    "stateLoadErrors": self.state_load_errors,
+                }
+
+
+    @dataclass
+    class Metrics:
+        runs_total: Dict[str, int] = field(default_factory=dict)
+        run_duration_sum: float = 0.0
+        run_duration_count: int = 0
+        model_calls_total: int = 0
+        model_call_rejections: Dict[str, int] = field(default_factory=dict)
+        tool_calls_total: int = 0
+        tool_output_bytes_total: int = 0
+        tokens_total: Dict[str, int] = field(default_factory=dict)
+        retries_total: int = 0
+        budget_rejections: Dict[str, int] = field(default_factory=dict)
+        requests_total: Dict[str, int] = field(default_factory=dict)
+        upstream_failures_total: int = 0
+        validation_rejections: Dict[str, int] = field(default_factory=dict)
+        _lock: threading.Lock = field(default_factory=threading.Lock)
+
+        def inc(self, mapping: Dict[str, int], key: str, amount: int = 1) -> None:
+            with self._lock:
+                mapping[key] = mapping.get(key, 0) + amount
+
+
+    class Guard:
+        def __init__(self) -> None:
+            self.state = State(os.path.join(STATE_DIR, "state.json"))
+            self.metrics = Metrics()
+
+        # ------------------------------------------------------------------ API
+        def handle_api(self, method: str, path: str, body: bytes) -> Tuple[int, bytes, str]:
+            if method != "POST" or path != "/api/checks/execute":
+                return 404, _json_error("not_found", "unsupported guard route"), "application/json"
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                self.metrics.inc(self.metrics.validation_rejections, "invalid_json")
+                return 200, _error_check("invalid_json", "the check request is not valid JSON"), "application/json"
+            try:
+                request = validate_execution_request(payload, GUARDED_MODEL, DEFAULT_LIMITS)
+            except BoundaryError as error:
+                self.metrics.inc(self.metrics.validation_rejections, error.rejection_class)
+                return 200, _error_check(error.rejection_class, str(error)), "application/json"
+
+            run, rejection = self.state.begin_run(request["name"] or "operator-check")
+            if run is None:
+                self.metrics.inc(self.metrics.budget_rejections, rejection)
+                return 200, _error_check(rejection, _rejection_message(rejection)), "application/json"
+
+            started = time.time()
+            status, response_body, content_type = self._call_holmes(request, run)
+            try:
+                parsed = json.loads(response_body.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                parsed = None
+            sanitized = sanitize_status(parsed)
+            result = str(sanitized.get("status", "error"))
+            error_class = ""
+            if result == "error":
+                error_class = str(sanitized.get("error") or "check_error")[:60]
+            self.state.finish_run(run, result, error_class)
+            self.metrics.inc(self.metrics.runs_total, result)
+            with self.metrics._lock:
+                self.metrics.run_duration_sum += max(0.0, time.time() - started)
+                self.metrics.run_duration_count += 1
+
+            if status != 200:
+                # The operator must not retry an unbounded number of times. A
+                # syntactically valid error result with HTTP 200 is terminal for the
+                # kopf handler and still records the failure class on the CR.
+                return 200, _error_check(error_class or "upstream_error", "Holmes did not answer the check"), "application/json"
+            return 200, json.dumps(sanitized, sort_keys=True).encode("utf-8"), "application/json"
+
+        def _call_holmes(self, request: Dict[str, Any], run: Run) -> Tuple[int, bytes, str]:
+            payload = {
+                "query": request["query"],
+                "timeout": request["timeout"],
+                "mode": "monitor",
+                "destinations": [],
+                "model": GUARDED_MODEL,
+            }
+            if request.get("name"):
+                payload["name"] = request["name"]
+            url = HOLMES_UPSTREAM.rstrip("/") + "/api/checks/execute"
+            last_error = b""
+            for attempt in range(UPSTREAM_ATTEMPTS):
+                if attempt:
+                    self.metrics.inc(self.metrics.retries_total, "holmes_api")
+                status, body, content_type = _http_post_json(url, payload, timeout=UPSTREAM_TIMEOUT)
+                if status == 200:
+                    return status, body, content_type
+                last_error = body
+                if status < 500 and status != 429:
+                    break
+                time.sleep(min(2 ** attempt, 4))
+            error_class = error_class_for_status(status, last_error.decode("utf-8", "replace"))
+            self.metrics.inc(self.metrics.upstream_failures_total, error_class)
+            return status, last_error, "application/json"
+
+        # ------------------------------------------------------------- provider
+        def handle_provider(self, method: str, path: str, body: bytes) -> Tuple[int, bytes, str]:
+            if method != "POST" or not path.startswith("/v1/chat/completions"):
+                return 404, _json_error("not_found", "unsupported guard route"), "application/json"
+            if len(body) > MAX_REQUEST_BYTES:
+                self.metrics.inc(self.metrics.model_call_rejections, "request_too_large")
+                return 413, _json_error("request_too_large", "the provider request exceeds the guard limit"), "application/json"
+            snapshot = self.state.snapshot()
+            active = snapshot.get("activeRun")
+            if not active:
+                self.metrics.inc(self.metrics.model_call_rejections, "no_active_run")
+                return 403, _json_error("no_active_run", "operator model calls are only accepted during an active health check"), "application/json"
+            run_id = str(active.get("runId"))
+
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                self.metrics.inc(self.metrics.model_call_rejections, "invalid_json")
+                return 400, _json_error("invalid_json", "the provider request is not valid JSON"), "application/json"
+            if not isinstance(payload, dict):
+                self.metrics.inc(self.metrics.model_call_rejections, "invalid_json")
+                return 400, _json_error("invalid_json", "the provider request is not a JSON object"), "application/json"
+
+            usage = Usage()
+            usage.input_bytes = len(body)
+            messages = payload.get("messages")
+            if isinstance(messages, list):
+                usage.tool_output_bytes = tool_output_bytes(messages)
+            usage.tool_calls = 0
+
+            rejection = self.state.provider_budget_class(run_id, usage)
+            if rejection:
+                self.metrics.inc(self.metrics.budget_rejections, rejection)
+                return 429, _json_error(rejection, "the operator model budget is exhausted for this run or day"), "application/json"
+
+            # Force one non-streaming completion so usage is inspectable and one
+            # run cannot hold a stream open indefinitely.
+            payload["stream"] = False
+            url = PROVIDER_UPSTREAM.rstrip("/") + "/chat/completions"
+            status, response_body, content_type = _http_post_json(url, payload, timeout=UPSTREAM_TIMEOUT)
+
+            usage.model_calls = 1
+            if status == 200:
+                try:
+                    response_payload = json.loads(response_body.decode("utf-8"))
+                except (UnicodeDecodeError, ValueError):
+                    response_payload = None
+                reported = usage_from_provider_response(response_payload)
+                usage.prompt_tokens = reported["prompt_tokens"]
+                usage.completion_tokens = reported["completion_tokens"]
+                usage.cached_tokens = reported["cached_tokens"]
+                usage.total_tokens = reported["total_tokens"]
+                usage.tool_calls = tool_call_count(response_payload)
+                self.metrics.inc(self.metrics.model_calls_total, "ok")
+                with self.metrics._lock:
+                    self.metrics.tool_calls_total += usage.tool_calls
+                    self.metrics.tool_output_bytes_total += usage.tool_output_bytes
+                    for key, value in (
+                        ("prompt", usage.prompt_tokens),
+                        ("completion", usage.completion_tokens),
+                        ("cached", usage.cached_tokens),
+                        ("total", usage.total_tokens),
+                    ):
+                        self.metrics.tokens_total[key] = self.metrics.tokens_total.get(key, 0) + value
+                if not self.state.record_provider_call(run_id, usage):
+                    self.state.reject_provider_call(run_id, usage, "budget")
+                    self.metrics.inc(self.metrics.budget_rejections, "post_call_budget")
+                    return 200, _budget_completion(), "application/json"
+                return status, response_body, content_type or "application/json"
+
+            self.state.reject_provider_call(run_id, usage, "provider_error")
+            error_class = error_class_for_status(status, response_body.decode("utf-8", "replace"))
+            self.metrics.inc(self.metrics.model_call_rejections, error_class)
+            self.metrics.inc(self.metrics.upstream_failures_total, error_class)
+            if error_class == "upstream_unavailable":
+                with self.state._lock:
+                    self.state.consecutive_failures += 1
+                    if self.state.consecutive_failures >= CIRCUIT_FAILURE_THRESHOLD:
+                        self.state.circuit_open_until = time.time() + CIRCUIT_COOLDOWN_SECONDS
+                        self.state._persist_locked()
+            return status, response_body or _json_error(error_class, "the provider did not answer"), "application/json"
+
+        # -------------------------------------------------------------- metrics
+        def metrics_text(self) -> str:
+            snapshot = self.state.snapshot()
+            lines = [
+                "# HELP holmes_operator_runs_total Health-check runs by terminal result.",
+                "# TYPE holmes_operator_runs_total counter",
+            ]
+            for key, value in sorted(self.metrics.runs_total.items()):
+                lines.append(f'holmes_operator_runs_total{{result="{key}"}} {value}')
+            lines += [
+                "# HELP holmes_operator_run_duration_seconds Cumulative run latency.",
+                "# TYPE holmes_operator_run_duration_seconds summary",
+                f"holmes_operator_run_duration_seconds_sum {self.metrics.run_duration_sum:.6f}",
+                f"holmes_operator_run_duration_seconds_count {self.metrics.run_duration_count}",
+                "# HELP holmes_operator_model_calls_total Provider calls admitted by the guard.",
+                "# TYPE holmes_operator_model_calls_total counter",
+                f"holmes_operator_model_calls_total {self.metrics.model_calls_total}",
+                "# HELP holmes_operator_tool_calls_total Tool calls requested by the model.",
+                "# TYPE holmes_operator_tool_calls_total counter",
+                f"holmes_operator_tool_calls_total {self.metrics.tool_calls_total}",
+                "# HELP holmes_operator_tool_output_bytes_total Compacted tool output bytes seen in requests.",
+                "# TYPE holmes_operator_tool_output_bytes_total counter",
+                f"holmes_operator_tool_output_bytes_total {self.metrics.tool_output_bytes_total}",
+                "# HELP holmes_operator_retries_total Bounded upstream retries.",
+                "# TYPE holmes_operator_retries_total counter",
+                f"holmes_operator_retries_total {self.metrics.retries_total}",
+                "# HELP holmes_operator_upstream_failures_total Upstream failures by class.",
+                "# TYPE holmes_operator_upstream_failures_total counter",
+                f"holmes_operator_upstream_failures_total {self.metrics.upstream_failures_total}",
+            ]
+            for key, value in sorted(self.metrics.tokens_total.items()):
+                lines.append(f'holmes_operator_tokens_total{{kind="{key}"}} {value}')
+            for key, value in sorted(self.metrics.budget_rejections.items()):
+                lines.append(f'holmes_operator_budget_rejections_total{{class="{key}"}} {value}')
+            for key, value in sorted(self.metrics.model_call_rejections.items()):
+                lines.append(f'holmes_operator_model_call_rejections_total{{class="{key}"}} {value}')
+            for key, value in sorted(self.metrics.validation_rejections.items()):
+                lines.append(f'holmes_operator_validation_rejections_total{{class="{key}"}} {value}')
+            for key, value in sorted(self.metrics.requests_total.items()):
+                route, _, code = key.partition("|")
+                lines.append(f'holmes_operator_requests_total{{route="{route}",code="{code}"}} {value}')
+            lines += [
+                "# HELP holmes_operator_active_runs Runs currently holding the single slot.",
+                "# TYPE holmes_operator_active_runs gauge",
+                f"holmes_operator_active_runs {1 if snapshot['activeRun'] else 0}",
+                "# HELP holmes_operator_queue_depth Waiting runs. The operator rejects instead of queueing.",
+                "# TYPE holmes_operator_queue_depth gauge",
+                "holmes_operator_queue_depth 0",
+                "# HELP holmes_operator_last_success_timestamp_seconds Last pass or fail completion.",
+                "# TYPE holmes_operator_last_success_timestamp_seconds gauge",
+                f"holmes_operator_last_success_timestamp_seconds {snapshot['lastSuccessAt']:.0f}",
+                "# HELP holmes_operator_last_run_timestamp_seconds Last run start.",
+                "# TYPE holmes_operator_last_run_timestamp_seconds gauge",
+                f"holmes_operator_last_run_timestamp_seconds {snapshot['lastRunAt']:.0f}",
+                "# HELP holmes_operator_circuit_open Whether the provider circuit is open.",
+                "# TYPE holmes_operator_circuit_open gauge",
+                f"holmes_operator_circuit_open {1 if time.time() < snapshot['circuitOpenUntil'] else 0}",
+                "# HELP holmes_operator_runs_today Runs admitted since UTC midnight.",
+                "# TYPE holmes_operator_runs_today gauge",
+                f"holmes_operator_runs_today {snapshot['runsToday']}",
+                "# HELP holmes_operator_budget_remaining Remaining budget for the current UTC day.",
+                "# TYPE holmes_operator_budget_remaining gauge",
+                f'holmes_operator_budget_remaining{{kind="runs"}} {max(0, MAX_RUNS_PER_DAY - snapshot["runsToday"])}',
+                f'holmes_operator_budget_remaining{{kind="model_calls"}} {max(0, MAX_MODEL_CALLS_PER_DAY - snapshot["dayUsage"]["model_calls"])}',
+                f'holmes_operator_budget_remaining{{kind="tokens"}} {max(0, MAX_TOKENS_PER_DAY - snapshot["dayUsage"]["total_tokens"])}',
+                "# HELP holmes_operator_state_load_errors State files that were unreadable at startup.",
+                "# TYPE holmes_operator_state_load_errors counter",
+                f"holmes_operator_state_load_errors {snapshot['stateLoadErrors']}",
+            ]
+            return "\n".join(lines) + "\n"
+
+
+    def _rejection_message(rejection: str) -> str:
+        messages = {
+            "concurrency_limit": "another health check is already running",
+            "circuit_open": "the model provider circuit is open after repeated failures",
+            "daily_run_budget": "the daily health-check run budget is exhausted",
+            "run_gap": "the minimum gap between health checks has not elapsed",
+        }
+        return messages.get(rejection, "the health check was refused by the operator guard")
+
+
+    def _error_check(error_class: str, message: str) -> bytes:
+        return json.dumps(
+            {
+                "status": "error",
+                "message": message,
+                "error": error_class,
+                "duration": 0.0,
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+
+
+    def _budget_completion() -> bytes:
+        """A valid terminal completion when a post-call budget is exceeded."""
+        return json.dumps(
+            {
+                "id": "guard-budget",
+                "object": "chat.completion",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {
+                            "role": "assistant",
+                            "content": "The operator model budget for this run is exhausted. Stop investigating and report an error.",
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+
+
+    def _json_error(code: str, message: str) -> bytes:
+        return json.dumps({"error": {"type": code, "message": message}}, sort_keys=True).encode("utf-8")
+
+
+    def _http_post_json(url: str, payload: Dict[str, Any], timeout: int) -> Tuple[int, bytes, str]:
+        body = json.dumps(payload, sort_keys=True).encode("utf-8")
+        request = urllib.request.Request(url, data=body, method="POST")
+        request.add_header("Content-Type", "application/json")
+        request.add_header("Accept", "application/json")
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.status, response.read(), response.headers.get("Content-Type", "application/json")
+        except urllib.error.HTTPError as error:
+            return error.code, error.read(), error.headers.get("Content-Type", "application/json") if error.headers else "application/json"
+        except (urllib.error.URLError, TimeoutError, OSError):
+            return 503, _json_error("upstream_unavailable", "the upstream service is unavailable"), "application/json"
+
+
+    def _read_body(handler: BaseHTTPRequestHandler) -> bytes:
+        try:
+            length = int(handler.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length < 0 or length > MAX_REQUEST_BYTES:
+            return b""
+        return handler.rfile.read(length)
+
+
+    class _Handler(BaseHTTPRequestHandler):
+        guard: Guard
+        role: str
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
+            # Never log a query, prompt or response. Access logs carry only the
+            # method, route and status.
+            return
+
+        def _respond(self, status: int, body: bytes, content_type: str) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self) -> None:  # noqa: N802
+            if self.path in ("/healthz", "/readyz"):
+                self._respond(200, b"ok\n", "text/plain; charset=utf-8")
+                return
+            if self.role == "metrics" and self.path == "/metrics":
+                self._respond(200, self.guard.metrics_text().encode("utf-8"), "text/plain; version=0.0.4; charset=utf-8")
+                return
+            self._respond(404, _json_error("not_found", "unsupported guard route"), "application/json")
+
+        def do_POST(self) -> None:  # noqa: N802
+            body = _read_body(self)
+            if self.role == "api":
+                status, response, content_type = self.guard.handle_api("POST", self.path.split("?")[0], body)
+            elif self.role == "provider":
+                status, response, content_type = self.guard.handle_provider("POST", self.path, body)
+            else:
+                status, response, content_type = 404, _json_error("not_found", "unsupported guard route"), "application/json"
+            self.guard.metrics.inc(self.guard.metrics.requests_total, f"{self.role}|{status}")
+            self._respond(status, response, content_type)
+
+
+    def _serve(role: str, address: str, guard: Guard) -> None:
+        host, port = _split_addr(address)
+        handler = type(f"Handler_{role}", (_Handler,), {"guard": guard, "role": role})
+        server = ThreadingHTTPServer((host, port), handler)
+        server.daemon_threads = True
+        server.serve_forever()
+
+
+    def main() -> None:
+        guard = Guard()
+        threads = [
+            threading.Thread(target=_serve, args=("api", API_LISTEN, guard), daemon=True, name="guard-api"),
+            threading.Thread(target=_serve, args=("provider", PROVIDER_LISTEN, guard), daemon=True, name="guard-provider"),
+            threading.Thread(target=_serve, args=("metrics", METRICS_LISTEN, guard), daemon=True, name="guard-metrics"),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+
+    if __name__ == "__main__":
+        main()
+  bounds.py: |
+    """Bounded validation and sanitization for the Holmes Operator guard.
+
+    The guard is the only component that talks to the model provider on behalf of an
+    operator-driven health check. It owns three decisions that the alpha operator
+    cannot make itself:
+
+    * refuse a check that would leave the monitor-only boundary,
+    * refuse a run or a model call that would exceed a documented budget, and
+    * reduce whatever the model returned to a bounded, credential-free summary
+      before the operator stores it in a CustomResource status.
+
+    Nothing in this module reads a Secret, a ConfigMap or the Kubernetes API. The
+    inputs are the HTTP bodies the operator and Holmes already send, and the output
+    is a small JSON document. Prompts and completions are never persisted by this
+    module; only counters and one short sanitized outcome per run are kept.
+    """
+
+    from __future__ import annotations
+
+    import re
+    from dataclasses import dataclass
+    from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+    # Namespaces a health-check query may name. Anything else is treated as a
+    # cross-installation scope and refused before a model call is made.
+    ALLOWED_NAMESPACES = frozenset(
+        {
+            "access-change-api",
+            "argocd",
+            "audit-sink",
+            "authelia",
+            "cert-manager",
+            "gatus",
+            "headlamp",
+            "holmes",
+            "ingress-nginx",
+            "kube-system",
+            "kyverno",
+            "metrics-server",
+            "opencost",
+            "prometheus",
+            "synthetic-monitoring",
+            "synthetic-status",
+        }
+    )
+
+    # Credential-shaped text is refused even though the query is only a prompt: a
+    # query that names a Secret or carries a token invites the model to repeat it in
+    # status, logs or a later conversation.
+    CREDENTIAL_PATTERNS = (
+        re.compile(r"\bsecret(s)?\b", re.IGNORECASE),
+        re.compile(r"\bconfigmap(s)?\b", re.IGNORECASE),
+        re.compile(r"\b(token|password|passwd|api[_-]?key|private[_-]?key)\b", re.IGNORECASE),
+        re.compile(r"bearer\s+[a-z0-9._\-]+", re.IGNORECASE),
+        re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----"),
+        re.compile(r"\bkubeconfig\b", re.IGNORECASE),
+        re.compile(r"\b[a-zA-Z0-9+/]{40,}={0,2}\b"),
+    )
+
+    # Interactive or mutating Kubernetes access is outside monitor-only mode.
+    FORBIDDEN_ACCESS_PATTERNS = (
+        re.compile(r"\bkubectl\s+(exec|attach|port-forward|cp|apply|delete|patch|edit|scale|rollout\s+restart)\b", re.IGNORECASE),
+        re.compile(r"\b(pods?/exec|port-forward|attach)\b", re.IGNORECASE),
+        re.compile(r"\b(all[- ]namespaces|cluster[- ]wide|every namespace)\b", re.IGNORECASE),
+    )
+
+    NAMESPACE_PATTERN = re.compile(
+        r"\b(?:namespace|ns)\s*(?:[:=]|\s)\s*['\"]?([a-z0-9]([-a-z0-9]*[a-z0-9])?)",
+        re.IGNORECASE,
+    )
+
+    # Fields a sanitized status may keep. Every one is a short scalar.
+    SAFE_STATUS_FIELDS = ("status", "message", "rationale", "error", "model_used", "duration")
+
+
+    @dataclass(frozen=True)
+    class Limits:
+        max_query_chars: int = 2000
+        min_query_chars: int = 10
+        max_timeout_seconds: int = 300
+        min_timeout_seconds: int = 5
+        max_history_items: int = 10
+        max_message_chars: int = 600
+        max_rationale_chars: int = 800
+        max_error_chars: int = 300
+
+
+    DEFAULT_LIMITS = Limits()
+
+
+    class BoundaryError(ValueError):
+        """A request that must not reach the model provider."""
+
+        def __init__(self, rejection_class: str, message: str):
+            super().__init__(message)
+            self.rejection_class = rejection_class
+
+
+    def _text(value: Any) -> str:
+        return value.strip() if isinstance(value, str) else ""
+
+
+    def validate_query(query: str) -> str:
+        """Return the query when it is bounded and monitor-only, else raise."""
+        text = _text(query)
+        if len(text) < DEFAULT_LIMITS.min_query_chars:
+            raise BoundaryError("query_too_short", "the health-check query is too short to be actionable")
+        if len(text) > DEFAULT_LIMITS.max_query_chars:
+            raise BoundaryError("query_too_long", "the health-check query exceeds the bounded length")
+        for pattern in CREDENTIAL_PATTERNS:
+            if pattern.search(text):
+                raise BoundaryError("credential_like_query", "the health-check query names credential material")
+        for pattern in FORBIDDEN_ACCESS_PATTERNS:
+            if pattern.search(text):
+                raise BoundaryError("forbidden_access_query", "the health-check query requests interactive or mutating access")
+        for match in NAMESPACE_PATTERN.finditer(text):
+            namespace = match.group(1).lower()
+            if namespace not in ALLOWED_NAMESPACES:
+                raise BoundaryError("cross_tenant_scope", "the health-check query names a namespace outside this installation")
+        return text
+
+
+    def validate_schedule_interval_minutes(schedule: str) -> int:
+        """Return the maximum repeats per hour implied by a five-field cron.
+
+        The supported grammar is deliberately narrow: the minute field must be one
+        integer. `*`, `*/N`, lists and ranges can fire more than once an hour, which
+        the initial release does not allow. The scheduler itself is pinned to hourly
+        or slower by admission; this function is the resolver-side gate.
+        """
+        fields = _text(schedule).split()
+        if len(fields) != 5:
+            raise BoundaryError("invalid_schedule", "the schedule must be a five-field cron expression")
+        minute = fields[0]
+        if not re.fullmatch(r"\d{1,2}", minute):
+            raise BoundaryError("schedule_too_frequent", "the schedule minute must be a single value so it cannot run more than hourly")
+        value = int(minute)
+        if value < 0 or value > 59:
+            raise BoundaryError("invalid_schedule", "the schedule minute is out of range")
+        return 60
+
+
+    def validate_execution_request(payload: Any, guarded_model: str, limits: Limits = DEFAULT_LIMITS) -> Dict[str, Any]:
+        """Validate the Holmes `/api/checks/execute` body for monitor-only mode."""
+        if not isinstance(payload, dict):
+            raise BoundaryError("invalid_request", "the check request is not a JSON object")
+        mode = payload.get("mode", "monitor")
+        if mode != "monitor":
+            raise BoundaryError("alert_mode_refused", "only monitor mode is supported; alert destinations arrive in a later task")
+        destinations = payload.get("destinations")
+        if destinations not in (None, []):
+            raise BoundaryError("destinations_refused", "alert destinations are not supported in monitor-only mode")
+        query = validate_query(str(payload.get("query", "")))
+        timeout = payload.get("timeout", 30)
+        if not isinstance(timeout, int) or isinstance(timeout, bool):
+            raise BoundaryError("invalid_timeout", "the check timeout must be an integer number of seconds")
+        if timeout < limits.min_timeout_seconds or timeout > limits.max_timeout_seconds:
+            raise BoundaryError("timeout_out_of_bounds", "the check timeout is outside the supported range")
+        model = payload.get("model")
+        if model != guarded_model:
+            raise BoundaryError("model_not_guarded", "the check must use the guarded operator model so usage and budgets are enforced")
+        return {"query": query, "timeout": timeout, "name": _text(payload.get("name"))}
+
+
+    _SANITIZE_PATTERNS: Tuple[Tuple[re.Pattern, str], ...] = (
+        (re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE), "<redacted-url>"),
+        (re.compile(r"\bBearer\s+[A-Za-z0-9._\-]+", re.IGNORECASE), "Bearer <redacted>"),
+        (re.compile(r"(?i)\b(token|password|passwd|api[_-]?key|secret)\b\s*[:=]\s*[^\s,;]+"), r"\1=<redacted>"),
+        (re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----.*?-----END [A-Z ]+PRIVATE KEY-----", re.DOTALL), "<redacted-key>"),
+        (re.compile(r"\b[a-z0-9+/]{40,}={0,2}\b"), "<redacted-value>"),
+        (re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"), " "),
+    )
+
+
+    def sanitize_text(value: Any, limit: int) -> str:
+        """Return a single-line, credential-free, length-bounded string."""
+        if not isinstance(value, str):
+            return ""
+        text = value
+        for pattern, replacement in _SANITIZE_PATTERNS:
+            text = pattern.sub(replacement, text)
+        text = " ".join(text.split())
+        if len(text) > limit:
+            text = text[: max(0, limit - 1)].rstrip() + "\u2026"
+        return text
+
+
+    def sanitize_status(payload: Any, limits: Limits = DEFAULT_LIMITS) -> Dict[str, Any]:
+        """Reduce a Holmes check response to the fields the CRD may keep."""
+        if not isinstance(payload, dict):
+            return {
+                "status": "error",
+                "message": "Holmes returned an unreadable check result",
+                "error": "invalid_response",
+                "duration": 0.0,
+            }
+        status = payload.get("status")
+        if status not in ("pass", "fail", "error"):
+            status = "error"
+        result: Dict[str, Any] = {
+            "status": status,
+            "message": sanitize_text(payload.get("message"), limits.max_message_chars),
+            "rationale": sanitize_text(payload.get("rationale"), limits.max_rationale_chars),
+            "error": sanitize_text(payload.get("error"), limits.max_error_chars),
+            "duration": _bounded_duration(payload.get("duration")),
+        }
+        model_used = sanitize_text(payload.get("model_used"), 120)
+        if model_used:
+            result["model_used"] = model_used
+        if not result["message"]:
+            result["message"] = "Health check produced no summary"
+        return result
+
+
+    def _bounded_duration(value: Any) -> float:
+        try:
+            duration = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        if duration < 0:
+            return 0.0
+        return round(min(duration, 3600.0), 3)
+
+
+    def usage_from_provider_response(payload: Any) -> Dict[str, int]:
+        """Extract token usage and tool-call count from an OpenAI-compatible body.
+
+        Providers that do not report a field contribute zero and are never guessed.
+        Cache tokens are counted separately because a cached prompt is still a
+        prompt; the daily budget uses the reported input total.
+        """
+        usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cached_tokens": 0}
+        if not isinstance(payload, dict):
+            return usage
+        raw = payload.get("usage")
+        if isinstance(raw, dict):
+            usage["prompt_tokens"] = _non_negative_int(raw.get("prompt_tokens"))
+            usage["completion_tokens"] = _non_negative_int(raw.get("completion_tokens"))
+            usage["total_tokens"] = _non_negative_int(raw.get("total_tokens"))
+            if usage["total_tokens"] == 0:
+                usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
+            details = raw.get("prompt_tokens_details")
+            if isinstance(details, dict):
+                usage["cached_tokens"] = _non_negative_int(details.get("cached_tokens"))
+        return usage
+
+
+    def tool_output_bytes(messages: Iterable[Any]) -> int:
+        """Sum the bytes of tool-role message content without retaining it."""
+        total = 0
+        for message in messages:
+            if not isinstance(message, dict):
+                continue
+            if message.get("role") != "tool":
+                continue
+            content = message.get("content")
+            if isinstance(content, str):
+                total += len(content.encode("utf-8", "replace"))
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict):
+                        text = part.get("text")
+                        if isinstance(text, str):
+                            total += len(text.encode("utf-8", "replace"))
+        return total
+
+
+    def tool_call_count(payload: Any) -> int:
+        if not isinstance(payload, dict):
+            return 0
+        choices = payload.get("choices")
+        if not isinstance(choices, list):
+            return 0
+        count = 0
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            message = choice.get("message")
+            if not isinstance(message, dict):
+                continue
+            calls = message.get("tool_calls")
+            if isinstance(calls, list):
+                count += len(calls)
+        return count
+
+
+    def _non_negative_int(value: Any) -> int:
+        if isinstance(value, bool):
+            return 0
+        if isinstance(value, int):
+            return max(0, value)
+        if isinstance(value, float):
+            return max(0, int(value))
+        return 0
+
+
+    def summarize_history(entries: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+        """Keep at most `limit` most recent sanitized entries."""
+        if limit <= 0:
+            return []
+        return entries[-limit:]
+
+
+    def error_class_for_status(status: int, body: str) -> str:
+        """Classify an upstream failure without reading message content."""
+        text = (body or "").lower()
+        if status == 429 or ("rate" in text and "limit" in text) or "quota" in text:
+            return "rate_limited"
+        if status in (401, 403):
+            return "provider_denied"
+        if status == 402 or "insufficient" in text or "billing" in text:
+            return "quota_exhausted"
+        if status >= 500:
+            return "upstream_unavailable"
+        return "upstream_error"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: holmes-operator
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: holmes-operator
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+rules:
+  # The operator may manage only Holmes health-check resources. It cannot read
+  # Pods, Secrets, ConfigMaps or logs, and it cannot mutate any other kind.
+  - apiGroups: ["holmesgpt.dev"]
+    resources: ["healthchecks"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["holmesgpt.dev"]
+    resources: ["healthchecks/status"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["holmesgpt.dev"]
+    resources: ["scheduledhealthchecks", "triggeredhealthchecks"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: ["holmesgpt.dev"]
+    resources: ["scheduledhealthchecks/status", "triggeredhealthchecks/status"]
+    verbs: ["get", "patch", "update"]
+  # Rollout triggers must observe pod-template changes. Read-only.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  # Kubernetes events are the operator's own audit trail on the CR.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  # kopf watches CRD establishment; metadata only.
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: holmes-operator
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: holmes-operator
+subjects:
+  - kind: ServiceAccount
+    name: holmes-operator
+    namespace: holmes
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: holmes-operator-guard-state
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator-guard
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    # Budget counters and the bounded sanitized history survive a pod restart
+    # and a module disable. Destructive deletion is a separate reviewed action.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: holmes-operator
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  # One active scheduler. Recreate never leaves the old pod running beside the
+  # new one, so a repeated reconcile cannot run two schedules at once.
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: holmes-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: holmes-operator
+        app.kubernetes.io/part-of: sre-platform
+      annotations:
+        platform.sre-platform.io/operator-mode: "monitor-only"
+        platform.sre-platform.io/chart-version: "0.42.0"
+    spec:
+      serviceAccountName: holmes-operator
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: operator
+          image: "robustadev/holmes-operator:0.42.0@sha256:d947df947562ab1c3fc160cf803e71417bc31f39f265cad947ce2f10b7f7a106"
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "-m", "holmes_operator.operator"]
+          env:
+            - name: HOLMES_API_URL
+              value: "http://127.0.0.1:8098"
+            - name: HOLMES_API_TIMEOUT
+              value: "330"
+            - name: LOG_LEVEL
+              value: "WARNING"
+            - name: ENABLE_JSON_LOGS_FORMAT
+              value: "true"
+            - name: MAX_HISTORY_ITEMS
+              value: "10"
+            - name: CLEANUP_COMPLETED_CHECKS
+              value: "true"
+            - name: COMPLETED_CHECK_TTL_HOURS
+              value: "24"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              cpu: 250m
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        - name: guard
+          image: "robustadev/holmes-operator:0.42.0@sha256:d947df947562ab1c3fc160cf803e71417bc31f39f265cad947ce2f10b7f7a106"
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "/opt/holmes-operator-guard/guard.py"]
+          env:
+            - name: GUARD_STATE_DIR
+              value: "/var/lib/holmes-operator-guard"
+            - name: GUARD_API_LISTEN
+              value: "127.0.0.1:8098"
+            - name: GUARD_PROVIDER_LISTEN
+              value: "0.0.0.0:8099"
+            - name: GUARD_METRICS_LISTEN
+              value: "0.0.0.0:8097"
+            - name: HOLMES_UPSTREAM
+              value: "http://holmesgpt-holmes.holmes.svc.cluster.local:80"
+            - name: PROVIDER_UPSTREAM
+              value: "http://holmes-opencode-adapter.holmes.svc.cluster.local:8080/v1"
+            - name: GUARD_MODEL_KEY
+              value: "operator-deepseek-v4.1-flash"
+            - name: GUARD_MAX_RUNS_PER_DAY
+              value: "36"
+            - name: GUARD_MAX_MODEL_CALLS_PER_DAY
+              value: "216"
+            - name: GUARD_MAX_TOKENS_PER_DAY
+              value: "1000000"
+            - name: GUARD_MAX_MODEL_CALLS_PER_RUN
+              value: "6"
+            - name: GUARD_MAX_TOOL_CALLS_PER_RUN
+              value: "12"
+            - name: GUARD_MAX_PROMPT_TOKENS_PER_RUN
+              value: "120000"
+            - name: GUARD_MAX_COMPLETION_TOKENS_PER_RUN
+              value: "12000"
+            - name: GUARD_MIN_RUN_GAP_SECONDS
+              value: "60"
+            - name: GUARD_CIRCUIT_FAILURE_THRESHOLD
+              value: "3"
+            - name: GUARD_CIRCUIT_COOLDOWN_SECONDS
+              value: "900"
+            - name: GUARD_HISTORY_LIMIT
+              value: "20"
+          ports:
+            - name: metrics
+              containerPort: 8097
+            - name: provider
+              containerPort: 8099
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: guard-code
+              mountPath: /opt/holmes-operator-guard
+              readOnly: true
+            - name: guard-state
+              mountPath: /var/lib/holmes-operator-guard
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: guard-code
+          configMap:
+            name: holmes-operator-guard-code
+        - name: guard-state
+          persistentVolumeClaim:
+            claimName: holmes-operator-guard-state
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: holmes-operator-guard
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator-guard
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: holmes-operator
+  ports:
+    - name: metrics
+      port: 8097
+      targetPort: metrics
+    - name: provider
+      port: 8099
+      targetPort: provider
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: holmes-operator-guard
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator-guard
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: holmes-operator
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    # Holmes reaches the guarded model entry only.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: holmes
+      ports:
+        - protocol: TCP
+          port: 8099
+    # Metrics are read-only and carry no prompt, response or credential. They
+    # are reachable through the Service proxy for the Control Center and for
+    # acceptance evidence.
+    - ports:
+        - protocol: TCP
+          port: 8097
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app: holmes
+      ports:
+        - protocol: TCP
+          port: 5050
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: holmes-opencode-adapter
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: holmes-operator-monitor-only
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    policies.kyverno.io/title: "Holmes Operator monitor-only boundary"
+    policies.kyverno.io/category: "Platform Security"
+    policies.kyverno.io/severity: "high"
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: monitor-only-and-bounded
+      match:
+        any:
+          - resources:
+              kinds: ["HealthCheck", "ScheduledHealthCheck", "TriggeredHealthCheck"]
+              operations: ["CREATE", "UPDATE"]
+      validate:
+        cel:
+          expressions:
+            - expression: "!has(object.spec.mode) || object.spec.mode == 'monitor'"
+              message: "Only monitor mode is allowed until alert destinations are implemented."
+            - expression: "!has(object.spec.destinations) || object.spec.destinations.size() == 0"
+              message: "Alert destinations are not allowed in monitor-only mode."
+            - expression: "!has(object.spec.timeout) || (object.spec.timeout >= 5 && object.spec.timeout <= 300)"
+              message: "The timeout must be between 5 and 300 seconds."
+            - expression: "!has(object.spec.model) || object.spec.model == 'operator-deepseek-v4.1-flash'"
+              message: "Every operator check must use the guarded operator model so budgets are enforced."
+            - expression: "!has(object.spec.query) || (object.spec.query.size() >= 10 && object.spec.query.size() <= 2000)"
+              message: "The query length must be between 10 and 2000 characters."
+            - expression: "!has(object.spec.query) || !object.spec.query.matches('(?i)(secret|configmap|password|passwd|token|api[_-]?key|kubeconfig|private[_-]?key|bearer[[:space:]]|BEGIN [A-Z ]+PRIVATE KEY)')"
+              message: "The query must not name or contain credential material."
+            - expression: "!has(object.spec.query) || !object.spec.query.matches('(?i)(kubectl[[:space:]]+(exec|attach|port-forward|cp|apply|delete|patch|edit|scale)|pods?/exec|port-forward|all[- ]namespaces|cluster[- ]wide)')"
+              message: "The query must not request interactive or mutating access."
+            - expression: "!has(object.spec.schedule) || object.spec.schedule.matches('^[0-9]{1,2} [^ ]+ [^ ]+ [^ ]+ [^ ]+$')"
+              message: "The schedule minute must be a single value so a check cannot run more than hourly."
+    - name: rollout-selector-is-bounded
+      match:
+        any:
+          - resources:
+              kinds: ["TriggeredHealthCheck"]
+              operations: ["CREATE", "UPDATE"]
+      validate:
+        cel:
+          expressions:
+            - expression: "!has(object.spec.deploymentRollout) || !has(object.spec.deploymentRollout.selector) || !has(object.spec.deploymentRollout.selector.matchLabels) || object.spec.deploymentRollout.selector.matchLabels.size() > 0"
+              message: "A rollout trigger must use a non-empty label selector; an empty selector matches every Deployment in the namespace."
+            - expression: "!has(object.spec.deploymentRollout) || !has(object.spec.delaySeconds) || (object.spec.delaySeconds >= 0 && object.spec.delaySeconds <= 604800)"
+              message: "The rollout delay must be bounded."
+            - expression: "!has(object.spec.deploymentRollout) || !has(object.spec.cooldownSeconds) || (object.spec.cooldownSeconds >= 0 && object.spec.cooldownSeconds <= 86400)"
+              message: "The rollout cooldown must be bounded to one day or less."
+---
+apiVersion: holmesgpt.dev/v1alpha1
+kind: ScheduledHealthCheck
+metadata:
+  name: platform-readiness-hourly
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    platform.sre-platform.io/budget-class: "scheduled"
+spec:
+  schedule: "0 * * * *"
+  enabled: true
+  query: >-
+    Evaluate the readiness of the platform control plane in this installation:
+    Argo CD server and application controller, the ingress controller, the
+    Headlamp console and its identity bridge, and the Authelia portal. Use
+    Deployment and Pod readiness conditions, but do not read logs, Secrets or
+    ConfigMaps. Report pass only when every named workload has an available
+    replica and no warning Events in the last 15 minutes; otherwise fail with
+    the exact workloads and conditions that are not ready.
+  timeout: 240
+  mode: monitor
+  model: "operator-deepseek-v4.1-flash"
+  destinations: []
+---
+apiVersion: holmesgpt.dev/v1alpha1
+kind: TriggeredHealthCheck
+metadata:
+  name: holmes-rollout
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    platform.sre-platform.io/budget-class: "rollout"
+spec:
+  enabled: true
+  deploymentRollout:
+    selector:
+      matchLabels:
+        app: holmes
+  delaySeconds: 180
+  cooldownSeconds: 3600
+  query: >-
+    A Deployment rollout just completed. Verify that the new revision became
+    ready, stayed ready for at least three minutes and produced no warning
+    Events. Name the Deployment and namespace, the observed available replicas,
+    the previous and new images, and any condition that is not ready. Do not
+    read logs, Secrets or ConfigMaps.
+  timeout: 240
+  mode: monitor
+  model: "operator-deepseek-v4.1-flash"
+  destinations: []
+---
+apiVersion: holmesgpt.dev/v1alpha1
+kind: TriggeredHealthCheck
+metadata:
+  name: argocd-server-rollout
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    platform.sre-platform.io/budget-class: "rollout"
+spec:
+  enabled: true
+  deploymentRollout:
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: argocd-server
+  delaySeconds: 180
+  cooldownSeconds: 3600
+  query: >-
+    A Deployment rollout just completed. Verify that the new revision became
+    ready, stayed ready for at least three minutes and produced no warning
+    Events. Name the Deployment and namespace, the observed available replicas,
+    the previous and new images, and any condition that is not ready. Do not
+    read logs, Secrets or ConfigMaps.
+  timeout: 240
+  mode: monitor
+  model: "operator-deepseek-v4.1-flash"
+  destinations: []
+---
+apiVersion: holmesgpt.dev/v1alpha1
+kind: TriggeredHealthCheck
+metadata:
+  name: headlamp-rollout
+  namespace: headlamp
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    platform.sre-platform.io/budget-class: "rollout"
+spec:
+  enabled: true
+  deploymentRollout:
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: headlamp
+  delaySeconds: 180
+  cooldownSeconds: 3600
+  query: >-
+    A Deployment rollout just completed. Verify that the new revision became
+    ready, stayed ready for at least three minutes and produced no warning
+    Events. Name the Deployment and namespace, the observed available replicas,
+    the previous and new images, and any condition that is not ready. Do not
+    read logs, Secrets or ConfigMaps.
+  timeout: 240
+  mode: monitor
+  model: "operator-deepseek-v4.1-flash"
+  destinations: []
+---
+apiVersion: holmesgpt.dev/v1alpha1
+kind: TriggeredHealthCheck
+metadata:
+  name: authelia-rollout
+  namespace: authelia
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    platform.sre-platform.io/budget-class: "rollout"
+spec:
+  enabled: true
+  deploymentRollout:
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: authelia
+  delaySeconds: 180
+  cooldownSeconds: 3600
+  query: >-
+    A Deployment rollout just completed. Verify that the new revision became
+    ready, stayed ready for at least three minutes and produced no warning
+    Events. Name the Deployment and namespace, the observed available replicas,
+    the previous and new images, and any condition that is not ready. Do not
+    read logs, Secrets or ConfigMaps.
+  timeout: 240
+  mode: monitor
+  model: "operator-deepseek-v4.1-flash"
+  destinations: []
+---
+apiVersion: holmesgpt.dev/v1alpha1
+kind: TriggeredHealthCheck
+metadata:
+  name: ingress-controller-rollout
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    platform.sre-platform.io/budget-class: "rollout"
+spec:
+  enabled: true
+  deploymentRollout:
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: ingress-nginx
+  delaySeconds: 180
+  cooldownSeconds: 3600
+  query: >-
+    A Deployment rollout just completed. Verify that the new revision became
+    ready, stayed ready for at least three minutes and produced no warning
+    Events. Name the Deployment and namespace, the observed available replicas,
+    the previous and new images, and any condition that is not ready. Do not
+    read logs, Secrets or ConfigMaps.
+  timeout: 240
+  mode: monitor
+  model: "operator-deepseek-v4.1-flash"
+  destinations: []
+---
+apiVersion: holmesgpt.dev/v1alpha1
+kind: HealthCheck
+metadata:
+  name: operator-diagnostic
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    platform.sre-platform.io/budget-class: "one-time"
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  query: >-
+    Check the readiness of the argocd-server Deployment in namespace argocd, the ingress controller, the Headlamp console and its identity bridge. Report pass only when each named workload has an available replica.
+  timeout: 240
+  mode: monitor
+  model: "operator-deepseek-v4.1-flash"
+  destinations: []
