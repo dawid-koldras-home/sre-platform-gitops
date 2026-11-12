@@ -1075,7 +1075,7 @@ metadata:
     app.kubernetes.io/name: holmes-opencode-adapter
     app.kubernetes.io/part-of: sre-platform
 spec:
-  replicas: 1
+  replicas: 0
   revisionHistoryLimit: 3
   selector:
     matchLabels:
