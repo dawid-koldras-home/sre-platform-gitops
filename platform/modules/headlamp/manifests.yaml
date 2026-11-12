@@ -15324,7 +15324,7 @@ spec:
             app.kubernetes.io/name: sre-identity-bridge
       containers:
       - name: bridge
-        image: ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b
+        image: ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:9ae48f4dd3c854872582fec7d95f8ff597c98aecb1ba073cf6402bd86cd1b591
         imagePullPolicy: IfNotPresent
         args:
         - --upstream-url=https://kubernetes.default.svc
@@ -15339,7 +15339,7 @@ spec:
         - --audit-sink-url=https://audit-sink.audit-sink.svc.cluster.local:8443
         - --audit-sink-ca-file=/etc/identity-bridge/audit-ca/ca.crt
         - --audit-token-path=/etc/identity-bridge/audit-token/token
-        - --bridge-image-digest=ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:05046aedb19505ff632b21a1e3a7a9104371010587de1c7dd9ace1ea1f92b59b
+        - --bridge-image-digest=ghcr.io/dawid-koldras-home/sre-platform-headlamp-identity-bridge@sha256:9ae48f4dd3c854872582fec7d95f8ff597c98aecb1ba073cf6402bd86cd1b591
         - --audit-impersonating-namespace=headlamp
         - --audit-impersonating-name=sre-identity-bridge
         ports:
