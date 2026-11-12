@@ -1927,11 +1927,17 @@ data:
             if request.get("name"):
                 payload["name"] = request["name"]
             url = HOLMES_UPSTREAM.rstrip("/") + "/api/checks/execute"
+            # Bound the upstream call by the check's own timeout. The operator's kopf
+            # retry is terminal because this method always returns a valid result, but
+            # a 330-second guard timeout for a 60-second check would still hold the
+            # single run slot far longer than the declared budget.
+            attempt_timeout = max(30, min(UPSTREAM_TIMEOUT, int(request.get("timeout", 120)) + 30))
             last_error = b""
             for attempt in range(UPSTREAM_ATTEMPTS):
                 if attempt:
-                    self.metrics.inc(self.metrics.retries_total, "holmes_api")
-                status, body, content_type = _http_post_json(url, payload, timeout=UPSTREAM_TIMEOUT)
+                    with self.metrics._lock:
+                        self.metrics.retries_total += 1
+                status, body, content_type = _http_post_json(url, payload, timeout=attempt_timeout)
                 if status == 200:
                     return status, body, content_type
                 last_error = body
@@ -2656,7 +2662,7 @@ spec:
       annotations:
         platform.sre-platform.io/operator-mode: "monitor-only"
         platform.sre-platform.io/chart-version: "0.42.0"
-        platform.sre-platform.io/guard-checksum: "f76d31c82aafa6f1750e929297f39d3b3cee5b4a62b7ccf14b94cb17ac328eea"
+        platform.sre-platform.io/guard-checksum: "56de575d5d177394ed32e179d8238130bbe279b25281d7beb90338685ed488b1"
     spec:
       serviceAccountName: holmes-operator
       automountServiceAccountToken: true
