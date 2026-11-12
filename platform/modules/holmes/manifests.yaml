@@ -3037,6 +3037,34 @@ spec:
 apiVersion: holmesgpt.dev/v1alpha1
 kind: TriggeredHealthCheck
 metadata:
+  name: holmes-opencode-adapter-rollout
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    platform.sre-platform.io/budget-class: "rollout"
+spec:
+  enabled: true
+  deploymentRollout:
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: holmes-opencode-adapter
+  delaySeconds: 180
+  cooldownSeconds: 3600
+  query: >-
+    A Deployment rollout just completed. Verify that the new revision became
+    ready, stayed ready for at least three minutes and produced no warning
+    Events. Name the Deployment and namespace, the observed available replicas,
+    the previous and new images, and any condition that is not ready.
+  timeout: 240
+  mode: monitor
+  model: "operator-deepseek-v4.1-flash"
+  destinations: []
+---
+apiVersion: holmesgpt.dev/v1alpha1
+kind: TriggeredHealthCheck
+metadata:
   name: argocd-server-rollout
   namespace: argocd
   labels:
