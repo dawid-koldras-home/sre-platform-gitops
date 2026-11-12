@@ -1480,7 +1480,7 @@ data:
     #!/usr/bin/env python3
     """Holmes Operator guard: monitor-only admission, budget and sanitization sidecar.
 
-    Two listeners run in one process and share one budget:
+    Build: 2026-11-12-3. Two listeners run in one process and share one budget:
 
     * ``GUARD_API_LISTEN`` (loopback) proxies the operator's
       ``POST /api/checks/execute`` to Holmes. It validates the monitor-only boundary,
@@ -2657,7 +2657,7 @@ spec:
       annotations:
         platform.sre-platform.io/operator-mode: "monitor-only"
         platform.sre-platform.io/chart-version: "0.42.0"
-        platform.sre-platform.io/guard-checksum: "ba59333c8ec5a784716ac59aaf319a6e8026297304c99105878b31d856deb086"
+        platform.sre-platform.io/guard-checksum: "9e858001a914dd233f05ec70ac8c04aebb236910414cb1cca1704290d7e02257"
     spec:
       serviceAccountName: holmes-operator
       automountServiceAccountToken: true
@@ -2879,6 +2879,28 @@ spec:
           port: 6443
         - protocol: TCP
           port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: holmes-opencode-adapter-guard-ingress
+  namespace: %!s(MISSING)
+  labels:
+    app.kubernetes.io/name: holmes-operator
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: holmes-opencode-adapter
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: holmes-operator
+      ports:
+        - protocol: TCP
+          port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
