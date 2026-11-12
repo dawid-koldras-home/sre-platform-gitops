@@ -771,8 +771,8 @@ spec:
         
       annotations:
         # checksum annotation triggering pod reload when .Values.toolsets changes by helm upgrade
+        platform.sre-platform.io/agui-guard-checksum: "ba7200d474696e2e03605e4eea9c1b94bf8bed3395d5650562361188cf646d47"
         checksum/toolset-config: 1b03c63328fcf62efb63948c027a0d666abc3adc262b47bb890c952ea821e414
-        platform.sre-platform.io/operator-model-list: guarded-v1
     spec:
       serviceAccountName: holmes
       securityContext:
@@ -1385,6 +1385,20 @@ data:
         if not hasattr(_MODULE, _name):
             _fail(f"pinned upstream module is missing {_name}")
 
+    # The pinned AG-UI entry point exposes only the chat route. The Holmes Operator
+    # calls the standard checks API on the same pod, so mount the reviewed checks
+    # app here. This is additive: it does not replace or alter any AG-UI route.
+    if not hasattr(_MODULE, "config"):
+        _fail("pinned upstream module does not expose the Holmes configuration")
+    try:
+        from holmes.checks.checks_api import init_checks_app
+    except Exception as error:  # noqa: BLE001 - startup must never continue
+        _fail(f"the Holmes checks API is unavailable: {type(error).__name__}")
+    try:
+        init_checks_app(_MODULE.app, _MODULE.config)
+    except Exception as error:  # noqa: BLE001 - startup must never continue
+        _fail(f"the Holmes checks API could not be mounted: {type(error).__name__}")
+
 
     async def _stream_agui_text_message_event(message):
         """Emit one ordered text message, or nothing for a semantically empty one."""
@@ -1452,8 +1466,6 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
   name: holmes-agui-delta-guard
   namespace: holmes
-
-
 ---
 apiVersion: v1
 kind: ConfigMap
