@@ -2995,6 +2995,11 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
   annotations:
     platform.sre-platform.io/budget-class: "scheduled"
+    platform.sre-platform.io/component-kind: "ArgoApplication"
+    platform.sre-platform.io/component-namespace: "argocd"
+    platform.sre-platform.io/component-name: "platform-root"
+    platform.sre-platform.io/severity: "high"
+    platform.sre-platform.io/symptom: "not-ready"
 spec:
   schedule: "10 * * * *"
   enabled: true
@@ -3017,6 +3022,11 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
   annotations:
     platform.sre-platform.io/budget-class: "rollout"
+    platform.sre-platform.io/component-kind: "Deployment"
+    platform.sre-platform.io/component-namespace: "holmes"
+    platform.sre-platform.io/component-name: "holmesgpt-holmes"
+    platform.sre-platform.io/severity: "medium"
+    platform.sre-platform.io/symptom: "not-ready"
 spec:
   enabled: true
   deploymentRollout:
@@ -3045,6 +3055,11 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
   annotations:
     platform.sre-platform.io/budget-class: "rollout"
+    platform.sre-platform.io/component-kind: "Deployment"
+    platform.sre-platform.io/component-namespace: "holmes"
+    platform.sre-platform.io/component-name: "holmes-opencode-adapter"
+    platform.sre-platform.io/severity: "medium"
+    platform.sre-platform.io/symptom: "not-ready"
 spec:
   enabled: true
   deploymentRollout:
@@ -3073,6 +3088,11 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
   annotations:
     platform.sre-platform.io/budget-class: "rollout"
+    platform.sre-platform.io/component-kind: "Deployment"
+    platform.sre-platform.io/component-namespace: "argocd"
+    platform.sre-platform.io/component-name: "argocd-server"
+    platform.sre-platform.io/severity: "high"
+    platform.sre-platform.io/symptom: "not-ready"
 spec:
   enabled: true
   deploymentRollout:
@@ -3101,6 +3121,11 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
   annotations:
     platform.sre-platform.io/budget-class: "rollout"
+    platform.sre-platform.io/component-kind: "Deployment"
+    platform.sre-platform.io/component-namespace: "headlamp"
+    platform.sre-platform.io/component-name: "headlamp"
+    platform.sre-platform.io/severity: "high"
+    platform.sre-platform.io/symptom: "not-ready"
 spec:
   enabled: true
   deploymentRollout:
@@ -3129,6 +3154,11 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
   annotations:
     platform.sre-platform.io/budget-class: "rollout"
+    platform.sre-platform.io/component-kind: "Deployment"
+    platform.sre-platform.io/component-namespace: "authelia"
+    platform.sre-platform.io/component-name: "authelia"
+    platform.sre-platform.io/severity: "high"
+    platform.sre-platform.io/symptom: "not-ready"
 spec:
   enabled: true
   deploymentRollout:
@@ -3157,6 +3187,11 @@ metadata:
     app.kubernetes.io/part-of: sre-platform
   annotations:
     platform.sre-platform.io/budget-class: "rollout"
+    platform.sre-platform.io/component-kind: "Deployment"
+    platform.sre-platform.io/component-namespace: "ingress-nginx"
+    platform.sre-platform.io/component-name: "ingress-nginx-controller"
+    platform.sre-platform.io/severity: "high"
+    platform.sre-platform.io/symptom: "not-ready"
 spec:
   enabled: true
   deploymentRollout:
