@@ -1,0 +1,265 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: holmes-ticket-controller
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-ticket-controller
+    app.kubernetes.io/part-of: sre-platform
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: holmes-ticket-controller
+  labels:
+    app.kubernetes.io/name: holmes-ticket-controller
+    app.kubernetes.io/part-of: sre-platform
+rules:
+  # Reading the bounded, sanitized operator result is the only cluster access.
+  - apiGroups: ["holmesgpt.dev"]
+    resources: ["healthchecks", "scheduledhealthchecks", "triggeredhealthchecks"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["holmesgpt.dev"]
+    resources: ["healthchecks/status", "scheduledhealthchecks/status", "triggeredhealthchecks/status"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: holmes-ticket-controller
+  labels:
+    app.kubernetes.io/name: holmes-ticket-controller
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: holmes-ticket-controller
+subjects:
+  - kind: ServiceAccount
+    name: holmes-ticket-controller
+    namespace: holmes
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: holmes-ticket-controller-config
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-ticket-controller
+    app.kubernetes.io/part-of: sre-platform
+data:
+  config.json: |
+    {
+      "phase": "create",
+      "installation": "full-fixture",
+      "repository": "dawid-koldras-home/SRE-Tickets",
+      "appId": 5740711,
+      "installationId": 181511622,
+      "privateKeyFile": "/etc/holmes-ticketing/keys/app-private-key.pem",
+      "outboxFile": "/var/lib/holmes-ticket-controller/outbox.json",
+      "metricsListen": "0.0.0.0:8096",
+      "pollIntervalSeconds": 300,
+      "allowedSeverities": [
+        "critical",
+        "high"
+      ],
+      "newIssuesPer15Minutes": 10,
+      "updatesPer15Minutes": 10,
+      "dailyCreateCeiling": 50,
+      "dailyUpdateCeiling": 200,
+      "stormThreshold": 5,
+      "stormWindowSeconds": 900,
+      "updateCadenceSeconds": 600,
+      "recoveryCadenceSeconds": 600,
+      "checkKinds": [
+        "HealthCheck",
+        "ScheduledHealthCheck",
+        "TriggeredHealthCheck"
+      ],
+      "findingSchema": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"finding.sre-platform.io/v1\",\n  \"title\": \"FindingReport\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\n    \"schemaVersion\", \"installation\", \"check\", \"component\", \"severity\",\n    \"state\", \"symptom\", \"summary\", \"firstObserved\", \"lastObserved\",\n    \"correlationId\"\n  ],\n  \"properties\": {\n    \"schemaVersion\": {\"const\": \"finding.sre-platform.io/v1\"},\n    \"installation\": {\"type\": \"string\", \"pattern\": \"^[a-z0-9]([-a-z0-9]{0,38}[a-z0-9])?$\"},\n    \"check\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"kind\", \"name\"],\n      \"properties\": {\n        \"kind\": {\"enum\": [\"HealthCheck\", \"ScheduledHealthCheck\", \"TriggeredHealthCheck\"]},\n        \"name\": {\"type\": \"string\", \"pattern\": \"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$\"},\n        \"scheduleId\": {\"type\": \"string\", \"pattern\": \"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$\"}\n      }\n    },\n    \"component\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"kind\", \"namespace\", \"name\"],\n      \"properties\": {\n        \"kind\": {\"enum\": [\"Deployment\", \"StatefulSet\", \"DaemonSet\", \"Service\", \"Ingress\", \"ArgoApplication\"]},\n        \"namespace\": {\"type\": \"string\", \"pattern\": \"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$\"},\n        \"name\": {\"type\": \"string\", \"pattern\": \"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$\"}\n      }\n    },\n    \"severity\": {\"enum\": [\"critical\", \"high\", \"medium\", \"low\", \"info\"]},\n    \"state\": {\"enum\": [\"failing\", \"passing\"]},\n    \"symptom\": {\"enum\": [\n      \"not-ready\", \"crash-loop\", \"image-pull\", \"missing-workload\", \"degraded-replicas\",\n      \"certificate-expiry\", \"policy-violation\", \"unavailable-endpoint\", \"budget-exhausted\",\n      \"provider-unavailable\", \"unknown\"\n    ]},\n    \"summary\": {\"type\": \"string\", \"minLength\": 8, \"maxLength\": 240},\n    \"firstObserved\": {\"type\": \"string\", \"format\": \"date-time\"},\n    \"lastObserved\": {\"type\": \"string\", \"format\": \"date-time\"},\n    \"evidence\": {\n      \"type\": \"array\",\n      \"maxItems\": 5,\n      \"items\": {\"type\": \"string\", \"minLength\": 3, \"maxLength\": 120}\n    },\n    \"recommendedActions\": {\n      \"type\": \"array\",\n      \"maxItems\": 5,\n      \"items\": {\"type\": \"string\", \"minLength\": 3, \"maxLength\": 160}\n    },\n    \"correlationId\": {\"type\": \"string\", \"pattern\": \"^[A-Za-z0-9]([-_.A-Za-z0-9]{0,79})$\"}\n  }\n}",
+      "issueTemplate": "sre-issue-template/v1",
+      "observability": {
+        "evidence": "platform:/evidence/TASK-239",
+        "metrics": "http://holmes-ticket-controller.holmes.svc.cluster.local:8096/metrics",
+        "runbook": "runbook:/holmes-incident-ticketing"
+      }
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: holmes-ticket-controller-outbox
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-ticket-controller
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    # The outbox, ledger and storm state are the durability contract: they survive
+    # a restart, a leader change and a module disable. Deleting them is a separate
+    # reviewed action, never a side effect of disabling the module.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: holmes-ticket-controller
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-ticket-controller
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  # Exactly one instance owns the queue. The outbox lease makes a brief overlap
+  # safe, but serializing GitHub writes is simpler to reason about and is what the
+  # task contract asks for.
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: holmes-ticket-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: holmes-ticket-controller
+        app.kubernetes.io/part-of: sre-platform
+      annotations:
+        platform.sre-platform.io/ticketing-phase: "create"
+    spec:
+      serviceAccountName: holmes-ticket-controller
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: "ghcr.io/dawid-koldras-home/sre-platform-holmes-ticket-controller:v0.2.0@sha256:8536a97a18fdb17cf8edeed95e4b5af78428d8bc4b891a07f7af7fd810342790"
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config=/etc/holmes-ticketing/config.json
+          env:
+            - name: LOG_LEVEL
+              value: "info"
+          ports:
+            - name: metrics
+              containerPort: 8096
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/holmes-ticketing
+              readOnly: true
+            - name: outbox
+              mountPath: /var/lib/holmes-ticket-controller
+            - name: tmp
+              mountPath: /tmp
+            - name: app-private-key
+              mountPath: /etc/holmes-ticketing/keys
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: holmes-ticket-controller-config
+        - name: outbox
+          persistentVolumeClaim:
+            claimName: holmes-ticket-controller-outbox
+        - name: tmp
+          emptyDir: {}
+        - name: app-private-key
+          secret:
+            secretName: holmes-ticketing-app
+            defaultMode: 0400
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: holmes-ticket-controller
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-ticket-controller
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: holmes-ticket-controller
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    # Metrics and probes carry counters and enum bands only; they never carry an
+    # issue body, a token or a finding value.
+    - ports:
+        - protocol: TCP
+          port: 8096
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The Kubernetes API reads the three Holmes check kinds. The port is the only
+    # cluster-wide destination and it is not an arbitrary network path.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 6443
+        - protocol: TCP
+          port: 443
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: holmes-ticket-controller
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: holmes-ticket-controller
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: holmes-ticket-controller
+  ports:
+    - name: metrics
+      port: 8096
+      targetPort: metrics
