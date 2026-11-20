@@ -1,0 +1,604 @@
+---
+# Source: alertmanager/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: platform-alertmanager
+  labels:
+    helm.sh/chart: alertmanager-2.5.1
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/instance: pod-alerts
+    app.kubernetes.io/version: "v0.35.0"
+    app.kubernetes.io/managed-by: Helm
+  namespace: pod-alerts
+automountServiceAccountToken: true
+---
+# Source: alertmanager/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-alertmanager
+  labels:
+    helm.sh/chart: alertmanager-2.5.1
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/instance: pod-alerts
+    app.kubernetes.io/version: "v0.35.0"
+    app.kubernetes.io/managed-by: Helm
+  namespace: pod-alerts
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+    inhibit_rules:
+    - equal:
+      - namespace
+      - workload
+      source_matchers:
+      - severity="critical"
+      target_matchers:
+      - severity=~"high|medium|low"
+    - equal:
+      - namespace
+      - workload
+      source_matchers:
+      - alertname="DeploymentUnavailable"
+      target_matchers:
+      - alertname=~"PodNotReady|PodPending|PodRestartingFrequently|PodUnexpectedTermination"
+    - equal:
+      - namespace
+      - workload
+      source_matchers:
+      - alertname="StatefulSetUnavailable"
+      target_matchers:
+      - alertname=~"PodNotReady|PodPending|PodRestartingFrequently|PodUnexpectedTermination"
+    receivers:
+    - name: platform-dispatcher
+      webhook_configs:
+      - http_config:
+          authorization:
+            credentials_file: /etc/pod-alerts/webhook/token
+            type: Bearer
+        max_alerts: 10
+        send_resolved: true
+        url: http://pod-alert-dispatcher.pod-alerts.svc.cluster.local:8088/webhook
+    route:
+      group_by:
+      - customer
+      - environment
+      - namespace
+      - workload
+      - alertname
+      - severity
+      group_interval: 300s
+      group_wait: 30s
+      receiver: platform-dispatcher
+      repeat_interval: 4h
+    templates:
+    - /etc/alertmanager/*.tmpl
+---
+# Source: alertmanager/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: platform-alertmanager
+  labels:
+    helm.sh/chart: alertmanager-2.5.1
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/instance: pod-alerts
+    app.kubernetes.io/version: "v0.35.0"
+    app.kubernetes.io/managed-by: Helm
+  namespace: pod-alerts
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9093
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/instance: pod-alerts
+---
+# Source: alertmanager/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: platform-alertmanager-headless
+  labels:
+    helm.sh/chart: alertmanager-2.5.1
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/instance: pod-alerts
+    app.kubernetes.io/version: "v0.35.0"
+    app.kubernetes.io/managed-by: Helm
+  namespace: pod-alerts
+spec:
+  clusterIP: None
+  ports:
+    - port: 9093
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/instance: pod-alerts
+---
+# Source: alertmanager/templates/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: platform-alertmanager
+  labels:
+    helm.sh/chart: alertmanager-2.5.1
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/instance: pod-alerts
+    app.kubernetes.io/version: "v0.35.0"
+    app.kubernetes.io/managed-by: Helm
+  namespace: pod-alerts
+spec:
+  replicas: 1
+  minReadySeconds: 0
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+      app.kubernetes.io/instance: pod-alerts
+  serviceName: platform-alertmanager-headless
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alertmanager
+        app.kubernetes.io/instance: pod-alerts
+      annotations:
+        kubectl.kubernetes.io/default-container: alertmanager
+    spec:
+      automountServiceAccountToken: true
+      serviceAccountName: platform-alertmanager
+      securityContext:
+        fsGroup: 65534
+      containers:
+        - name: alertmanager-configmap-reload
+          image: "quay.io/prometheus-operator/prometheus-config-reloader:v0.95.2"
+          imagePullPolicy: "IfNotPresent"
+          args:
+            - "--watched-dir=/etc/alertmanager"
+            - "--reload-url=http://127.0.0.1:9093/-/reload"
+            - "--listen-address=0.0.0.0:8080"
+          resources:
+            limits:
+              cpu: 50m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 16Mi
+          ports:
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+              scheme: HTTP
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+              scheme: HTTP
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsGroup: 65534
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+        - name: alertmanager
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsGroup: 65534
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          image: "quay.io/prometheus/alertmanager:v0.35.0"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.podIP
+          args:
+            - "--storage.path=/alertmanager"
+            - "--config.file=/etc/alertmanager/alertmanager.yml"
+          ports:
+            - name: http
+              containerPort: 9093
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 100m
+              memory: 256Mi
+            requests:
+              cpu: 25m
+              memory: 64Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+            - name: webhook-auth
+              mountPath: /etc/pod-alerts/webhook
+              subPath: 
+              readOnly: true
+            - name: storage
+              mountPath: /alertmanager
+      volumes:
+        - name: config
+          configMap:
+            name: platform-alertmanager
+        - name: webhook-auth
+          secret:
+            secretName: pod-alerts-webhook
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: storage
+        annotations:
+              argocd.argoproj.io/sync-options: Prune=false,Delete=false
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+
+---
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pod-alert-dispatcher-config
+  namespace: pod-alerts
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+data:
+  config.json: |
+    {
+      "installation": "sre-tools",
+      "environment": "prod",
+      "listen": "0.0.0.0:8088",
+      "metricsListen": "0.0.0.0:8090",
+      "stateFile": "/var/lib/pod-alert-dispatcher/state.json",
+      "webhookTokenFile": "/etc/pod-alerts/webhook/token",
+      "severities": [
+        "critical",
+        "high"
+      ],
+      "excludedNamespaces": [
+        "kube-node-lease",
+        "kube-public",
+        "kube-system"
+      ],
+      "slack": {
+        "enabled": false,
+        "channelId": "",
+        "tokenFile": "",
+        "apiBaseUrl": "https://slack.com/api",
+        "timeoutSeconds": 10,
+        "maxAttempts": 4,
+        "baseBackoffMillis": 500,
+        "maxBackoffMillis": 30000,
+        "circuitFailureThreshold": 5,
+        "circuitCooldownSeconds": 600,
+        "maxMessageBytes": 2000
+      },
+      "investigation": {
+        "enabled": false,
+        "namespace": "holmes",
+        "model": "operator-deepseek-v4.1-flash",
+        "cooldownSeconds": 1800,
+        "perAlertDailyBudget": 6,
+        "dailyBudget": 24,
+        "maxConcurrent": 1,
+        "timeoutSeconds": 240,
+        "pollIntervalSeconds": 30,
+        "resultTimeoutSeconds": 600,
+        "circuitFailureThreshold": 3,
+        "circuitCooldownSeconds": 900,
+        "retentionHours": 72
+      }
+    }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pod-alert-dispatcher
+  namespace: pod-alerts
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-alert-dispatcher
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+rules:
+  - apiGroups: ["holmesgpt.dev"]
+    resources: ["healthchecks"]
+    verbs: ["create", "get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-alert-dispatcher
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pod-alert-dispatcher-state
+  namespace: pod-alerts
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+  annotations:
+    # Delivery deduplication and generation counters survive a pod restart and a
+    # module disable. Deleting the claim is a separate, confirmed action.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 16Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-alert-dispatcher
+  namespace: pod-alerts
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  # One dispatcher. The state file is the deduplication authority, so two
+  # replicas would race on acknowledged deliveries.
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pod-alert-dispatcher
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pod-alert-dispatcher
+        app.kubernetes.io/part-of: sre-platform
+      annotations:
+        # A configuration change must roll the process that reads it. The rendered
+        # config is the checksum input, so an apply that changes a threshold or a
+        # channel restarts the dispatcher instead of leaving it on the old contract.
+        platform.sre-platform.io/config-checksum: "61c0fa3eb5fa1550120fa86222975761b34c1ba8c9ba57a4258795fa7d53acb9"
+      imagePullSecrets:
+        - name: pod-alerts-registry-pull
+    spec:
+      serviceAccountName: pod-alert-dispatcher
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: dispatcher
+          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:c7d85c646a4a25601ccb6e8a6394ff02d4465c7266385f0771eb82eac510ff6b
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/etc/pod-alert-dispatcher/config.json"]
+          ports:
+            - name: webhook
+              containerPort: 8088
+            - name: metrics
+              containerPort: 8090
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: metrics
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 192Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pod-alert-dispatcher
+              readOnly: true
+            - name: webhook-auth
+              mountPath: /etc/pod-alerts/webhook
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/pod-alert-dispatcher
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: pod-alert-dispatcher-config
+        - name: webhook-auth
+          secret:
+            secretName: pod-alerts-webhook
+            optional: false
+        - name: state
+          persistentVolumeClaim:
+            claimName: pod-alert-dispatcher-state
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pod-alert-dispatcher
+  namespace: pod-alerts
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: pod-alert-dispatcher
+  ports:
+    - name: webhook
+      port: 8088
+      targetPort: webhook
+    - name: metrics
+      port: 8090
+      targetPort: metrics
+---
+# Alertmanager accepts notifications only from the Prometheus server that
+# evaluates the rule pack, and reaches only DNS and the dispatcher.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-alertmanager
+  namespace: pod-alerts
+  labels:
+    app.kubernetes.io/name: platform-alertmanager
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: prometheus
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+              app.kubernetes.io/component: server
+      ports:
+        - protocol: TCP
+          port: 9093
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: pod-alert-dispatcher
+      ports:
+        - protocol: TCP
+          port: 8088
+---
+# The dispatcher accepts the webhook only from Alertmanager. The metrics and
+# status port is read-only, carries no payload and is how the Control Center and
+# the probes observe delivery health.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pod-alert-dispatcher
+  namespace: pod-alerts
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: pod-alert-dispatcher
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alertmanager
+      ports:
+        - protocol: TCP
+          port: 8088
+    - ports:
+        - protocol: TCP
+          port: 8090
+  egress:
+    # DNS is required to resolve the Slack API and the Kubernetes API endpoint.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

@@ -63,12 +63,462 @@ metadata:
 data:
   allow-snippet-annotations: "false"
   alerting_rules.yml: |
-    {}
+    groups:
+    - interval: 30s
+      name: platform-pod-workload
+      rules:
+      - alert: PodNotReady
+        annotations:
+          description: A pod has been not Ready for at least 300s. Inspect the pod and
+            its owning workload.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Pod {{ $labels.pod }} is not Ready in namespace {{ $labels.namespace
+            }}
+        expr: |
+          max by (namespace, pod, owner_name, owner_kind) (
+            (kube_pod_status_ready{condition="true",namespace!~"kube-node-lease|kube-public|kube-system"} == 0)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod) (
+            (kube_pod_status_ready{condition="true",namespace!~"kube-node-lease|kube-public|kube-system"} == 0)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 300s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodNotReady'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: high
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: PodPending
+        annotations:
+          description: A pod could not be scheduled for at least 300s. Check node capacity,
+            taints and resource requests.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Pod {{ $labels.pod }} is Pending in namespace {{ $labels.namespace
+            }}
+        expr: |
+          max by (namespace, pod, owner_name, owner_kind) (
+            (kube_pod_status_phase{phase="Pending",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod) (
+            (kube_pod_status_phase{phase="Pending",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 300s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodPending'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: high
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: PodCrashLoopBackOff
+        annotations:
+          description: The container has been restarting for at least 300s.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Container {{ $labels.container }} of pod {{ $labels.pod }} is crash
+            looping
+        expr: |
+          max by (namespace, pod, container, owner_name, owner_kind) (
+            (kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod, container) (
+            (kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 300s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodCrashLoopBackOff'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: critical
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: PodImagePullBackOff
+        annotations:
+          description: The image cannot be pulled. Check the image reference, registry
+            credentials and registry reachability.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Image pull fails for container {{ $labels.container }} of pod {{ $labels.pod
+            }}
+        expr: |
+          max by (namespace, pod, container, owner_name, owner_kind) (
+            (kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod, container) (
+            (kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 300s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodImagePullBackOff'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: high
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: PodUnexpectedTermination
+        annotations:
+          description: The container exited with a non-completed reason. Read its last
+            state and logs in the namespace.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Container {{ $labels.container }} of pod {{ $labels.pod }} terminated
+            unexpectedly
+        expr: |
+          max by (namespace, pod, container, owner_name, owner_kind) (
+            (kube_pod_container_status_terminated_reason{reason!~"Completed|OOMKilled|ContainerStatusUnknown",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod, container) (
+            (kube_pod_container_status_terminated_reason{reason!~"Completed|OOMKilled|ContainerStatusUnknown",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 60s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodUnexpectedTermination'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: high
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: PodRestartingFrequently
+        annotations:
+          description: Restart rate is above the reviewed threshold.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Pod {{ $labels.pod }} restarted more than 3 times in 300s
+        expr: |
+          max by (namespace, pod, container, owner_name, owner_kind) (
+            (increase(kube_pod_container_status_restarts_total{ namespace!~"kube-node-lease|kube-public|kube-system"}[300s]) > 3)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod, container) (
+            (increase(kube_pod_container_status_restarts_total{ namespace!~"kube-node-lease|kube-public|kube-system"}[300s]) > 3)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 60s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodRestartingFrequently'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: high
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: PodOOMKilled
+        annotations:
+          description: A recent restart followed an out-of-memory kill. Compare the working
+            set with the configured memory limit.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Container {{ $labels.container }} of pod {{ $labels.pod }} was OOMKilled
+        expr: |
+          max by (namespace, pod, container, owner_name, owner_kind) (
+            (kube_pod_container_status_last_terminated_reason{reason="OOMKilled",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            and on (namespace, pod, container)
+            (increase(kube_pod_container_status_restarts_total{ namespace!~"kube-node-lease|kube-public|kube-system"}[300s]) > 0)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod, container) (
+            (kube_pod_container_status_last_terminated_reason{reason="OOMKilled",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            and on (namespace, pod, container)
+            (increase(kube_pod_container_status_restarts_total{ namespace!~"kube-node-lease|kube-public|kube-system"}[300s]) > 0)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 60s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodOOMKilled'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: critical
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: ContainerMemoryNearLimit
+        annotations:
+          description: Working set has been above the reviewed fraction of the configured
+            limit for 600s. A container without a limit is reported separately and never
+            receives a percentage.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Container {{ $labels.container }} of pod {{ $labels.pod }} is above
+            85 of its memory limit
+        expr: |
+          max by (namespace, pod, container, owner_name, owner_kind) (
+            (
+              sum by (namespace, pod, container) (container_memory_working_set_bytes{container!="",container!="POD",namespace!~"kube-node-lease|kube-public|kube-system"})
+              / on (namespace, pod, container)
+              kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"}
+              > 0.85
+            )
+            and on (namespace, pod, container)
+            (kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod, container) (
+            (
+              sum by (namespace, pod, container) (container_memory_working_set_bytes{container!="",container!="POD",namespace!~"kube-node-lease|kube-public|kube-system"})
+              / on (namespace, pod, container)
+              kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"}
+              > 0.85
+            )
+            and on (namespace, pod, container)
+            (kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 600s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/ContainerMemoryNearLimit'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: high
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: ContainerMemoryLimitMissing
+        annotations:
+          description: No memory limit is configured, so a memory percentage cannot be
+            computed. Set requests and limits for the workload.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Container {{ $labels.container }} of pod {{ $labels.pod }} has no memory
+            limit
+        expr: |
+          max by (namespace, pod, container, owner_name, owner_kind) (
+            (kube_pod_container_status_running{ namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod, container)
+            (kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod, container) (
+            (kube_pod_container_status_running{ namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod, container)
+            (kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 600s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/ContainerMemoryLimitMissing'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: medium
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: ContainerCPURequestMissing
+        annotations:
+          description: No CPU request is configured, so a CPU-request percentage cannot
+            be computed. Set requests and limits for the workload.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Container {{ $labels.container }} of pod {{ $labels.pod }} has no CPU
+            request
+        expr: |
+          max by (namespace, pod, container, owner_name, owner_kind) (
+            (kube_pod_container_status_running{ namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod, container)
+            (kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod, container) (
+            (kube_pod_container_status_running{ namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod, container)
+            (kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 600s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/ContainerCPURequestMissing'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: medium
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: ContainerCPUHigh
+        annotations:
+          description: CPU usage has been above the reviewed fraction of the configured
+            request for 900s.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Container {{ $labels.container }} of pod {{ $labels.pod }} is above
+            80 of its CPU request
+        expr: |
+          max by (namespace, pod, container, owner_name, owner_kind) (
+            (
+              sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!="",container!="POD",namespace!~"kube-node-lease|kube-public|kube-system"}[300s]))
+              / on (namespace, pod, container)
+              kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"}
+              > 0.8
+            )
+            and on (namespace, pod, container)
+            (kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod, container) (
+            (
+              sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!="",container!="POD",namespace!~"kube-node-lease|kube-public|kube-system"}[300s]))
+              / on (namespace, pod, container)
+              kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"}
+              > 0.8
+            )
+            and on (namespace, pod, container)
+            (kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 900s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/ContainerCPUHigh'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: medium
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: ContainerCPUThrottling
+        annotations:
+          description: More than 50 of CFS periods were throttled for 900s. The CPU limit
+            is too low for the workload.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Container {{ $labels.container }} of pod {{ $labels.pod }} is being
+            throttled
+        expr: |
+          max by (namespace, pod, container, owner_name, owner_kind) (
+            (
+              sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{container!="",container!="POD",namespace!~"kube-node-lease|kube-public|kube-system"}[300s]))
+              / on (namespace, pod, container)
+              sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{container!="",container!="POD",namespace!~"kube-node-lease|kube-public|kube-system"}[300s]))
+              > 0.5
+            )
+            * on (namespace, pod) group_left (owner_name, owner_kind)
+            kube_pod_owner{owner_is_controller="true",owner_kind!~"Job|Node"}
+          )
+          or
+          max by (namespace, pod, container) (
+            (
+              sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{container!="",container!="POD",namespace!~"kube-node-lease|kube-public|kube-system"}[300s]))
+              / on (namespace, pod, container)
+              sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{container!="",container!="POD",namespace!~"kube-node-lease|kube-public|kube-system"}[300s]))
+              > 0.5
+            )
+            unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
+          )
+        for: 900s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/ContainerCPUThrottling'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: medium
+          workload: '{{ $labels.owner_name }}'
+          workload_kind: '{{ $labels.owner_kind }}'
+      - alert: DeploymentUnavailable
+        annotations:
+          description: The Deployment has been below its desired replica count for at
+            least 600s.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Deployment {{ $labels.deployment }} has unavailable replicas in namespace
+            {{ $labels.namespace }}
+        expr: |
+          max by (namespace, deployment) (
+            kube_deployment_status_replicas_unavailable{ namespace!~"kube-node-lease|kube-public|kube-system"} > 0
+          )
+          and on (namespace, deployment)
+          (kube_deployment_spec_replicas{ namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
+        for: 600s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.deployment }}/DeploymentUnavailable'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: high
+          workload: '{{ $labels.deployment }}'
+          workload_kind: Deployment
+      - alert: StatefulSetUnavailable
+        annotations:
+          description: The StatefulSet has been below its desired replica count for at
+            least 600s.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: StatefulSet {{ $labels.statefulset }} has not all replicas ready
+        expr: |
+          max by (namespace, statefulset) (
+            (kube_statefulset_status_replicas_ready{ namespace!~"kube-node-lease|kube-public|kube-system"}
+              < on (namespace, statefulset) kube_statefulset_replicas{ namespace!~"kube-node-lease|kube-public|kube-system"})
+          )
+          and on (namespace, statefulset)
+          (kube_statefulset_replicas{ namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
+        for: 600s
+        labels:
+          owner: '{{ $labels.namespace }}'
+          platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.statefulset }}/StatefulSetUnavailable'
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: high
+          workload: '{{ $labels.statefulset }}'
+          workload_kind: StatefulSet
+      - alert: NodeNotReady
+        annotations:
+          description: The node has reported Ready=false for at least 300s. Check kubelet,
+            the node network and the kubelet Events.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Node {{ $labels.node }} is NotReady
+        expr: |
+          max by (node) (kube_node_status_condition{condition="Ready",status="true"} == 0)
+        for: 300s
+        labels:
+          owner: platform
+          platform_fingerprint: node/{{ $labels.node }}/NodeNotReady
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: critical
+          workload_kind: Node
+      - alert: NodeMemoryPressure
+        annotations:
+          description: The node has reported MemoryPressure for at least 300s.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Node {{ $labels.node }} reports MemoryPressure
+        expr: |
+          max by (node) (kube_node_status_condition{condition="MemoryPressure",status="true"} == 1)
+        for: 300s
+        labels:
+          owner: platform
+          platform_fingerprint: node/{{ $labels.node }}/NodeMemoryPressure
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: high
+          workload_kind: Node
+      - alert: NodeDiskPressure
+        annotations:
+          description: The node has reported DiskPressure for at least 300s.
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          summary: Node {{ $labels.node }} reports DiskPressure
+        expr: |
+          max by (node) (kube_node_status_condition{condition="DiskPressure",status="true"} == 1)
+        for: 300s
+        labels:
+          owner: platform
+          platform_fingerprint: node/{{ $labels.node }}/NodeDiskPressure
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          severity: high
+          workload_kind: Node
   alerts: |
     {}
   prometheus.yml: |
     global:
       evaluation_interval: 1m
+      external_labels:
+        customer: sre-tools
+        environment: prod
       scrape_interval: 1m
       scrape_timeout: 10s
     scrape_configs:
@@ -374,6 +824,11 @@ data:
     - /etc/config/alerting_rules.yml
     - /etc/config/rules
     - /etc/config/alerts
+    alerting:
+      alertmanagers:
+        - static_configs:
+          - targets:
+            - platform-alertmanager.pod-alerts.svc.cluster.local:9093
   recording_rules.yml: |
     {}
   rules: |
@@ -383,6 +838,8 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   labels:
     app.kubernetes.io/component: server
     app.kubernetes.io/name: prometheus
@@ -392,8 +849,6 @@ metadata:
     app.kubernetes.io/part-of: prometheus
   name: prometheus-server
   namespace: prometheus
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes:
     - ReadWriteOnce
