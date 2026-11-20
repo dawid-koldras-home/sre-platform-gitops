@@ -318,12 +318,12 @@ data:
         "maxMessageBytes": 2000
       },
       "investigation": {
-        "enabled": true,
+        "enabled": false,
         "namespace": "holmes",
         "model": "operator-deepseek-v4.1-flash",
         "cooldownSeconds": 3600,
         "perAlertDailyBudget": 1,
-        "dailyBudget": 3,
+        "dailyBudget": 2,
         "maxConcurrent": 1,
         "timeoutSeconds": 240,
         "pollIntervalSeconds": 15,
@@ -419,7 +419,7 @@ spec:
         # A configuration change must roll the process that reads it. The rendered
         # config is the checksum input, so an apply that changes a threshold or a
         # channel restarts the dispatcher instead of leaving it on the old contract.
-        platform.sre-platform.io/config-checksum: "d1cc05b2078e3776d814cedecbb1729d8e1f526a044e378277ae80cd074b91e3"
+        platform.sre-platform.io/config-checksum: "bab82e24ec1cf0fc8959de05a8a9193d382fdf207eafe4c042e58202e0e83d4a"
     spec:
       imagePullSecrets:
         - name: pod-alerts-registry-pull
@@ -434,7 +434,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: dispatcher
-          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:c7d85c646a4a25601ccb6e8a6394ff02d4465c7266385f0771eb82eac510ff6b
+          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:7d68db9d2b9b8d424084ebe32bd3adfecfe74b1b6c462ca30897396002b5e6dd
           imagePullPolicy: IfNotPresent
           args: ["--config", "/etc/pod-alert-dispatcher/config.json"]
           ports:
@@ -602,13 +602,3 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # The Kubernetes API is needed only to create, read and delete the one Holmes
-    # check kind. It is the only cluster-wide egress the dispatcher has.
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-      ports:
-        - protocol: TCP
-          port: 443
-        - protocol: TCP
-          port: 6443
