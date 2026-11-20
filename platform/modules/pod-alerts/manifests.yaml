@@ -323,7 +323,7 @@ data:
         "model": "operator-deepseek-v4.1-flash",
         "cooldownSeconds": 3600,
         "perAlertDailyBudget": 1,
-        "dailyBudget": 2,
+        "dailyBudget": 3,
         "maxConcurrent": 1,
         "timeoutSeconds": 240,
         "pollIntervalSeconds": 15,
@@ -419,7 +419,7 @@ spec:
         # A configuration change must roll the process that reads it. The rendered
         # config is the checksum input, so an apply that changes a threshold or a
         # channel restarts the dispatcher instead of leaving it on the old contract.
-        platform.sre-platform.io/config-checksum: "4df5a7d58ae4199fb6922470923ad8959e45d00e7422310e033a9f342c9ccae0"
+        platform.sre-platform.io/config-checksum: "d1cc05b2078e3776d814cedecbb1729d8e1f526a044e378277ae80cd074b91e3"
     spec:
       imagePullSecrets:
         - name: pod-alerts-registry-pull
