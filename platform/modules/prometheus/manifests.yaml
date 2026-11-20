@@ -250,10 +250,10 @@ data:
         expr: |
           max by (namespace, pod, container, workload, workload_kind) (
             (kube_pod_container_status_last_terminated_reason{reason="OOMKilled",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
-            and on (namespace, pod, container)
-            (increase(kube_pod_container_status_restarts_total{ namespace!~"kube-node-lease|kube-public|kube-system"}[300s]) > 0)
             * on (namespace, pod) group_left (workload, workload_kind)
             platform:pod_workload:info
+            and on (namespace, pod, container)
+            (increase(kube_pod_container_status_restarts_total{ namespace!~"kube-node-lease|kube-public|kube-system"}[300s]) > 0)
           )
           or
           max by (namespace, pod, container) (
@@ -286,10 +286,10 @@ data:
               kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"}
               > 0.85
             )
-            and on (namespace, pod, container)
-            (kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
             * on (namespace, pod) group_left (workload, workload_kind)
             platform:pod_workload:info
+            and on (namespace, pod, container)
+            (kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
           )
           or
           max by (namespace, pod, container) (
@@ -321,10 +321,10 @@ data:
         expr: |
           max by (namespace, pod, container, workload, workload_kind) (
             (kube_pod_container_status_running{ namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
-            unless on (namespace, pod, container)
-            (kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
             * on (namespace, pod) group_left (workload, workload_kind)
             platform:pod_workload:info
+            unless on (namespace, pod, container)
+            (kube_pod_container_resource_limits{resource="memory",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
           )
           or
           max by (namespace, pod, container) (
@@ -351,10 +351,10 @@ data:
         expr: |
           max by (namespace, pod, container, workload, workload_kind) (
             (kube_pod_container_status_running{ namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
-            unless on (namespace, pod, container)
-            (kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
             * on (namespace, pod) group_left (workload, workload_kind)
             platform:pod_workload:info
+            unless on (namespace, pod, container)
+            (kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
           )
           or
           max by (namespace, pod, container) (
@@ -386,10 +386,10 @@ data:
               kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"}
               > 0.8
             )
-            and on (namespace, pod, container)
-            (kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
             * on (namespace, pod) group_left (workload, workload_kind)
             platform:pod_workload:info
+            and on (namespace, pod, container)
+            (kube_pod_container_resource_requests{resource="cpu",namespace!~"kube-node-lease|kube-public|kube-system"} > 0)
           )
           or
           max by (namespace, pod, container) (
