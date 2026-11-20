@@ -420,9 +420,9 @@ spec:
         # config is the checksum input, so an apply that changes a threshold or a
         # channel restarts the dispatcher instead of leaving it on the old contract.
         platform.sre-platform.io/config-checksum: "61c0fa3eb5fa1550120fa86222975761b34c1ba8c9ba57a4258795fa7d53acb9"
+    spec:
       imagePullSecrets:
         - name: pod-alerts-registry-pull
-    spec:
       serviceAccountName: pod-alert-dispatcher
       automountServiceAccountToken: true
       securityContext:
