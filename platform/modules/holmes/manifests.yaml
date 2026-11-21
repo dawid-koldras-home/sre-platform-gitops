@@ -1517,6 +1517,7 @@ data:
         BoundaryError,
         DEFAULT_LIMITS,
         error_class_for_status,
+        resolve_namespace_grant,
         sanitize_status,
         summarize_history,
         tool_call_count,
@@ -1545,6 +1546,13 @@ data:
 
 
     MAX_RUNS_PER_DAY = _int("GUARD_MAX_RUNS_PER_DAY", 36)
+    # Alert-driven investigations get their own daily ceiling so an exhausted
+    # schedule budget cannot silently disable them and vice versa. The dispatcher
+    # names its checks "alert-<fingerprint>-g<generation>"; that reviewed prefix is
+    # the only signal the guard needs, and the operator RBAC is the control on who
+    # can create a check at all.
+    MAX_ALERT_RUNS_PER_DAY = _int("GUARD_MAX_ALERT_RUNS_PER_DAY", 12)
+    ALERT_RUN_PREFIX = "alert-"
     MAX_MODEL_CALLS_PER_RUN = _int("GUARD_MAX_MODEL_CALLS_PER_RUN", 6)
     MAX_TOOL_CALLS_PER_RUN = _int("GUARD_MAX_TOOL_CALLS_PER_RUN", 12)
     MAX_PROMPT_TOKENS_PER_RUN = _int("GUARD_MAX_PROMPT_TOKENS_PER_RUN", 120000)
@@ -1560,6 +1568,11 @@ data:
     UPSTREAM_TIMEOUT = _int("GUARD_UPSTREAM_TIMEOUT_SECONDS", 330)
     STALE_RUN_SECONDS = UPSTREAM_TIMEOUT + 120
     HISTORY_LIMIT = _int("GUARD_HISTORY_LIMIT", 20)
+
+    # The namespace grant is rendered by the resolver from validated configuration.
+    # An empty or malformed value falls back to the reviewed platform set.
+    NAMESPACE_GRANT = resolve_namespace_grant(os.environ.get("GUARD_ALLOWED_NAMESPACES", ""))
+    ALLOWED_NAMESPACES = NAMESPACE_GRANT.namespaces
     MAX_REQUEST_BYTES = _int("GUARD_MAX_REQUEST_BYTES", 8 * 1024 * 1024)
 
 
@@ -1616,6 +1629,7 @@ data:
             self.day = _utc_day()
             self.day_usage = Usage()
             self.runs_today = 0
+            self.alert_runs_today = 0
             self.active: Optional[Run] = None
             self.last_run_at = 0.0
             self.last_success_at = 0.0
@@ -1645,6 +1659,7 @@ data:
                 usage = raw.get("day_usage") or {}
                 self.day_usage = Usage(**{key: max(0, int(usage.get(key, 0))) for key in Usage().as_dict()})
                 self.runs_today = max(0, int(raw.get("runs_today", 0)))
+                self.alert_runs_today = max(0, int(raw.get("alert_runs_today", 0)))
                 self.last_run_at = float(raw.get("last_run_at", 0.0))
                 self.last_success_at = float(raw.get("last_success_at", 0.0))
                 self.last_result = str(raw.get("last_result", ""))[:40]
@@ -1662,6 +1677,7 @@ data:
                 "day": self.day,
                 "day_usage": self.day_usage.as_dict(),
                 "runs_today": self.runs_today,
+                "alert_runs_today": self.alert_runs_today,
                 "last_run_at": self.last_run_at,
                 "last_success_at": self.last_success_at,
                 "last_result": self.last_result,
@@ -1688,6 +1704,7 @@ data:
                 self.day = today
                 self.day_usage = Usage()
                 self.runs_today = 0
+                self.alert_runs_today = 0
                 # The circuit breaker is time based, not day based.
                 self._persist_locked()
 
@@ -1725,13 +1742,23 @@ data:
                     self._persist_locked()
                 if moment < self.circuit_open_until:
                     return None, "circuit_open"
-                if self.runs_today >= MAX_RUNS_PER_DAY:
+                is_alert_run = name.startswith(ALERT_RUN_PREFIX)
+                if is_alert_run:
+                    # The alert budget is independent of the schedule budget: neither
+                    # can consume the other, and each refusal has its own class so the
+                    # dispatcher can record it as a suppression instead of a failure.
+                    if self.alert_runs_today >= MAX_ALERT_RUNS_PER_DAY:
+                        return None, "daily_alert_run_budget"
+                elif self.runs_today >= MAX_RUNS_PER_DAY:
                     return None, "daily_run_budget"
                 if self.last_run_at and moment - self.last_run_at < MIN_RUN_GAP_SECONDS:
                     return None, "run_gap"
                 run = Run(run_id=secrets.token_hex(8), name=name, started_at=moment)
                 self.active = run
-                self.runs_today += 1
+                if is_alert_run:
+                    self.alert_runs_today += 1
+                else:
+                    self.runs_today += 1
                 self.last_run_at = moment
                 self._persist_locked()
                 return run, ""
@@ -1833,6 +1860,7 @@ data:
                     "day": self.day,
                     "dayUsage": self.day_usage.as_dict(),
                     "runsToday": self.runs_today,
+                    "alertRunsToday": self.alert_runs_today,
                     "activeRun": active,
                     "lastRunAt": self.last_run_at,
                     "lastSuccessAt": self.last_success_at,
@@ -1882,7 +1910,7 @@ data:
                 self.metrics.inc(self.metrics.validation_rejections, "invalid_json")
                 return 200, _error_check("invalid_json", "the check request is not valid JSON"), "application/json"
             try:
-                request = validate_execution_request(payload, GUARDED_MODEL, DEFAULT_LIMITS)
+                request = validate_execution_request(payload, GUARDED_MODEL, DEFAULT_LIMITS, ALLOWED_NAMESPACES)
             except BoundaryError as error:
                 self.metrics.inc(self.metrics.validation_rejections, error.rejection_class)
                 return 200, _error_check(error.rejection_class, str(error)), "application/json"
@@ -2093,9 +2121,12 @@ data:
                 "# HELP holmes_operator_runs_today Runs admitted since UTC midnight.",
                 "# TYPE holmes_operator_runs_today gauge",
                 f"holmes_operator_runs_today {snapshot['runsToday']}",
+                f"holmes_operator_alert_runs_today {snapshot['alertRunsToday']}",
+                f"holmes_operator_namespace_grant_custom {NAMESPACE_GRANT.custom}",
                 "# HELP holmes_operator_budget_remaining Remaining budget for the current UTC day.",
                 "# TYPE holmes_operator_budget_remaining gauge",
                 f'holmes_operator_budget_remaining{{kind="runs"}} {max(0, MAX_RUNS_PER_DAY - snapshot["runsToday"])}',
+                f'holmes_operator_budget_remaining{{kind="alert_runs"}} {max(0, MAX_ALERT_RUNS_PER_DAY - snapshot["alertRunsToday"])}',
                 f'holmes_operator_budget_remaining{{kind="model_calls"}} {max(0, MAX_MODEL_CALLS_PER_DAY - snapshot["dayUsage"]["model_calls"])}',
                 f'holmes_operator_budget_remaining{{kind="tokens"}} {max(0, MAX_TOKENS_PER_DAY - snapshot["dayUsage"]["total_tokens"])}',
                 "# HELP holmes_operator_state_load_errors State files that were unreadable at startup.",
@@ -2240,7 +2271,6 @@ data:
 
     if __name__ == "__main__":
         main()
-    
   bounds.py: |
     """Bounded validation and sanitization for the Holmes Operator guard.
 
@@ -2265,9 +2295,12 @@ data:
     from dataclasses import dataclass
     from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-    # Namespaces a health-check query may name. Anything else is treated as a
-    # cross-installation scope and refused before a model call is made.
-    ALLOWED_NAMESPACES = frozenset(
+    # Namespaces a health-check query may name when the guard is rendered without an
+    # explicit grant. Anything else is treated as a cross-installation scope and
+    # refused before a model call is made. The resolver always renders the grant
+    # (the platform namespaces plus any reviewed customer grant), so this list is the
+    # fallback for a guard started outside the installer.
+    DEFAULT_ALLOWED_NAMESPACES = frozenset(
         {
             "access-change-api",
             "argocd",
@@ -2287,6 +2320,48 @@ data:
             "synthetic-status",
         }
     )
+
+    # Bounded namespace grant. The resolver renders this list from validated
+    # configuration (platform namespaces plus an explicit customer grant), and the
+    # guard refuses any query that names a namespace outside it. Parsing is strict:
+    # only DNS-1123 labels survive, the list is capped, and an invalid or oversized
+    # grant falls back to the reviewed default rather than widening silently.
+    NAMESPACE_LABEL_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+    MAX_ALLOWED_NAMESPACES = 64
+
+
+    def parse_allowed_namespaces(raw: str) -> frozenset:
+        """Return the bounded namespace grant from a comma-separated value.
+
+        An empty or fully invalid value returns an empty set so the caller falls back
+        to the reviewed default. A partially valid value is refused as a whole: a
+        typo must not silently drop a namespace the operator expected to keep.
+        """
+        if not isinstance(raw, str):
+            return frozenset()
+        entries = [entry.strip().lower() for entry in raw.split(",") if entry.strip()]
+        if not entries:
+            return frozenset()
+        if len(entries) > MAX_ALLOWED_NAMESPACES:
+            return frozenset()
+        if any(not NAMESPACE_LABEL_PATTERN.fullmatch(entry) or len(entry) > 63 for entry in entries):
+            return frozenset()
+        return frozenset(entries)
+
+
+    @dataclass(frozen=True)
+    class NamespaceGrant:
+        """The allowlist plus the counts the guard exposes for observability."""
+
+        namespaces: frozenset
+        custom: int
+
+
+    def resolve_namespace_grant(raw: str) -> NamespaceGrant:
+        parsed = parse_allowed_namespaces(raw)
+        if not parsed:
+            return NamespaceGrant(DEFAULT_ALLOWED_NAMESPACES, 0)
+        return NamespaceGrant(parsed, len(parsed.difference(DEFAULT_ALLOWED_NAMESPACES)))
 
     # Credential-shaped text is refused even though the query is only a prompt: a
     # query that names a Secret or carries a token invites the model to repeat it in
@@ -2343,8 +2418,14 @@ data:
         return value.strip() if isinstance(value, str) else ""
 
 
-    def validate_query(query: str) -> str:
-        """Return the query when it is bounded and monitor-only, else raise."""
+    def validate_query(query: str, allowed_namespaces: Optional[frozenset] = None) -> str:
+        """Return the query when it is bounded and monitor-only, else raise.
+
+        allowed_namespaces defaults to the reviewed platform set; the guard passes
+        the rendered grant so a reviewed customer namespace is admitted and nothing
+        else is.
+        """
+        grant = allowed_namespaces or DEFAULT_ALLOWED_NAMESPACES
         text = _text(query)
         if len(text) < DEFAULT_LIMITS.min_query_chars:
             raise BoundaryError("query_too_short", "the health-check query is too short to be actionable")
@@ -2358,7 +2439,7 @@ data:
                 raise BoundaryError("forbidden_access_query", "the health-check query requests interactive or mutating access")
         for match in NAMESPACE_PATTERN.finditer(text):
             namespace = match.group(1).lower()
-            if namespace not in ALLOWED_NAMESPACES:
+            if namespace not in grant:
                 raise BoundaryError("cross_tenant_scope", "the health-check query names a namespace outside this installation")
         return text
 
@@ -2383,7 +2464,12 @@ data:
         return 60
 
 
-    def validate_execution_request(payload: Any, guarded_model: str, limits: Limits = DEFAULT_LIMITS) -> Dict[str, Any]:
+    def validate_execution_request(
+        payload: Any,
+        guarded_model: str,
+        limits: Limits = DEFAULT_LIMITS,
+        allowed_namespaces: Optional[frozenset] = None,
+    ) -> Dict[str, Any]:
         """Validate the Holmes `/api/checks/execute` body for monitor-only mode."""
         if not isinstance(payload, dict):
             raise BoundaryError("invalid_request", "the check request is not a JSON object")
@@ -2393,7 +2479,7 @@ data:
         destinations = payload.get("destinations")
         if destinations not in (None, []):
             raise BoundaryError("destinations_refused", "alert destinations are not supported in monitor-only mode")
-        query = validate_query(str(payload.get("query", "")))
+        query = validate_query(str(payload.get("query", "")), allowed_namespaces)
         timeout = payload.get("timeout", 30)
         if not isinstance(timeout, int) or isinstance(timeout, bool):
             raise BoundaryError("invalid_timeout", "the check timeout must be an integer number of seconds")
@@ -2662,7 +2748,7 @@ spec:
       annotations:
         platform.sre-platform.io/operator-mode: "monitor-only"
         platform.sre-platform.io/chart-version: "0.42.0"
-        platform.sre-platform.io/guard-checksum: "56de575d5d177394ed32e179d8238130bbe279b25281d7beb90338685ed488b1"
+        platform.sre-platform.io/guard-checksum: "4de4c73ad0a1fa25ce6a1e67f352bc1f898b418680138e873c6c655199f5d2e2"
     spec:
       serviceAccountName: holmes-operator
       automountServiceAccountToken: true
@@ -2749,6 +2835,10 @@ spec:
               value: "900"
             - name: GUARD_HISTORY_LIMIT
               value: "20"
+            - name: GUARD_MAX_ALERT_RUNS_PER_DAY
+              value: "6"
+            - name: GUARD_ALLOWED_NAMESPACES
+              value: "access-change-api,argocd,audit-sink,authelia,cert-manager,gatus,headlamp,holmes,ingress-nginx,kube-system,kyverno,metrics-server,opencost,prometheus,synthetic-monitoring,synthetic-status,task245-canary"
           ports:
             - name: metrics
               containerPort: 8097

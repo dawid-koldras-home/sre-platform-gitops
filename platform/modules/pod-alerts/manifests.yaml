@@ -305,9 +305,9 @@ data:
         "kube-system"
       ],
       "slack": {
-        "enabled": false,
-        "channelId": "",
-        "tokenFile": "",
+        "enabled": true,
+        "channelId": "C0CKD1HCB7Z",
+        "tokenFile": "/etc/pod-alerts/slack/token",
         "apiBaseUrl": "https://slack.com/api",
         "timeoutSeconds": 10,
         "maxAttempts": 4,
@@ -318,19 +318,38 @@ data:
         "maxMessageBytes": 2000
       },
       "investigation": {
-        "enabled": false,
+        "enabled": true,
         "namespace": "holmes",
         "model": "operator-deepseek-v4.1-flash",
         "cooldownSeconds": 3600,
         "perAlertDailyBudget": 1,
-        "dailyBudget": 2,
+        "dailyBudget": 4,
         "maxConcurrent": 1,
         "timeoutSeconds": 240,
         "pollIntervalSeconds": 15,
         "resultTimeoutSeconds": 900,
         "circuitFailureThreshold": 3,
         "circuitCooldownSeconds": 900,
-        "retentionHours": 72
+        "retentionHours": 72,
+        "allowedNamespaces": [
+          "access-change-api",
+          "argocd",
+          "audit-sink",
+          "authelia",
+          "cert-manager",
+          "gatus",
+          "headlamp",
+          "holmes",
+          "ingress-nginx",
+          "kube-system",
+          "kyverno",
+          "metrics-server",
+          "opencost",
+          "prometheus",
+          "synthetic-monitoring",
+          "synthetic-status",
+          "task245-canary"
+        ]
       }
     }
 ---
@@ -419,7 +438,7 @@ spec:
         # A configuration change must roll the process that reads it. The rendered
         # config is the checksum input, so an apply that changes a threshold or a
         # channel restarts the dispatcher instead of leaving it on the old contract.
-        platform.sre-platform.io/config-checksum: "bab82e24ec1cf0fc8959de05a8a9193d382fdf207eafe4c042e58202e0e83d4a"
+        platform.sre-platform.io/config-checksum: "af53f336e12433f825548e44ecee3ccdc68340c4a2e83a9c7290a4dfc4c8dc80"
     spec:
       imagePullSecrets:
         - name: pod-alerts-registry-pull
@@ -434,7 +453,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: dispatcher
-          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:7d68db9d2b9b8d424084ebe32bd3adfecfe74b1b6c462ca30897396002b5e6dd
+          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:2e1338d783337977cbf4d4c3ed731b8b3e2471783ef08f9163dc1ce6235da5c2
           imagePullPolicy: IfNotPresent
           args: ["--config", "/etc/pod-alert-dispatcher/config.json"]
           ports:
@@ -479,6 +498,9 @@ spec:
               mountPath: /var/lib/pod-alert-dispatcher
             - name: tmp
               mountPath: /tmp
+            - name: slack-token
+              mountPath: /etc/pod-alerts/slack
+              readOnly: true
       volumes:
         - name: config
           configMap:
@@ -492,6 +514,10 @@ spec:
             claimName: pod-alert-dispatcher-state
         - name: tmp
           emptyDir: {}
+        - name: slack-token
+          secret:
+            secretName: pod-alerts-slack
+            optional: false
 ---
 apiVersion: v1
 kind: Service
@@ -602,3 +628,22 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    # The Kubernetes API is needed only to create, read and delete the one Holmes
+    # check kind. It is the only cluster-wide egress the dispatcher has.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    # Slack HTTPS only. A Kubernetes NetworkPolicy cannot name a host, so this
+    # permits the port to any address; the destination is fixed by the reviewed
+    # configuration and the image contains no other network client.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
