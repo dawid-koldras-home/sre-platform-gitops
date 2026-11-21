@@ -2838,7 +2838,7 @@ spec:
             - name: GUARD_MAX_ALERT_RUNS_PER_DAY
               value: "6"
             - name: GUARD_ALLOWED_NAMESPACES
-              value: "access-change-api,argocd,audit-sink,authelia,cert-manager,gatus,headlamp,holmes,ingress-nginx,kube-system,kyverno,metrics-server,opencost,prometheus,synthetic-monitoring,synthetic-status,task245-canary"
+              value: "access-change-api,argocd,audit-sink,authelia,cert-manager,gatus,headlamp,holmes,ingress-nginx,kube-system,kyverno,metrics-server,opencost,prometheus,synthetic-monitoring,synthetic-status"
           ports:
             - name: metrics
               containerPort: 8097
