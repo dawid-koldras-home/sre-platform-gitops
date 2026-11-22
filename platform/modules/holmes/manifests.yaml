@@ -2765,7 +2765,7 @@ spec:
       annotations:
         platform.sre-platform.io/operator-mode: "monitor-only"
         platform.sre-platform.io/chart-version: "0.42.0"
-        platform.sre-platform.io/guard-checksum: "4de4c73ad0a1fa25ce6a1e67f352bc1f898b418680138e873c6c655199f5d2e2"
+        platform.sre-platform.io/guard-checksum: "4323bc090fd4cbbac9bbb5591b7dfe4d6b71d9acbb0a58213b26afd4e8a07f3f"
     spec:
       serviceAccountName: holmes-operator
       automountServiceAccountToken: true
