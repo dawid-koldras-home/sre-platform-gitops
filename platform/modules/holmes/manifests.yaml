@@ -1632,6 +1632,14 @@ data:
             self.alert_runs_today = 0
             self.active: Optional[Run] = None
             self.last_run_at = 0.0
+            # The minimum gap is enforced per run class. A scheduled hourly check and an
+            # alert-driven investigation are different workloads: a schedule run must
+            # not lock out the investigation of a live incident for a minute, and an
+            # alert storm must not consume the schedule's slots. Each class therefore
+            # has its own last-run marker, persisted with the rest of the state so a
+            # guard restart cannot collapse the two.
+            self.last_scheduled_run_at = 0.0
+            self.last_alert_run_at = 0.0
             self.last_success_at = 0.0
             self.last_result = ""
             self.last_error_class = ""
@@ -1661,6 +1669,8 @@ data:
                 self.runs_today = max(0, int(raw.get("runs_today", 0)))
                 self.alert_runs_today = max(0, int(raw.get("alert_runs_today", 0)))
                 self.last_run_at = float(raw.get("last_run_at", 0.0))
+                self.last_scheduled_run_at = float(raw.get("last_scheduled_run_at", self.last_run_at))
+                self.last_alert_run_at = float(raw.get("last_alert_run_at", 0.0))
                 self.last_success_at = float(raw.get("last_success_at", 0.0))
                 self.last_result = str(raw.get("last_result", ""))[:40]
                 self.last_error_class = str(raw.get("last_error_class", ""))[:60]
@@ -1679,6 +1689,8 @@ data:
                 "runs_today": self.runs_today,
                 "alert_runs_today": self.alert_runs_today,
                 "last_run_at": self.last_run_at,
+                "last_scheduled_run_at": self.last_scheduled_run_at,
+                "last_alert_run_at": self.last_alert_run_at,
                 "last_success_at": self.last_success_at,
                 "last_result": self.last_result,
                 "last_error_class": self.last_error_class,
@@ -1751,14 +1763,17 @@ data:
                         return None, "daily_alert_run_budget"
                 elif self.runs_today >= MAX_RUNS_PER_DAY:
                     return None, "daily_run_budget"
-                if self.last_run_at and moment - self.last_run_at < MIN_RUN_GAP_SECONDS:
+                previous_class_run_at = self.last_alert_run_at if is_alert_run else self.last_scheduled_run_at
+                if previous_class_run_at and moment - previous_class_run_at < MIN_RUN_GAP_SECONDS:
                     return None, "run_gap"
                 run = Run(run_id=secrets.token_hex(8), name=name, started_at=moment)
                 self.active = run
                 if is_alert_run:
                     self.alert_runs_today += 1
+                    self.last_alert_run_at = moment
                 else:
                     self.runs_today += 1
+                    self.last_scheduled_run_at = moment
                 self.last_run_at = moment
                 self._persist_locked()
                 return run, ""
@@ -2141,7 +2156,8 @@ data:
             "concurrency_limit": "another health check is already running",
             "circuit_open": "the model provider circuit is open after repeated failures",
             "daily_run_budget": "the daily health-check run budget is exhausted",
-            "run_gap": "the minimum gap between health checks has not elapsed",
+            "daily_alert_run_budget": "the daily alert-investigation budget is exhausted",
+            "run_gap": "the minimum gap between health checks of this kind has not elapsed",
         }
         return messages.get(rejection, "the health check was refused by the operator guard")
 
@@ -2271,6 +2287,7 @@ data:
 
     if __name__ == "__main__":
         main()
+
   bounds.py: |
     """Bounded validation and sanitization for the Holmes Operator guard.
 
