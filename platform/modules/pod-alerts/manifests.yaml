@@ -331,6 +331,7 @@ data:
         "circuitFailureThreshold": 3,
         "circuitCooldownSeconds": 900,
         "retentionHours": 72,
+        "correlationWindowSeconds": 120,
         "allowedNamespaces": [
           "access-change-api",
           "argocd",
@@ -437,7 +438,7 @@ spec:
         # A configuration change must roll the process that reads it. The rendered
         # config is the checksum input, so an apply that changes a threshold or a
         # channel restarts the dispatcher instead of leaving it on the old contract.
-        platform.sre-platform.io/config-checksum: "45d197b6a81e051326bc4e0f648a3c997dac3e2f498597611414b0a338b07b13"
+        platform.sre-platform.io/config-checksum: "7840c7a7cb7ddab2cecc8d8cca63fffdc69db0b39cfb6fc25ecda1917ac12c88"
     spec:
       imagePullSecrets:
         - name: pod-alerts-registry-pull
@@ -452,7 +453,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: dispatcher
-          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:2e1338d783337977cbf4d4c3ed731b8b3e2471783ef08f9163dc1ce6235da5c2
+          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:cdc8c341a4e9250520a4cfb47ff1f9829731ae12bd3a54b0e85243d8ab911c7e
           imagePullPolicy: IfNotPresent
           args: ["--config", "/etc/pod-alert-dispatcher/config.json"]
           ports:

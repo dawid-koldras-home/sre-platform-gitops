@@ -92,7 +92,7 @@ data:
         annotations:
           description: A pod has been not Ready for at least 300s. Inspect the pod and
             its owning workload.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podnotready
           summary: Pod {{ $labels.pod }} is not Ready in namespace {{ $labels.namespace
             }}
         expr: |
@@ -104,19 +104,23 @@ data:
             # is still supposed to be running can be "not ready".
             and on (namespace, pod)
             (kube_pod_status_phase{phase=~"Pending|Running|Unknown",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod) (kube_pod_status_phase{phase="Pending",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod) (kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull|CrashLoopBackOff",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
           )
           or
           max by (namespace, pod) (
             (kube_pod_status_ready{condition="true",namespace!~"kube-node-lease|kube-public|kube-system"} == 0)
             and on (namespace, pod)
             (kube_pod_status_phase{phase=~"Pending|Running|Unknown",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod) (kube_pod_status_phase{phase="Pending",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
+            unless on (namespace, pod) (kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull|CrashLoopBackOff",namespace!~"kube-node-lease|kube-public|kube-system"} == 1)
             unless on (namespace, pod) kube_pod_owner{owner_is_controller="true"}
           )
         for: 300s
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodNotReady'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podnotready
           severity: high
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
@@ -124,7 +128,7 @@ data:
         annotations:
           description: A pod could not be scheduled for at least 300s. Check node capacity,
             taints and resource requests.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podpending
           summary: Pod {{ $labels.pod }} is Pending in namespace {{ $labels.namespace
             }}
         expr: |
@@ -142,14 +146,14 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodPending'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podpending
           severity: high
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
       - alert: PodCrashLoopBackOff
         annotations:
           description: The container has been restarting for at least 300s.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podcrashloopbackoff
           summary: Container {{ $labels.container }} of pod {{ $labels.pod }} is crash
             looping
         expr: |
@@ -167,7 +171,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodCrashLoopBackOff'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podcrashloopbackoff
           severity: critical
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
@@ -175,7 +179,7 @@ data:
         annotations:
           description: The image cannot be pulled. Check the image reference, registry
             credentials and registry reachability.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podimagepullbackoff
           summary: Image pull fails for container {{ $labels.container }} of pod {{ $labels.pod
             }}
         expr: |
@@ -193,7 +197,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodImagePullBackOff'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podimagepullbackoff
           severity: high
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
@@ -201,7 +205,7 @@ data:
         annotations:
           description: The container exited with a non-completed reason. Read its last
             state and logs in the namespace.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podunexpectedtermination
           summary: Container {{ $labels.container }} of pod {{ $labels.pod }} terminated
             unexpectedly
         expr: |
@@ -219,14 +223,14 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodUnexpectedTermination'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podunexpectedtermination
           severity: high
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
       - alert: PodRestartingFrequently
         annotations:
           description: Restart rate is above the reviewed threshold.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podrestartingfrequently
           summary: Pod {{ $labels.pod }} restarted more than 3 times in 300s
         expr: |
           max by (namespace, pod, container, workload, workload_kind) (
@@ -243,7 +247,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodRestartingFrequently'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podrestartingfrequently
           severity: high
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
@@ -251,7 +255,7 @@ data:
         annotations:
           description: A recent restart followed an out-of-memory kill. Compare the working
             set with the configured memory limit.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podoomkilled
           summary: Container {{ $labels.container }} of pod {{ $labels.pod }} was OOMKilled
         expr: |
           max by (namespace, pod, container, workload, workload_kind) (
@@ -272,7 +276,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/PodOOMKilled'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#podoomkilled
           severity: critical
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
@@ -281,7 +285,7 @@ data:
           description: Working set has been above the reviewed fraction of the configured
             limit for 600s. A container without a limit is reported separately and never
             receives a percentage.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#containermemorynearlimit
           summary: Container {{ $labels.container }} of pod {{ $labels.pod }} is above
             85 of its memory limit
         expr: |
@@ -313,7 +317,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/ContainerMemoryNearLimit'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#containermemorynearlimit
           severity: high
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
@@ -321,7 +325,7 @@ data:
         annotations:
           description: No memory limit is configured, so a memory percentage cannot be
             computed. Set requests and limits for the workload.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#containermemorylimitmissing
           summary: Container {{ $labels.container }} of pod {{ $labels.pod }} has no memory
             limit
         expr: |
@@ -343,7 +347,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/ContainerMemoryLimitMissing'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#containermemorylimitmissing
           severity: medium
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
@@ -351,7 +355,7 @@ data:
         annotations:
           description: No CPU request is configured, so a CPU-request percentage cannot
             be computed. Set requests and limits for the workload.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#containercpurequestmissing
           summary: Container {{ $labels.container }} of pod {{ $labels.pod }} has no CPU
             request
         expr: |
@@ -373,7 +377,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/ContainerCPURequestMissing'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#containercpurequestmissing
           severity: medium
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
@@ -381,7 +385,7 @@ data:
         annotations:
           description: CPU usage has been above the reviewed fraction of the configured
             request for 900s.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#containercpuhigh
           summary: Container {{ $labels.container }} of pod {{ $labels.pod }} is above
             80 of its CPU request
         expr: |
@@ -413,7 +417,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/ContainerCPUHigh'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#containercpuhigh
           severity: medium
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
@@ -421,7 +425,7 @@ data:
         annotations:
           description: More than 50 of CFS periods were throttled for 900s. The CPU limit
             is too low for the workload.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#containercputhrottling
           summary: Container {{ $labels.container }} of pod {{ $labels.pod }} is being
             throttled
         expr: |
@@ -449,7 +453,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.pod }}/ContainerCPUThrottling'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#containercputhrottling
           severity: medium
           workload: '{{ $labels.workload }}'
           workload_kind: '{{ $labels.workload_kind }}'
@@ -457,7 +461,7 @@ data:
         annotations:
           description: The Deployment has been below its desired replica count for at
             least 600s.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#deploymentunavailable
           summary: Deployment {{ $labels.deployment }} has unavailable replicas in namespace
             {{ $labels.namespace }}
         expr: |
@@ -470,7 +474,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.deployment }}/DeploymentUnavailable'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#deploymentunavailable
           severity: high
           workload: '{{ $labels.deployment }}'
           workload_kind: Deployment
@@ -478,7 +482,7 @@ data:
         annotations:
           description: The StatefulSet has been below its desired replica count for at
             least 600s.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#statefulsetunavailable
           summary: StatefulSet {{ $labels.statefulset }} has not all replicas ready
         expr: |
           max by (namespace, statefulset) (
@@ -491,7 +495,7 @@ data:
         labels:
           owner: '{{ $labels.namespace }}'
           platform_fingerprint: '{{ $labels.namespace }}/{{ $labels.statefulset }}/StatefulSetUnavailable'
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#statefulsetunavailable
           severity: high
           workload: '{{ $labels.statefulset }}'
           workload_kind: StatefulSet
@@ -499,7 +503,7 @@ data:
         annotations:
           description: The node has reported Ready=false for at least 300s. Check kubelet,
             the node network and the kubelet Events.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#nodenotready
           summary: Node {{ $labels.node }} is NotReady
         expr: |
           max by (node) (kube_node_status_condition{condition="Ready",status="true"} == 0)
@@ -507,13 +511,13 @@ data:
         labels:
           owner: platform
           platform_fingerprint: node/{{ $labels.node }}/NodeNotReady
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#nodenotready
           severity: critical
           workload_kind: Node
       - alert: NodeMemoryPressure
         annotations:
           description: The node has reported MemoryPressure for at least 300s.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#nodememorypressure
           summary: Node {{ $labels.node }} reports MemoryPressure
         expr: |
           max by (node) (kube_node_status_condition{condition="MemoryPressure",status="true"} == 1)
@@ -521,13 +525,13 @@ data:
         labels:
           owner: platform
           platform_fingerprint: node/{{ $labels.node }}/NodeMemoryPressure
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#nodememorypressure
           severity: high
           workload_kind: Node
       - alert: NodeDiskPressure
         annotations:
           description: The node has reported DiskPressure for at least 300s.
-          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook_url: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#nodediskpressure
           summary: Node {{ $labels.node }} reports DiskPressure
         expr: |
           max by (node) (kube_node_status_condition{condition="DiskPressure",status="true"} == 1)
@@ -535,7 +539,7 @@ data:
         labels:
           owner: platform
           platform_fingerprint: node/{{ $labels.node }}/NodeDiskPressure
-          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md
+          runbook: https://github.com/dawid-koldras-home/SRE-platform/blob/main/docs/runbooks/pod-alerts.md#nodediskpressure
           severity: high
           workload_kind: Node
   alerts: |
