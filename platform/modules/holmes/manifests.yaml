@@ -1553,6 +1553,21 @@ data:
     # can create a check at all.
     MAX_ALERT_RUNS_PER_DAY = _int("GUARD_MAX_ALERT_RUNS_PER_DAY", 12)
     ALERT_RUN_PREFIX = "alert-"
+
+
+    def is_alert_run_name(name: str) -> bool:
+        """Return true for the dispatcher's alert-check names.
+
+        Holmes Operator 0.42.0 forwards the HealthCheck identity as
+        ``<namespace>/<name>``, so the live value is ``holmes/alert-<fingerprint>-gN``
+        rather than a bare ``alert-...``. Checking only the first segment made every
+        live alert investigation look like a scheduled check and let the exhausted
+        schedule budget refuse it. The reviewed prefix is the only signal, and it is
+        taken from the final path segment so a namespace cannot fake it.
+        """
+        return name.rsplit("/", 1)[-1].startswith(ALERT_RUN_PREFIX)
+
+
     # Twelve turns are enough for the reviewed Kubernetes root-cause workflow: read
     # the pod, its container status, the image reference, the owner chain and the
     # bounded Events, then answer. The previous ceiling of eight stopped a live
@@ -1759,7 +1774,7 @@ data:
                     self._persist_locked()
                 if moment < self.circuit_open_until:
                     return None, "circuit_open"
-                is_alert_run = name.startswith(ALERT_RUN_PREFIX)
+                is_alert_run = is_alert_run_name(name)
                 if is_alert_run:
                     # The alert budget is independent of the schedule budget: neither
                     # can consume the other, and each refusal has its own class so the
@@ -2809,7 +2824,7 @@ spec:
       annotations:
         platform.sre-platform.io/operator-mode: "monitor-only"
         platform.sre-platform.io/chart-version: "0.42.0"
-        platform.sre-platform.io/guard-checksum: "bb096b08eb66550a6cee0d537a4e1868e05fac4b15f287a745333fb34b6ffde4"
+        platform.sre-platform.io/guard-checksum: "b56bffb253d102fd1d1794ca92f86409bee840f6e29da998a4b336498fa9a1ae"
     spec:
       serviceAccountName: holmes-operator
       automountServiceAccountToken: true
