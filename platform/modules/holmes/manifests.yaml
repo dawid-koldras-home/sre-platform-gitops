@@ -1553,7 +1553,12 @@ data:
     # can create a check at all.
     MAX_ALERT_RUNS_PER_DAY = _int("GUARD_MAX_ALERT_RUNS_PER_DAY", 12)
     ALERT_RUN_PREFIX = "alert-"
-    MAX_MODEL_CALLS_PER_RUN = _int("GUARD_MAX_MODEL_CALLS_PER_RUN", 6)
+    # Twelve turns are enough for the reviewed Kubernetes root-cause workflow: read
+    # the pod, its container status, the image reference, the owner chain and the
+    # bounded Events, then answer. The previous ceiling of eight stopped a live
+    # alert investigation after 71.6 seconds while the daily budget still had 67
+    # calls left. The daily, tool, token, run and circuit ceilings are unchanged.
+    MAX_MODEL_CALLS_PER_RUN = _int("GUARD_MAX_MODEL_CALLS_PER_RUN", 12)
     MAX_TOOL_CALLS_PER_RUN = _int("GUARD_MAX_TOOL_CALLS_PER_RUN", 12)
     MAX_PROMPT_TOKENS_PER_RUN = _int("GUARD_MAX_PROMPT_TOKENS_PER_RUN", 120000)
     MAX_COMPLETION_TOKENS_PER_RUN = _int("GUARD_MAX_COMPLETION_TOKENS_PER_RUN", 12000)
@@ -2024,7 +2029,7 @@ data:
             rejection = self.state.provider_budget_class(run_id, usage)
             if rejection:
                 self.metrics.inc(self.metrics.budget_rejections, rejection)
-                return 429, _json_error(rejection, "the operator model budget is exhausted for this run or day"), "application/json"
+                return 429, _json_error(rejection, budget_error_class(rejection)), "application/json"
 
             # Force one non-streaming completion so usage is inspectable and one
             # run cannot hold a stream open indefinitely.
@@ -2077,6 +2082,8 @@ data:
         # -------------------------------------------------------------- metrics
         def metrics_text(self) -> str:
             snapshot = self.state.snapshot()
+            active_usage = (snapshot.get("activeRun") or {}).get("usage") or {}
+            active_model_calls = int(active_usage.get("model_calls", 0) or 0)
             lines = [
                 "# HELP holmes_operator_runs_total Health-check runs by terminal result.",
                 "# TYPE holmes_operator_runs_total counter",
@@ -2143,12 +2150,50 @@ data:
                 f'holmes_operator_budget_remaining{{kind="runs"}} {max(0, MAX_RUNS_PER_DAY - snapshot["runsToday"])}',
                 f'holmes_operator_budget_remaining{{kind="alert_runs"}} {max(0, MAX_ALERT_RUNS_PER_DAY - snapshot["alertRunsToday"])}',
                 f'holmes_operator_budget_remaining{{kind="model_calls"}} {max(0, MAX_MODEL_CALLS_PER_DAY - snapshot["dayUsage"]["model_calls"])}',
+                f'holmes_operator_budget_remaining{{kind="run_model_calls"}} {max(0, MAX_MODEL_CALLS_PER_RUN - active_model_calls)}',
                 f'holmes_operator_budget_remaining{{kind="tokens"}} {max(0, MAX_TOKENS_PER_DAY - snapshot["dayUsage"]["total_tokens"])}',
+                "# HELP holmes_operator_budget_limit Configured reviewed budget ceilings.",
+                "# TYPE holmes_operator_budget_limit gauge",
+                f'holmes_operator_budget_limit{{kind="model_calls_per_run"}} {MAX_MODEL_CALLS_PER_RUN}',
+                f'holmes_operator_budget_limit{{kind="model_calls_per_day"}} {MAX_MODEL_CALLS_PER_DAY}',
+                f'holmes_operator_budget_limit{{kind="tool_calls_per_run"}} {MAX_TOOL_CALLS_PER_RUN}',
+                f'holmes_operator_budget_limit{{kind="alert_runs_per_day"}} {MAX_ALERT_RUNS_PER_DAY}',
                 "# HELP holmes_operator_state_load_errors State files that were unreadable at startup.",
                 "# TYPE holmes_operator_state_load_errors counter",
                 f"holmes_operator_state_load_errors {snapshot['stateLoadErrors']}",
             ]
             return "\n".join(lines) + "\n"
+
+
+    BUDGET_REJECTION_CLASSES = frozenset(
+        {
+            "daily_alert_run_budget",
+            "daily_model_call_budget",
+            "daily_run_budget",
+            "daily_token_budget",
+            "per_run_completion_tokens",
+            "per_run_input_bytes",
+            "per_run_model_calls",
+            "per_run_prompt_tokens",
+            "per_run_tool_calls",
+            "per_run_tool_output_bytes",
+            "rate_limited",
+        }
+    )
+
+
+    def budget_error_class(rejection: str) -> str:
+        """Return the structured class the dispatcher may trust.
+
+        The dispatcher classifies a failed HealthCheck from the bounded `status.error`
+        field. Holmes and LiteLLM can flatten an HTTP error body into prose, so the
+        guard puts the closed class first in its own error message instead of relying
+        on either library to preserve the JSON shape. Anything that is not a reviewed
+        budget class is returned unchanged.
+        """
+        if rejection in BUDGET_REJECTION_CLASSES:
+            return "guard_budget: " + rejection
+        return rejection
 
 
     def _rejection_message(rejection: str) -> str:
@@ -2287,7 +2332,6 @@ data:
 
     if __name__ == "__main__":
         main()
-
   bounds.py: |
     """Bounded validation and sanitization for the Holmes Operator guard.
 
@@ -2765,7 +2809,7 @@ spec:
       annotations:
         platform.sre-platform.io/operator-mode: "monitor-only"
         platform.sre-platform.io/chart-version: "0.42.0"
-        platform.sre-platform.io/guard-checksum: "4323bc090fd4cbbac9bbb5591b7dfe4d6b71d9acbb0a58213b26afd4e8a07f3f"
+        platform.sre-platform.io/guard-checksum: "bb096b08eb66550a6cee0d537a4e1868e05fac4b15f287a745333fb34b6ffde4"
     spec:
       serviceAccountName: holmes-operator
       automountServiceAccountToken: true
@@ -2837,7 +2881,7 @@ spec:
             - name: GUARD_MAX_TOKENS_PER_DAY
               value: "1000000"
             - name: GUARD_MAX_MODEL_CALLS_PER_RUN
-              value: "8"
+              value: "12"
             - name: GUARD_MAX_TOOL_CALLS_PER_RUN
               value: "12"
             - name: GUARD_MAX_PROMPT_TOKENS_PER_RUN
