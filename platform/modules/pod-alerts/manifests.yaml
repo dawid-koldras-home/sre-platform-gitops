@@ -350,6 +350,26 @@ data:
           "synthetic-monitoring",
           "synthetic-status"
         ]
+      },
+      "evidence": {
+        "enabled": true,
+        "allowedNamespaces": [
+          "access-change-api",
+          "argocd",
+          "audit-sink",
+          "authelia",
+          "cert-manager",
+          "gatus",
+          "headlamp",
+          "holmes",
+          "ingress-nginx",
+          "kyverno",
+          "metrics-server",
+          "opencost",
+          "prometheus",
+          "synthetic-monitoring",
+          "synthetic-status"
+        ]
       }
     }
 ---
@@ -388,6 +408,303 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: pod-alert-dispatcher
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pod-alert-dispatcher-pods
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: access-change-api
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: audit-sink
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: authelia
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: gatus
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: headlamp
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: holmes
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: kyverno
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: metrics-server
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: opencost
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
+subjects:
+  - kind: ServiceAccount
+    name: pod-alert-dispatcher
+    namespace: pod-alerts
+---
+# Read-only Pod evidence for the deterministic PodPending message. One namespace at
+# a time, exact names only: no list, watch, log read, exec or mutation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-alert-dispatcher-pods
+  namespace: synthetic-status
+  labels:
+    app.kubernetes.io/name: pod-alert-dispatcher
+    app.kubernetes.io/part-of: sre-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-alert-dispatcher-pods
 subjects:
   - kind: ServiceAccount
     name: pod-alert-dispatcher
@@ -438,7 +755,7 @@ spec:
         # A configuration change must roll the process that reads it. The rendered
         # config is the checksum input, so an apply that changes a threshold or a
         # channel restarts the dispatcher instead of leaving it on the old contract.
-        platform.sre-platform.io/config-checksum: "e3c1424efc716c8aede5adc47e2480c5ab9778af79824b8d3fef7343a6bbd194"
+        platform.sre-platform.io/config-checksum: "af3c80b00963aef3287e8fbaa874bd05814ebac26d0f78dd7a981d8d44867618"
     spec:
       imagePullSecrets:
         - name: pod-alerts-registry-pull
@@ -453,7 +770,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: dispatcher
-          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:a913e951393ab241a16ee5f983e84edb7ddd6e024f1c9a7a7d664f0bbadb05cc
+          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:7bfbad7e6ac99a2070702e4aaa69a816193a9726426cbafa233e014c7e86036e
           imagePullPolicy: IfNotPresent
           args: ["--config", "/etc/pod-alert-dispatcher/config.json"]
           ports:
@@ -629,7 +946,8 @@ spec:
         - protocol: TCP
           port: 53
     # The Kubernetes API is needed only to create, read and delete the one Holmes
-    # check kind. It is the only cluster-wide egress the dispatcher has.
+    # check kind and to read one exact-name Pod for deterministic evidence. It is
+    # the only cluster-wide egress the dispatcher has.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
