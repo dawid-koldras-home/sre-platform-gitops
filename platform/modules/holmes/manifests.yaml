@@ -1516,6 +1516,7 @@ data:
     from bounds import (
         BoundaryError,
         DEFAULT_LIMITS,
+        compact_tool_output,
         error_class_for_status,
         resolve_namespace_grant,
         sanitize_status,
@@ -1920,6 +1921,10 @@ data:
         tokens_total: Dict[str, int] = field(default_factory=dict)
         retries_total: int = 0
         budget_rejections: Dict[str, int] = field(default_factory=dict)
+        # TASK-250: how often an accumulated provider request had to be bounded, and how
+        # many bytes the guard removed. Both are counters, no content is retained.
+        input_truncations_total: Dict[str, int] = field(default_factory=dict)
+        input_truncated_bytes_total: int = 0
         requests_total: Dict[str, int] = field(default_factory=dict)
         upstream_failures_total: Dict[str, int] = field(default_factory=dict)
         validation_rejections: Dict[str, int] = field(default_factory=dict)
@@ -2035,6 +2040,20 @@ data:
                 return 400, _json_error("invalid_json", "the provider request is not a JSON object"), "application/json"
 
             usage = Usage()
+            # TASK-250: bound the accumulated input before the guard decides anything
+            # and before the request can reach the provider. Holmes appends every tool
+            # result to the conversation, so one wide listing can otherwise abort a run
+            # that was already narrowing with `guard_budget: per_run_input_bytes`. Only
+            # tool-role content is shortened, the marker is explicit, and the content is
+            # never logged.
+            active_usage = active.get("usage") or {}
+            remaining_input = MAX_INPUT_BYTES_PER_RUN - int(active_usage.get("input_bytes", 0) or 0)
+            payload, truncated_messages, removed_bytes = compact_tool_output(payload, remaining_input)
+            if truncated_messages:
+                body = json.dumps(payload, sort_keys=True).encode("utf-8")
+                self.metrics.inc(self.metrics.input_truncations_total, "tool_output", truncated_messages)
+                with self.metrics._lock:
+                    self.metrics.input_truncated_bytes_total += removed_bytes
             usage.input_bytes = len(body)
             messages = payload.get("messages")
             if isinstance(messages, list):
@@ -2122,6 +2141,15 @@ data:
                 "# HELP holmes_operator_retries_total Bounded upstream retries.",
                 "# TYPE holmes_operator_retries_total counter",
                 f"holmes_operator_retries_total {self.metrics.retries_total}",
+                "# HELP holmes_operator_input_truncations_total Provider requests whose accumulated input the guard bounded before the call.",
+                "# TYPE holmes_operator_input_truncations_total counter",
+                f'holmes_operator_input_truncations_total{{class="tool_output"}} {sum(self.metrics.input_truncations_total.values())}',
+                "# HELP holmes_operator_input_truncated_bytes_total Bytes removed by bounded input compaction.",
+                "# TYPE holmes_operator_input_truncated_bytes_total counter",
+                f"holmes_operator_input_truncated_bytes_total {self.metrics.input_truncated_bytes_total}",
+                "# HELP holmes_operator_input_bytes_limit Per-run accumulated input ceiling.",
+                "# TYPE holmes_operator_input_bytes_limit gauge",
+                f"holmes_operator_input_bytes_limit {MAX_INPUT_BYTES_PER_RUN}",
                 "# HELP holmes_operator_upstream_failures_total Upstream failures by class.",
                 "# TYPE holmes_operator_upstream_failures_total counter",
                 f"holmes_operator_upstream_failures_total {sum(self.metrics.upstream_failures_total.values())}",
@@ -2367,6 +2395,7 @@ data:
 
     from __future__ import annotations
 
+    import json
     import re
     from dataclasses import dataclass
     from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -2718,6 +2747,91 @@ data:
         if status >= 500:
             return "upstream_unavailable"
         return "upstream_error"
+
+
+    # --------------------------------------------------------------- input bounding
+    #
+    # TASK-250. Holmes appends every tool result to the conversation, so an
+    # investigation that reads a namespace-wide listing can push one provider request
+    # past the guard's per-run input-byte ceiling and abort a run that was already
+    # narrowing. The live 2026-11-23 check `alert-0d2e6cf9cdcae94f-g1` died that way
+    # with `guard_budget: per_run_input_bytes` after 39 s.
+    #
+    # The compaction below happens *before* the guard decides and before the call is
+    # forwarded. It only shortens tool-role content, never a system or user message:
+    # the operator's instruction is what must not change. The marker is explicit, the
+    # removed byte count is published as telemetry, and the content itself is never
+    # logged, persisted or returned.
+
+    TOOL_OUTPUT_TRUNCATION_MARKER = " ...[truncated by operator guard]"
+
+    # Per-message content budgets tried in order. The first step is large enough to
+    # keep an ordinary `kubectl describe` useful; the later steps bound a pathological
+    # object. A request that still does not fit is refused with the existing closed
+    # class, because the prompt itself is then the problem.
+    TOOL_OUTPUT_TRUNCATION_STEPS = (8192, 2048, 512, 128)
+
+
+    def compact_tool_output(payload: Any, available_bytes: int) -> Tuple[Any, int, int]:
+        """Shrink tool-role message content until the serialized request fits.
+
+        Returns ``(payload, truncated_messages, removed_bytes)``. ``available_bytes``
+        is the remaining input allowance for the whole request. A non-dict payload, a
+        missing message list or a non-positive allowance is returned unchanged, so the
+        caller falls back to the existing refusal path rather than guessing.
+
+        The function is deterministic: the same conversation and allowance always
+        produce the same bytes, because candidates are visited in message order and the
+        steps are fixed.
+        """
+        if not isinstance(payload, dict):
+            return payload, 0, 0
+        if available_bytes <= 0:
+            return payload, 0, 0
+        messages = payload.get("messages")
+        if not isinstance(messages, list):
+            return payload, 0, 0
+
+        def size() -> int:
+            try:
+                return len(json.dumps(payload, sort_keys=True).encode("utf-8", "replace"))
+            except (TypeError, ValueError):
+                return 0
+
+        current = size()
+        if current == 0 or current <= available_bytes:
+            return payload, 0, 0
+
+        candidates: List[int] = []
+        for index, message in enumerate(messages):
+            if not isinstance(message, dict):
+                continue
+            if message.get("role") not in ("tool", "function"):
+                continue
+            content = message.get("content")
+            if isinstance(content, str) and content:
+                candidates.append(index)
+
+        truncated = 0
+        removed = 0
+        for step in TOOL_OUTPUT_TRUNCATION_STEPS:
+            for index in candidates:
+                if current <= available_bytes:
+                    break
+                message = messages[index]
+                content = message.get("content")
+                if not isinstance(content, str) or len(content) <= step:
+                    continue
+                before = len(content.encode("utf-8", "replace"))
+                message["content"] = content[:step] + TOOL_OUTPUT_TRUNCATION_MARKER
+                after = len(message["content"].encode("utf-8", "replace"))
+                removed += max(0, before - after)
+                truncated += 1
+                current = size()
+            if current <= available_bytes:
+                break
+
+        return payload, truncated, removed
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -2824,7 +2938,7 @@ spec:
       annotations:
         platform.sre-platform.io/operator-mode: "monitor-only"
         platform.sre-platform.io/chart-version: "0.42.0"
-        platform.sre-platform.io/guard-checksum: "b56bffb253d102fd1d1794ca92f86409bee840f6e29da998a4b336498fa9a1ae"
+        platform.sre-platform.io/guard-checksum: "fabc925cc2c2dbf057262ab428bd68e1e07e83ed6dcafa94fc8d829bb94a3b52"
     spec:
       serviceAccountName: holmes-operator
       automountServiceAccountToken: true
