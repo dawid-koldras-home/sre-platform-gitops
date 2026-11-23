@@ -750,7 +750,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: dispatcher
-          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:7bfbad7e6ac99a2070702e4aaa69a816193a9726426cbafa233e014c7e86036e
+          image: ghcr.io/dawid-koldras-home/sre-platform-pod-alert-dispatcher@sha256:a5b18eac43982182ad79d8841cd56a320130310cc8b0db9781efbc42af4e4817
           imagePullPolicy: IfNotPresent
           args: ["--config", "/etc/pod-alert-dispatcher/config.json"]
           ports:
