@@ -367,8 +367,7 @@ data:
           "metrics-server",
           "opencost",
           "prometheus",
-          "synthetic-monitoring",
-          "synthetic-status"
+          "synthetic-monitoring"
         ]
       }
     }
@@ -691,25 +690,6 @@ subjects:
     name: pod-alert-dispatcher
     namespace: pod-alerts
 ---
-# Read-only Pod evidence for the deterministic PodPending message. One namespace at
-# a time, exact names only: no list, watch, log read, exec or mutation.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: pod-alert-dispatcher-pods
-  namespace: synthetic-status
-  labels:
-    app.kubernetes.io/name: pod-alert-dispatcher
-    app.kubernetes.io/part-of: sre-platform
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: pod-alert-dispatcher-pods
-subjects:
-  - kind: ServiceAccount
-    name: pod-alert-dispatcher
-    namespace: pod-alerts
----
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -755,7 +735,7 @@ spec:
         # A configuration change must roll the process that reads it. The rendered
         # config is the checksum input, so an apply that changes a threshold or a
         # channel restarts the dispatcher instead of leaving it on the old contract.
-        platform.sre-platform.io/config-checksum: "af3c80b00963aef3287e8fbaa874bd05814ebac26d0f78dd7a981d8d44867618"
+        platform.sre-platform.io/config-checksum: "30530d5482e713d256699e338b74e6fb40a8b59266a5563d76af8d9c5167d923"
     spec:
       imagePullSecrets:
         - name: pod-alerts-registry-pull
